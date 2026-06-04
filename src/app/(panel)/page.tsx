@@ -1,0 +1,21 @@
+import { clientes } from "@/lib/mock-data";
+import { StatsBar } from "@/components/dashboard/StatsBar";
+import { ClientSection } from "@/components/dashboard/ClientSection";
+
+export default function DashboardPage() {
+  const proyectosPlanos = clientes.flatMap((c) => c.proyectos);
+
+  return (
+    <div>
+      <h1 className="font-display text-2xl font-bold text-text-primary mb-6">
+        Dashboard
+      </h1>
+      <StatsBar proyectos={proyectosPlanos} />
+      <div className="flex flex-col gap-8">
+        {clientes.map((cliente) => (
+          <ClientSection key={cliente.slug} cliente={cliente} />
+        ))}
+      </div>
+    </div>
+  );
+}
