@@ -41,11 +41,11 @@ Breaking change: añade `!` después del tipo (`feat!:`) o `BREAKING CHANGE:` en
 
 ## Estrategia de testing — Regla 100/80/0
 
-| Tier | Carpetas | Cobertura mínima |
-|---|---|---|
-| **Core** | `src/server/routers/`, `src/lib/`, `src/domain/` | **100%** |
-| **Important** | `src/components/`, `src/hooks/`, `src/utils/` | **80%** |
-| **Infrastructure** | `src/config/`, `src/db/`, `src/lib/docker/` | **0%** (no se testa) |
+| Tier               | Carpetas                                         | Cobertura mínima     |
+| ------------------ | ------------------------------------------------ | -------------------- |
+| **Core**           | `src/server/routers/`, `src/lib/`, `src/domain/` | **100%**             |
+| **Important**      | `src/components/`, `src/hooks/`, `src/utils/`    | **80%**              |
+| **Infrastructure** | `src/config/`, `src/db/`, `src/lib/docker/`      | **0%** (no se testa) |
 
 Esta regla es un gate hard en CI. Ver `docs/testing-strategy.md` para el mapa completo.
 
@@ -168,21 +168,21 @@ npm run db:reset         # reset + migrate + seed
 
 ## Skills disponibles
 
-| Skill | Cuándo invocarla |
-|---|---|
-| `/tdd` | Feature nueva o bug fix — siempre test primero |
-| `/prototype` | Antes de comprometerse con un diseño — explorar opciones |
-| `/diagnose` | Bug difícil o regresión de rendimiento |
-| `/grill-me` | Stress-test de un plan o diseño antes de implementar |
-| `/handoff` | Fin de sesión o contexto largo — compactar para continuar |
-| `/to-issues` | Convertir un plan en issues accionables |
-| `/zoom-out` | Revisión de arquitectura a alto nivel |
-| `/security-review` | Antes de merge a `main` si hay cambios sensibles |
-| `/improve-codebase-architecture` | Oportunidades de refactor en el proyecto |
-| `/triage` | Procesar issues entrantes |
-| `/qa` | Checklist de calidad antes de entregar |
-| `/frontend-design` | Crear componentes UI con la identidad Command Line |
-| `/setup-claude-env` | Actualizar este CLAUDE.md cuando cambie el proyecto |
+| Skill                            | Cuándo invocarla                                          |
+| -------------------------------- | --------------------------------------------------------- |
+| `/tdd`                           | Feature nueva o bug fix — siempre test primero            |
+| `/prototype`                     | Antes de comprometerse con un diseño — explorar opciones  |
+| `/diagnose`                      | Bug difícil o regresión de rendimiento                    |
+| `/grill-me`                      | Stress-test de un plan o diseño antes de implementar      |
+| `/handoff`                       | Fin de sesión o contexto largo — compactar para continuar |
+| `/to-issues`                     | Convertir un plan en issues accionables                   |
+| `/zoom-out`                      | Revisión de arquitectura a alto nivel                     |
+| `/security-review`               | Antes de merge a `main` si hay cambios sensibles          |
+| `/improve-codebase-architecture` | Oportunidades de refactor en el proyecto                  |
+| `/triage`                        | Procesar issues entrantes                                 |
+| `/qa`                            | Checklist de calidad antes de entregar                    |
+| `/frontend-design`               | Crear componentes UI con la identidad Command Line        |
+| `/setup-claude-env`              | Actualizar este CLAUDE.md cuando cambie el proyecto       |
 
 ---
 
@@ -211,7 +211,7 @@ Ver `CONTEXT.md` para el glosario completo.
 
 <!-- Actualiza esta sección al inicio de cada sesión relevante -->
 
-- **Fase activa:** Fase 0 — scaffold inicial
+- **Fase activa:** Fase 1 — backend + auth (pendiente de merge a master)
 - **En construcción:** —
-- **Bloqueado / pendiente:** —
-- **Próximo hito:** Iniciar Fase 1 MVP
+- **Bloqueado / pendiente:** Merge de `feature/fase1-backend-auth` → `master` (requiere PostgreSQL para ejecutar `prisma migrate dev` y `npm run db:seed` localmente antes de validar)
+- **Próximo hito:** Fase 2 — gestión Docker (arrancar/detener servicios, logs en tiempo real)
