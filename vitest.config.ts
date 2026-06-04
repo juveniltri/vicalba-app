@@ -20,15 +20,35 @@ export default defineConfig({
         "**/*.config.*",
         "**/*.d.ts",
         "**/test/**",
-        // Infrastructure tier — 0% por diseño
+        // Infrastructure tier
         "src/app/**",
-        "src/server/**",
         "src/db/**",
         "src/env.ts",
         "src/styles/**",
+        // Lib infrastructure (configuración, sin lógica de negocio)
+        "src/lib/prisma.ts",
+        "src/lib/auth.ts",
+        "src/lib/sentry.ts",
+        "src/lib/logger.ts",
+        // Server infrastructure
+        "src/server/trpc.ts",
+        "src/server/caller.ts",
+        "src/server/routers/_app.ts",
       ],
       thresholds: {
-        // Core — 100%: lógica de Docker, Traefik y schemas Zod
+        // Core — 100%
+        "src/server/routers/**": {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
+        "src/lib/formatHace.ts": {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
         "src/lib/docker/**": {
           branches: 100,
           functions: 100,
@@ -47,7 +67,7 @@ export default defineConfig({
           lines: 100,
           statements: 100,
         },
-        // Important — 80%: componentes UI y hooks
+        // Important — 80%
         "src/components/**": {
           branches: 80,
           functions: 80,
