@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextResponse } from "next/server";
 
 // GET /api/health — estado del panel y servicios críticos.
 // Traefik puede usar este endpoint para health checks del contenedor del panel.
 
 export async function GET() {
-  const checks: Record<string, 'ok' | 'error'> = {}
-  let healthy = true
+  const checks: Record<string, "ok" | "error"> = {};
+  const healthy = true;
 
   // --- Base de datos ----------------------------------------------------------
   // Descomentar cuando Prisma esté configurado:
@@ -28,15 +28,15 @@ export async function GET() {
   //   healthy = false
   // }
 
-  checks.app = 'ok'
+  checks.app = "ok";
 
   return NextResponse.json(
     {
-      status: healthy ? 'ok' : 'degraded',
+      status: healthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version ?? 'unknown',
+      version: process.env.npm_package_version ?? "unknown",
       checks,
     },
-    { status: healthy ? 200 : 503 }
-  )
+    { status: healthy ? 200 : 503 },
+  );
 }

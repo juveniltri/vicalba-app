@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
 import type { Proyecto } from "@/lib/mock-data";
@@ -83,5 +83,23 @@ describe("ProjectCard — acciones según estado", () => {
     ).not.toBeInTheDocument();
     const deployBtn = screen.getByRole("button", { name: /deploying/i });
     expect(deployBtn).toBeDisabled();
+  });
+
+  it("al hacer click en Stop, el proyecto pasa a estado deploying visual", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    const stopBtn = screen.getByRole("button", { name: /stop/i });
+    fireEvent.click(stopBtn);
+    // After click, loading=true → isDeploying=true → only Deploying... button shown
+    expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /stop/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("al hacer click en Deploy, el botón se deshabilita mientras carga", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    const deployBtn = screen.getByRole("button", { name: /deploy/i });
+    fireEvent.click(deployBtn);
+    expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
   });
 });
