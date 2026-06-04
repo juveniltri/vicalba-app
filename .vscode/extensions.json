@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+    "prisma.prisma",
+    "ms-playwright.playwright",
+    "vitest.explorer",
+    "streetsidesoftware.code-spell-checker",
+    "streetsidesoftware.code-spell-checker-spanish",
+    "usernamehw.errorlens",
+    "eamodio.gitlens",
+    "github.copilot",
+    "antfu.unocss",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}
