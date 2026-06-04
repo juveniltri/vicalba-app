@@ -10,8 +10,7 @@ export function ProjectCard({ proyecto }: { proyecto: Proyecto }) {
 
   function handleAction(accion: string) {
     setLoading(true);
-    // stub: se reemplazará con mutación tRPC
-    console.log(`[ProjectCard] ${accion} → ${proyecto.id}`);
+    // TODO: reemplazar con mutación tRPC
     setTimeout(() => setLoading(false), 1500);
   }
 

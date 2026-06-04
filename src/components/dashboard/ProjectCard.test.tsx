@@ -65,6 +65,9 @@ describe("ProjectCard — acciones según estado", () => {
     expect(screen.getByRole("button", { name: /^start$/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /restart/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /deploy/i })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: /stop/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("deploying: muestra solo el botón Deploy deshabilitado, sin otras acciones", () => {
