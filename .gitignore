@@ -1,0 +1,60 @@
+# ─── Dependencias ─────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build ────────────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.turbo/
+
+# ─── Tests & cobertura ────────────────────────────────────────────────────────
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# ─── Variables de entorno — NUNCA commitear secrets ──────────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# .env.example SÍ se commitea — es la plantilla documentada
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Editores ─────────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+# .vscode/ NO se ignora — settings y extensions se commitean
+
+# ─── TypeScript ───────────────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Base de datos local ──────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ─── Docker (específico de este proyecto) ────────────────────────────────────
+# Volúmenes locales de Docker — nunca commitear datos de contenedores
+docker-data/
+traefik/acme.json
+traefik/logs/
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+.cache/
+.parcel-cache/

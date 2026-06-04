@@ -1,0 +1,33 @@
+{
+  "name": "vicalba-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:reset": "prisma migrate reset --force",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "tsc-files --noEmit"
+    ],
+    "*.{ts,tsx,js,json,md}": "prettier --write"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "tsc-files": "^1.1.4"
+  }
+}
