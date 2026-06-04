@@ -1,8 +1,11 @@
-import { clientes } from "@/lib/mock-data";
-import { StatsBar } from "@/components/dashboard/StatsBar";
+// src/app/(panel)/page.tsx
 import { ClientSection } from "@/components/dashboard/ClientSection";
+import { StatsBar } from "@/components/dashboard/StatsBar";
+import { createServerCaller } from "@/server/caller";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const api = await createServerCaller();
+  const clientes = await api.proyectos.listar();
   const proyectosPlanos = clientes.flatMap((c) => c.proyectos);
 
   return (
