@@ -11,10 +11,12 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const form = e.currentTarget;
+    const data = new FormData(e.currentTarget);
+    const email = data.get("email") as string;
+    const password = data.get("password") as string;
     const result = await signIn("credentials", {
-      email: (form.elements.namedItem("email") as HTMLInputElement).value,
-      password: (form.elements.namedItem("password") as HTMLInputElement).value,
+      email,
+      password,
       redirect: false,
     });
     if (result?.error) {

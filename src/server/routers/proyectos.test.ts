@@ -136,6 +136,8 @@ describe("proyectos.listar", () => {
     const ctx = await createContext();
     const caller = createCaller(ctx);
 
-    await expect(caller.proyectos.listar()).rejects.toThrow();
+    await expect(caller.proyectos.listar()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
   });
 });

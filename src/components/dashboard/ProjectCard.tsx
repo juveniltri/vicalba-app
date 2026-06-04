@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Proyecto } from "@/lib/mock-data";
+import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 import { StatusBadge } from "./StatusBadge";
 
-export function ProjectCard({ proyecto }: { proyecto: Proyecto }) {
+export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
   const [loading, setLoading] = useState(false);
   const isDeploying = proyecto.estado === "deploying" || loading;
 
