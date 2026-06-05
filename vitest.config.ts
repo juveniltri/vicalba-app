@@ -61,6 +61,12 @@ export default defineConfig({
           lines: 100,
           statements: 100,
         },
+        "src/lib/github/**": {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
         "src/lib/schemas/**": {
           branches: 100,
           functions: 100,

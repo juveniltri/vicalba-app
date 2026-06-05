@@ -39,6 +39,10 @@ vi.mock("@/lib/traefik/config", () => ({
   eliminarConfigTraefik: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/docker/deploy", () => ({
+  deployProyecto: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -52,6 +56,7 @@ import {
   escribirConfigTraefik,
   eliminarConfigTraefik,
 } from "@/lib/traefik/config";
+import { deployProyecto } from "@/lib/docker/deploy";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -759,5 +764,156 @@ describe("proyectos — integración Traefik", () => {
     await createCaller(ctx).proyectos.eliminar({ id: "p1" });
 
     expect(eliminarConfigTraefik).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos.deploy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(deployProyecto).mockResolvedValue(undefined);
+  });
+
+  it("llama a deployProyecto y actualiza estado a running con ultimoDeploy", async () => {
+    const proyecto = {
+      ...mockProyecto,
+      repositorioUrl: "https://github.com/org/repo",
+      rama: "main",
+    };
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(proyecto as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...proyecto,
+      estado: "running",
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(deployProyecto).toHaveBeenCalledWith({
+      repoUrl: "https://github.com/org/repo",
+      rama: "main",
+      clienteSlug: "cliente-uno",
+      proyectoNombre: "web-app",
+    });
+    expect(prisma.proyecto.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "p1" },
+        data: expect.objectContaining({ estado: "running" }),
+      }),
+    );
+    expect(result.estado).toBe("running");
+  });
+
+  it("lanza CONFLICT si el proyecto está en estado deploying", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      estado: "deploying",
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("lanza CONFLICT si falta repositorioUrl", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: null,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("establece estado a error y relanza si deployProyecto falla", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: "https://github.com/org/repo",
+    } as never);
+    vi.mocked(deployProyecto).mockRejectedValue(new Error("build failed"));
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(mockProyecto as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).rejects.toThrow("build failed");
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: "error" }),
+      }),
+    );
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("proyectos.toggleAutoDeploy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("activa autoDeployHabilitado cuando estaba false", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      autoDeployHabilitado: false,
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      autoDeployHabilitado: true,
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.toggleAutoDeploy({
+      id: "p1",
+    });
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { autoDeployHabilitado: true },
+    });
+    expect(result.autoDeployHabilitado).toBe(true);
+  });
+
+  it("desactiva autoDeployHabilitado cuando estaba true", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      autoDeployHabilitado: true,
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      autoDeployHabilitado: false,
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.toggleAutoDeploy({
+      id: "p1",
+    });
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { autoDeployHabilitado: false },
+    });
+    expect(result.autoDeployHabilitado).toBe(false);
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.toggleAutoDeploy({ id: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

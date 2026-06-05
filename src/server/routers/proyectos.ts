@@ -1,6 +1,7 @@
 // src/server/routers/proyectos.ts
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { deployProyecto } from "@/lib/docker/deploy";
 import {
   DockerError,
   detenerProyecto,
@@ -191,6 +192,59 @@ export const proyectosRouter = router({
       await eliminarConfigTraefik(proyecto.nombre);
     }
   }),
+
+  deploy: protectedProcedure.input(idInput).mutation(async ({ input }) => {
+    const proyecto = await findProyectoOrThrow(input.id);
+    if (proyecto.estado === "deploying")
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "El proyecto ya está en proceso de deploy",
+      });
+    if (!proyecto.repositorioUrl)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "El proyecto no tiene repositorio configurado",
+      });
+
+    await prisma.proyecto.update({
+      where: { id: input.id },
+      data: { estado: "deploying" },
+    });
+
+    try {
+      await deployProyecto({
+        repoUrl: proyecto.repositorioUrl,
+        rama: proyecto.rama,
+        clienteSlug: proyecto.cliente.slug,
+        proyectoNombre: proyecto.nombre,
+      });
+    } catch (err) {
+      await prisma.proyecto.update({
+        where: { id: input.id },
+        data: { estado: "error" },
+      });
+      throw err;
+    }
+
+    return prisma.proyecto.update({
+      where: { id: input.id },
+      data: {
+        estado: "running",
+        ultimoDeployEn: new Date(),
+        ultimoDeployRama: proyecto.rama,
+      },
+    });
+  }),
+
+  toggleAutoDeploy: protectedProcedure
+    .input(idInput)
+    .mutation(async ({ input }) => {
+      const proyecto = await findProyectoOrThrow(input.id);
+      return prisma.proyecto.update({
+        where: { id: input.id },
+        data: { autoDeployHabilitado: !proyecto.autoDeployHabilitado },
+      });
+    }),
 
   listar: protectedProcedure.query(async () => {
     const clientes = await prisma.cliente.findMany({

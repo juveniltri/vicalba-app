@@ -21,6 +21,10 @@ vi.mock("@/lib/traefik/config", () => ({
   eliminarConfigTraefik: vi.fn(),
 }));
 
+vi.mock("@/lib/docker/deploy", () => ({
+  deployProyecto: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: {
