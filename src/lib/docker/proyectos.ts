@@ -47,3 +47,26 @@ export async function iniciarProyecto(
     }
   }
 }
+
+export async function restartProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+  servicios: string[],
+): Promise<void> {
+  for (const servicio of servicios) {
+    const name = `${clienteSlug}-${proyectoNombre}-${servicio}`;
+    const container = docker.getContainer(name);
+    try {
+      await container.stop();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 304)
+        handleDockerError(err);
+    }
+    try {
+      await container.start();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 304)
+        handleDockerError(err);
+    }
+  }
+}

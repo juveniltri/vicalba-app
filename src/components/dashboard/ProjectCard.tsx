@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { detenerAction, iniciarAction } from "@/app/(panel)/actions";
+import {
+  detenerAction,
+  iniciarAction,
+  restartAction,
+} from "@/app/(panel)/actions";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 import { StatusBadge } from "./StatusBadge";
 
@@ -36,10 +40,16 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
     setLoading(false);
   }
 
-  function handleAction(accion: string) {
+  async function handleRestart() {
     setLoading(true);
-    // TODO: implementar restart y deploy
-    setTimeout(() => setLoading(false), 1500);
+    setError(null);
+    const result = await restartAction(proyecto.id);
+    if (result?.error) {
+      setError(result.error);
+    } else {
+      router.refresh();
+    }
+    setLoading(false);
   }
 
   return (
@@ -79,12 +89,10 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
           )}
         {!isDeploying &&
           (proyecto.estado === "running" || proyecto.estado === "error") && (
-            <ActionButton onClick={() => handleAction("restart")}>
-              Restart
-            </ActionButton>
+            <ActionButton onClick={handleRestart}>Restart</ActionButton>
           )}
         <ActionButton
-          onClick={() => handleAction("deploy")}
+          onClick={() => setLoading(true)}
           disabled={isDeploying}
           primary
         >

@@ -10,9 +10,14 @@ vi.mock("@/app/(panel)/actions", () => ({
   logoutAction: vi.fn(),
   iniciarAction: vi.fn().mockResolvedValue(undefined),
   detenerAction: vi.fn().mockResolvedValue(undefined),
+  restartAction: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { iniciarAction, detenerAction } from "@/app/(panel)/actions";
+import {
+  iniciarAction,
+  detenerAction,
+  restartAction,
+} from "@/app/(panel)/actions";
 
 const base: ProyectoResumen = {
   id: "p1",
@@ -171,6 +176,21 @@ describe("ProjectCard — mutaciones tRPC", () => {
     fireEvent.click(screen.getByRole("button", { name: /stop/i }));
     await waitFor(() =>
       expect(screen.getByText(/Docker error/)).toBeInTheDocument(),
+    );
+  });
+
+  it("llama restartAction con el id del proyecto al hacer click en Restart", async () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /restart/i }));
+    await waitFor(() => expect(restartAction).toHaveBeenCalledWith("p1"));
+  });
+
+  it("muestra mensaje de error cuando restartAction falla", async () => {
+    vi.mocked(restartAction).mockResolvedValueOnce({ error: "Restart failed" });
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /restart/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Restart failed/)).toBeInTheDocument(),
     );
   });
 });

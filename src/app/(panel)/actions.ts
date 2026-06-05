@@ -24,3 +24,12 @@ export async function detenerAction(id: string) {
     return { error: err instanceof Error ? err.message : "Error al detener" };
   }
 }
+
+export async function restartAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.restart({ id });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Error al reiniciar" };
+  }
+}

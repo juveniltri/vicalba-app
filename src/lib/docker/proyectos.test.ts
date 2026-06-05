@@ -16,7 +16,12 @@ vi.mock("@/env", () => ({
   env: { DOCKER_SOCKET_PATH: "/var/run/docker.sock" },
 }));
 
-import { DockerError, detenerProyecto, iniciarProyecto } from "./proyectos";
+import {
+  DockerError,
+  detenerProyecto,
+  iniciarProyecto,
+  restartProyecto,
+} from "./proyectos";
 
 describe("detenerProyecto", () => {
   beforeEach(() => {
@@ -102,6 +107,73 @@ describe("iniciarProyecto", () => {
     mockStart.mockRejectedValueOnce(new Error("daemon error"));
 
     const err = await iniciarProyecto("cliente-uno", "web-app", [
+      "nginx",
+    ]).catch((e) => e);
+
+    expect(err).toBeInstanceOf(DockerError);
+    expect(err.code).toBe("UNKNOWN");
+  });
+});
+
+describe("restartProyecto", () => {
+  beforeEach(() => {
+    mockGetContainer.mockReturnValue({ stop: mockStop, start: mockStart });
+    mockStop.mockResolvedValue(undefined);
+    mockStart.mockResolvedValue(undefined);
+  });
+
+  it("stops then starts each container with the correct name", async () => {
+    await restartProyecto("cliente-uno", "web-app", ["nginx", "node"]);
+
+    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-nginx");
+    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-node");
+    expect(mockStop).toHaveBeenCalledTimes(2);
+    expect(mockStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores 304 on stop (already stopped) and still starts", async () => {
+    mockStop.mockRejectedValueOnce({ statusCode: 304 });
+
+    await expect(
+      restartProyecto("cliente-uno", "web-app", ["nginx"]),
+    ).resolves.toBeUndefined();
+    expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores 304 on start (already running after stop)", async () => {
+    mockStart.mockRejectedValueOnce({ statusCode: 304 });
+
+    await expect(
+      restartProyecto("cliente-uno", "web-app", ["nginx"]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws DockerError NOT_FOUND on 404 during stop", async () => {
+    mockStop.mockRejectedValueOnce({ statusCode: 404 });
+
+    const err = await restartProyecto("cliente-uno", "web-app", [
+      "nginx",
+    ]).catch((e) => e);
+
+    expect(err).toBeInstanceOf(DockerError);
+    expect(err.code).toBe("NOT_FOUND");
+  });
+
+  it("throws DockerError NOT_FOUND on 404 during start", async () => {
+    mockStart.mockRejectedValueOnce({ statusCode: 404 });
+
+    const err = await restartProyecto("cliente-uno", "web-app", [
+      "nginx",
+    ]).catch((e) => e);
+
+    expect(err).toBeInstanceOf(DockerError);
+    expect(err.code).toBe("NOT_FOUND");
+  });
+
+  it("throws DockerError UNKNOWN on unexpected error during stop", async () => {
+    mockStop.mockRejectedValueOnce(new Error("daemon error"));
+
+    const err = await restartProyecto("cliente-uno", "web-app", [
       "nginx",
     ]).catch((e) => e);
 
