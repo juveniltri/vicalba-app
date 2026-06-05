@@ -218,6 +218,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fase 3: Restart + Logs SSE (streamProyectoLogs, SSE route, useContainerLogs, LogsPanel)
   - Fase 4: CRUD (clientes router, proyectos.crear/editar/eliminar, formularios modales, dashboard interactivo)
   - Fase 5: Deploy (HMAC webhook GitHub, Traefik config dinámica, deployProyecto lib, auto-deploy toggle, security review aplicado)
+  - Fase 6: Redes Docker por cliente (cliente-[slug]-network, compose override, asegurar/eliminar en crear/eliminar proyecto), health check real (DB + Docker daemon, 503 si degraded)
 - **En construcción:** —
 - **Bloqueado / pendiente:** —
-- **Próximo hito:** Fase 5 — Deploy real (GitHub webhooks HMAC, Traefik config dinámica, auto-deploy toggle)
+- **Próximo hito:** —
