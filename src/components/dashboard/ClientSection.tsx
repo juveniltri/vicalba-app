@@ -1,7 +1,7 @@
-import type { Cliente } from "@/lib/mock-data";
+import type { ClienteConProyectos } from "@/lib/schemas/dashboard";
 import { ProjectCard } from "./ProjectCard";
 
-export function ClientSection({ cliente }: { cliente: Cliente }) {
+export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
   return (
     <section aria-label={cliente.nombre}>
       <div className="flex items-center gap-4 mb-4">

@@ -1,0 +1,55 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum EstadoServicio {
+  running
+  stopped
+  error
+  deploying
+}
+
+model Cliente {
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  nombre    String
+  proyectos Proyecto[]
+  creadoEn  DateTime   @default(now())
+}
+
+model Proyecto {
+  id               String         @id @default(cuid())
+  nombre           String
+  cliente          Cliente        @relation(fields: [clienteId], references: [id])
+  clienteId        String
+  estado           EstadoServicio @default(stopped)
+  dominio          String?
+  ultimoDeployEn   DateTime?
+  ultimoDeployRama String?
+  servicios        Servicio[]
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+}
+
+model Servicio {
+  id         String         @id @default(cuid())
+  nombre     String
+  estado     EstadoServicio @default(stopped)
+  proyecto   Proyecto       @relation(fields: [proyectoId], references: [id])
+  proyectoId String
+  creadoEn   DateTime       @default(now())
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  nombre       String
+  creadoEn     DateTime @default(now())
+}

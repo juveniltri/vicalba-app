@@ -102,4 +102,31 @@ describe("ProjectCard — acciones según estado", () => {
     fireEvent.click(deployBtn);
     expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
   });
+
+  it("al hacer click en Start, el proyecto pasa a estado deploying visual", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    const startBtn = screen.getByRole("button", { name: /^start$/i });
+    fireEvent.click(startBtn);
+    expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /^start$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("al hacer click en Restart, el proyecto pasa a estado deploying visual", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    const restartBtn = screen.getByRole("button", { name: /restart/i });
+    fireEvent.click(restartBtn);
+    expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /restart/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("al hacer click en Start en estado error, el proyecto pasa a deploying visual", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "error" }} />);
+    const startBtn = screen.getByRole("button", { name: /^start$/i });
+    fireEvent.click(startBtn);
+    expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
+  });
 });

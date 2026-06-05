@@ -1,4 +1,4 @@
-import type { EstadoServicio } from "@/lib/mock-data";
+import type { EstadoServicio } from "@/lib/schemas/dashboard";
 
 interface StatsBarProps {
   proyectos: Array<{ estado: EstadoServicio }>;
