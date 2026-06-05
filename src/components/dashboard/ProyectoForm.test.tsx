@@ -27,6 +27,9 @@ const mockProyecto: ProyectoResumen = {
   clienteSlug: "cliente-uno",
   estado: "stopped",
   dominio: "app.example.com",
+  repositorioUrl: "https://github.com/org/web-app",
+  rama: "develop",
+  autoDeployHabilitado: false,
   servicios: [{ nombre: "nginx", estado: "stopped" }],
   ultimoDeploy: null,
 };
@@ -72,14 +75,18 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         "proyecto",
         "app.example.com",
         ["nginx"],
+        undefined,
+        "main",
       );
     });
   });
 
-  it("renders nombre, dominio and one servicio field", () => {
+  it("renders nombre, dominio, repositorioUrl, rama and one servicio field", () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/dominio/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/repositorio/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Servicio 1")).toBeInTheDocument();
   });
 
@@ -99,6 +106,36 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         "mi-proyecto",
         undefined,
         ["nginx"],
+        undefined,
+        "main",
+      );
+    });
+  });
+
+  it("passes repositorioUrl and rama to action when filled", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "proyecto" },
+    });
+    fireEvent.change(screen.getByLabelText("Servicio 1"), {
+      target: { value: "nginx" },
+    });
+    fireEvent.change(screen.getByLabelText(/repositorio/i), {
+      target: { value: "https://github.com/org/repo" },
+    });
+    fireEvent.change(screen.getByLabelText(/rama/i), {
+      target: { value: "develop" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /crear/i }));
+
+    await waitFor(() => {
+      expect(crearProyectoAction).toHaveBeenCalledWith(
+        CLIENT_ID,
+        "proyecto",
+        undefined,
+        ["nginx"],
+        "https://github.com/org/repo",
+        "develop",
       );
     });
   });
@@ -169,6 +206,10 @@ describe("ProyectoFormModal — editar proyecto", () => {
     expect(screen.getByDisplayValue("web-app")).toBeInTheDocument();
     expect(screen.getByDisplayValue("app.example.com")).toBeInTheDocument();
     expect(screen.getByDisplayValue("nginx")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("https://github.com/org/web-app"),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("develop")).toBeInTheDocument();
   });
 
   it("calls editarProyectoAction with updated data on submit", async () => {
@@ -190,6 +231,8 @@ describe("ProyectoFormModal — editar proyecto", () => {
         "web-app-v2",
         "app.example.com",
         ["nginx"],
+        "https://github.com/org/web-app",
+        "develop",
       );
     });
   });

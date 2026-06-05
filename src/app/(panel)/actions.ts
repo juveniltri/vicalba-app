@@ -72,10 +72,19 @@ export async function crearProyectoAction(
   nombre: string,
   dominio: string | undefined,
   servicios: string[],
+  repositorioUrl?: string,
+  rama?: string,
 ) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.crear({ clienteId, nombre, dominio, servicios });
+    await api.proyectos.crear({
+      clienteId,
+      nombre,
+      dominio,
+      servicios,
+      repositorioUrl,
+      rama,
+    });
   } catch (err) {
     return {
       error: err instanceof Error ? err.message : "Error al crear proyecto",
@@ -88,13 +97,45 @@ export async function editarProyectoAction(
   nombre: string,
   dominio: string | undefined,
   servicios: string[],
+  repositorioUrl?: string,
+  rama?: string,
 ) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.editar({ id, nombre, dominio, servicios });
+    await api.proyectos.editar({
+      id,
+      nombre,
+      dominio,
+      servicios,
+      repositorioUrl,
+      rama,
+    });
   } catch (err) {
     return {
       error: err instanceof Error ? err.message : "Error al editar proyecto",
+    };
+  }
+}
+
+export async function deployProyectoAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.deploy({ id });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al hacer deploy",
+    };
+  }
+}
+
+export async function toggleAutoDeployAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.toggleAutoDeploy({ id });
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error ? err.message : "Error al cambiar auto-deploy",
     };
   }
 }

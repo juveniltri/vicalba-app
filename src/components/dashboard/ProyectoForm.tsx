@@ -23,6 +23,10 @@ export function ProyectoFormModal({
   const isEdit = !!proyecto;
   const [nombre, setNombre] = useState(proyecto?.nombre ?? "");
   const [dominio, setDominio] = useState(proyecto?.dominio ?? "");
+  const [repositorioUrl, setRepositorioUrl] = useState(
+    proyecto?.repositorioUrl ?? "",
+  );
+  const [rama, setRama] = useState(proyecto?.rama ?? "main");
   const [servicios, setServicios] = useState<string[]>(
     proyecto ? proyecto.servicios.map((s) => s.nombre) : [""],
   );
@@ -51,18 +55,23 @@ export function ProyectoFormModal({
     setLoading(true);
     setError(null);
     const dominioFinal = dominio.trim() || undefined;
+    const repoFinal = repositorioUrl.trim() || undefined;
     const result = isEdit
       ? await editarProyectoAction(
           proyecto!.id,
           nombre,
           dominioFinal,
           serviciosFiltrados,
+          repoFinal,
+          rama,
         )
       : await crearProyectoAction(
           clienteId!,
           nombre,
           dominioFinal,
           serviciosFiltrados,
+          repoFinal,
+          rama,
         );
     if (result?.error) {
       setError(result.error);
@@ -112,6 +121,37 @@ export function ProyectoFormModal({
               value={dominio}
               onChange={(e) => setDominio(e.target.value)}
               placeholder="ej: app.micliente.com"
+              className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="repositorioUrl"
+              className="font-body text-xs text-text-muted"
+            >
+              Repositorio GitHub (opcional)
+            </label>
+            <input
+              id="repositorioUrl"
+              type="url"
+              value={repositorioUrl}
+              onChange={(e) => setRepositorioUrl(e.target.value)}
+              placeholder="ej: https://github.com/org/repo"
+              className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="rama" className="font-body text-xs text-text-muted">
+              Rama
+            </label>
+            <input
+              id="rama"
+              type="text"
+              value={rama}
+              onChange={(e) => setRama(e.target.value)}
+              placeholder="main"
               className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
             />
           </div>

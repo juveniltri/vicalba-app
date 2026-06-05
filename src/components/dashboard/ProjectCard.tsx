@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  deployProyectoAction,
   detenerAction,
   eliminarProyectoAction,
   iniciarAction,
   restartAction,
+  toggleAutoDeployAction,
 } from "@/app/(panel)/actions";
 import { useContainerLogs } from "@/hooks/useContainerLogs";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
@@ -70,6 +72,24 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
     setLoading(false);
   }
 
+  async function handleDeploy() {
+    setLoading(true);
+    setError(null);
+    const result = await deployProyectoAction(proyecto.id);
+    if (result?.error) {
+      setError(result.error);
+    } else {
+      router.refresh();
+    }
+    setLoading(false);
+  }
+
+  async function handleToggleAutoDeploy() {
+    const result = await toggleAutoDeployAction(proyecto.id);
+    if (result?.error) setError(result.error);
+    else router.refresh();
+  }
+
   function handleToggleLogs() {
     if (logsOpen) {
       clear();
@@ -100,6 +120,17 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
         </p>
       )}
 
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          aria-label="Auto-deploy"
+          checked={proyecto.autoDeployHabilitado}
+          onChange={handleToggleAutoDeploy}
+          className="accent-primary-500"
+        />
+        <span className="font-body text-xs text-text-muted">Auto-deploy</span>
+      </label>
+
       {error && (
         <p role="alert" className="font-body text-xs text-state-error">
           {error}
@@ -118,11 +149,7 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
           (proyecto.estado === "running" || proyecto.estado === "error") && (
             <ActionButton onClick={handleRestart}>Restart</ActionButton>
           )}
-        <ActionButton
-          onClick={() => setLoading(true)}
-          disabled={isDeploying}
-          primary
-        >
+        <ActionButton onClick={handleDeploy} disabled={isDeploying} primary>
           {isDeploying ? "Deploying..." : "Deploy"}
         </ActionButton>
         <ActionButton onClick={handleToggleLogs}>

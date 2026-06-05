@@ -12,6 +12,8 @@ vi.mock("@/app/(panel)/actions", () => ({
   detenerAction: vi.fn().mockResolvedValue(undefined),
   restartAction: vi.fn().mockResolvedValue(undefined),
   eliminarProyectoAction: vi.fn().mockResolvedValue(undefined),
+  deployProyectoAction: vi.fn().mockResolvedValue(undefined),
+  toggleAutoDeployAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/hooks/useContainerLogs", () => ({
@@ -36,6 +38,8 @@ import {
   detenerAction,
   restartAction,
   eliminarProyectoAction,
+  deployProyectoAction,
+  toggleAutoDeployAction,
 } from "@/app/(panel)/actions";
 
 const base: ProyectoResumen = {
@@ -45,6 +49,9 @@ const base: ProyectoResumen = {
   estado: "running",
   servicios: [],
   dominio: "app.cliente-uno.com",
+  repositorioUrl: "https://github.com/org/web-app",
+  rama: "main",
+  autoDeployHabilitado: false,
   ultimoDeploy: { hace: "hace 2h", rama: "main" },
 };
 
@@ -264,5 +271,57 @@ describe("ProjectCard — editar y eliminar proyecto", () => {
     expect(
       screen.getByRole("button", { name: /eliminar/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ProjectCard — deploy y auto-deploy", () => {
+  it("llama deployProyectoAction con el id al hacer click en Deploy", async () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    await waitFor(() =>
+      expect(deployProyectoAction).toHaveBeenCalledWith("p1"),
+    );
+  });
+
+  it("muestra error cuando deployProyectoAction falla", async () => {
+    vi.mocked(deployProyectoAction).mockResolvedValueOnce({
+      error: "Sin repositorio configurado",
+    });
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Sin repositorio configurado/),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("muestra el toggle de auto-deploy", () => {
+    render(<ProjectCard proyecto={base} />);
+    expect(
+      screen.getByRole("checkbox", { name: /auto-deploy/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("toggle auto-deploy desactivado cuando autoDeployHabilitado es false", () => {
+    render(<ProjectCard proyecto={{ ...base, autoDeployHabilitado: false }} />);
+    expect(
+      screen.getByRole("checkbox", { name: /auto-deploy/i }),
+    ).not.toBeChecked();
+  });
+
+  it("toggle auto-deploy activado cuando autoDeployHabilitado es true", () => {
+    render(<ProjectCard proyecto={{ ...base, autoDeployHabilitado: true }} />);
+    expect(
+      screen.getByRole("checkbox", { name: /auto-deploy/i }),
+    ).toBeChecked();
+  });
+
+  it("llama toggleAutoDeployAction al hacer click en el toggle", async () => {
+    render(<ProjectCard proyecto={base} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: /auto-deploy/i }));
+    await waitFor(() =>
+      expect(toggleAutoDeployAction).toHaveBeenCalledWith("p1"),
+    );
   });
 });

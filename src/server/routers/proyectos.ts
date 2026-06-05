@@ -20,6 +20,8 @@ import { protectedProcedure, router } from "@/server/trpc";
 const proyectoInput = z.object({
   nombre: z.string().min(1),
   dominio: z.string().optional(),
+  repositorioUrl: z.string().url().optional(),
+  rama: z.string().optional(),
   servicios: z.array(z.string().min(1)).min(1),
 });
 
@@ -121,6 +123,8 @@ export const proyectosRouter = router({
           nombre: input.nombre,
           clienteId: input.clienteId,
           dominio: input.dominio,
+          repositorioUrl: input.repositorioUrl,
+          rama: input.rama ?? "main",
           servicios: { create: input.servicios.map((nombre) => ({ nombre })) },
         },
         include: { servicios: true, cliente: true },
@@ -157,6 +161,8 @@ export const proyectosRouter = router({
         data: {
           nombre: input.nombre,
           dominio: input.dominio,
+          repositorioUrl: input.repositorioUrl,
+          rama: input.rama,
           servicios: {
             create: toAdd.map((nombre) => ({ nombre })),
             deleteMany: { nombre: { in: toRemove } },
