@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
-import type { Proyecto } from "@/lib/mock-data";
+import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 
-const base: Proyecto = {
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+vi.mock("@/app/(panel)/actions", () => ({
+  logoutAction: vi.fn(),
+  iniciarAction: vi.fn().mockResolvedValue(undefined),
+  detenerAction: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { iniciarAction, detenerAction } from "@/app/(panel)/actions";
+
+const base: ProyectoResumen = {
   id: "p1",
   nombre: "web-app",
   clienteSlug: "cliente-uno",
@@ -128,5 +138,39 @@ describe("ProjectCard — acciones según estado", () => {
     const startBtn = screen.getByRole("button", { name: /^start$/i });
     fireEvent.click(startBtn);
     expect(screen.getByRole("button", { name: /deploying/i })).toBeDisabled();
+  });
+});
+
+describe("ProjectCard — mutaciones tRPC", () => {
+  it("llama iniciarAction con el id del proyecto al hacer click en Start", async () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^start$/i }));
+    await waitFor(() => expect(iniciarAction).toHaveBeenCalledWith("p1"));
+  });
+
+  it("llama detenerAction con el id del proyecto al hacer click en Stop", async () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /stop/i }));
+    await waitFor(() => expect(detenerAction).toHaveBeenCalledWith("p1"));
+  });
+
+  it("muestra mensaje de error cuando iniciarAction falla", async () => {
+    vi.mocked(iniciarAction).mockResolvedValueOnce({
+      error: "Container not found",
+    });
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^start$/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Container not found/)).toBeInTheDocument(),
+    );
+  });
+
+  it("muestra mensaje de error cuando detenerAction falla", async () => {
+    vi.mocked(detenerAction).mockResolvedValueOnce({ error: "Docker error" });
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /stop/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Docker error/)).toBeInTheDocument(),
+    );
   });
 });

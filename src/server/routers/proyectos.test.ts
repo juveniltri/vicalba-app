@@ -3,9 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    cliente: {
-      findMany: vi.fn(),
-    },
+    cliente: { findMany: vi.fn() },
+    proyecto: { findUnique: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -13,8 +12,27 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
 }));
 
+vi.mock("@/lib/docker/proyectos", () => ({
+  iniciarProyecto: vi.fn(),
+  detenerProyecto: vi.fn(),
+  DockerError: class DockerError extends Error {
+    constructor(
+      public code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "DockerError";
+    }
+  },
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import {
+  iniciarProyecto,
+  detenerProyecto,
+  DockerError,
+} from "@/lib/docker/proyectos";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -139,5 +157,194 @@ describe("proyectos.listar", () => {
     await expect(caller.proyectos.listar()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+  });
+});
+
+const mockProyecto = {
+  id: "p1",
+  nombre: "web-app",
+  clienteId: "c1",
+  estado: "stopped" as const,
+  dominio: "app.cliente-uno.com",
+  ultimoDeployEn: null,
+  ultimoDeployRama: null,
+  creadoEn: new Date(),
+  actualizadoEn: new Date(),
+  cliente: {
+    id: "c1",
+    slug: "cliente-uno",
+    nombre: "Cliente Uno",
+    creadoEn: new Date(),
+  },
+  servicios: [
+    {
+      id: "s1",
+      nombre: "nginx",
+      estado: "stopped" as const,
+      proyectoId: "p1",
+      creadoEn: new Date(),
+    },
+    {
+      id: "s2",
+      nombre: "node",
+      estado: "stopped" as const,
+      proyectoId: "p1",
+      creadoEn: new Date(),
+    },
+  ],
+};
+
+describe("proyectos.iniciar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("calls iniciarProyecto and updates estado to running", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "running",
+    } as never);
+    vi.mocked(iniciarProyecto).mockResolvedValue(undefined);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.iniciar({ id: "p1" });
+
+    expect(iniciarProyecto).toHaveBeenCalledWith("cliente-uno", "web-app", [
+      "nginx",
+      "node",
+    ]);
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { estado: "running" },
+    });
+    expect(result.estado).toBe("running");
+  });
+
+  it("throws NOT_FOUND when project does not exist", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.iniciar({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("throws INTERNAL_SERVER_ERROR when Docker returns DockerError", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(iniciarProyecto).mockRejectedValue(
+      new DockerError("NOT_FOUND", "Container not found"),
+    );
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.iniciar({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+  });
+
+  it("rethrows non-DockerError from iniciarProyecto", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    const unexpected = new Error("Unexpected failure");
+    vi.mocked(iniciarProyecto).mockRejectedValue(unexpected);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.iniciar({ id: "p1" }),
+    ).rejects.toThrow("Unexpected failure");
+  });
+
+  it("throws UNAUTHORIZED when not authenticated", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.iniciar({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("proyectos.detener", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("calls detenerProyecto and updates estado to stopped", async () => {
+    const runningProyecto = { ...mockProyecto, estado: "running" as const };
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      runningProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...runningProyecto,
+      estado: "stopped",
+    } as never);
+    vi.mocked(detenerProyecto).mockResolvedValue(undefined);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.detener({ id: "p1" });
+
+    expect(detenerProyecto).toHaveBeenCalledWith("cliente-uno", "web-app", [
+      "nginx",
+      "node",
+    ]);
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { estado: "stopped" },
+    });
+    expect(result.estado).toBe("stopped");
+  });
+
+  it("throws NOT_FOUND when project does not exist", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.detener({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("throws INTERNAL_SERVER_ERROR when Docker returns DockerError", async () => {
+    const runningProyecto = { ...mockProyecto, estado: "running" as const };
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      runningProyecto as never,
+    );
+    vi.mocked(detenerProyecto).mockRejectedValue(
+      new DockerError("NOT_FOUND", "Container not found"),
+    );
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.detener({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+  });
+
+  it("rethrows non-DockerError from detenerProyecto", async () => {
+    const runningProyecto = { ...mockProyecto, estado: "running" as const };
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      runningProyecto as never,
+    );
+    const unexpected = new Error("Unexpected failure");
+    vi.mocked(detenerProyecto).mockRejectedValue(unexpected);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.detener({ id: "p1" }),
+    ).rejects.toThrow("Unexpected failure");
+  });
+
+  it("throws UNAUTHORIZED when not authenticated", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.detener({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

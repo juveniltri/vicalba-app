@@ -6,6 +6,10 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+vi.mock("@/app/(panel)/actions", () => ({
+  logoutAction: vi.fn(),
+}));
+
 vi.mock("next/link", () => ({
   default: ({
     href,

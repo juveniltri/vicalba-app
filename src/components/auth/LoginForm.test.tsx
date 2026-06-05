@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { signIn } from "next-auth/react";
 
-vi.mock("next-auth/react", () => ({
-  signIn: vi.fn().mockResolvedValue({ error: null }),
+vi.mock("@/app/(auth)/login/actions", () => ({
+  loginAction: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { loginAction } from "@/app/(auth)/login/actions";
 import { LoginForm } from "./LoginForm";
 
 describe("LoginForm — renderizado", () => {
@@ -31,16 +31,12 @@ describe("LoginForm — renderizado", () => {
   });
 });
 
-describe("LoginForm — handleSubmit éxito", () => {
+describe("LoginForm — submit", () => {
   beforeEach(() => {
-    vi.mocked(signIn).mockResolvedValue({ error: null });
-    Object.defineProperty(window, "location", {
-      value: { href: "" },
-      writable: true,
-    });
+    vi.mocked(loginAction).mockResolvedValue(undefined);
   });
 
-  it("llama a signIn con los valores del formulario", async () => {
+  it("llama a loginAction con los valores del formulario", async () => {
     render(<LoginForm />);
 
     fireEvent.change(screen.getByLabelText("Email"), {
@@ -55,33 +51,19 @@ describe("LoginForm — handleSubmit éxito", () => {
     );
 
     await waitFor(() => {
-      expect(signIn).toHaveBeenCalledWith("credentials", {
-        email: "admin@vicalba.com",
-        password: "secret123",
-        redirect: false,
-      });
-    });
-  });
-
-  it("redirige a / cuando signIn devuelve sin error", async () => {
-    render(<LoginForm />);
-
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Entrar" }).closest("form")!,
-    );
-
-    await waitFor(() => {
-      expect(window.location.href).toBe("/");
+      expect(loginAction).toHaveBeenCalledWith(
+        "admin@vicalba.com",
+        "secret123",
+      );
     });
   });
 
   it("muestra el botón deshabilitado mientras carga", async () => {
-    // signIn tarda — capturamos el estado intermedio
-    let resolveSignIn!: (v: { error: string | null }) => void;
-    vi.mocked(signIn).mockReturnValue(
-      new Promise((resolve) => {
-        resolveSignIn = resolve;
-      }) as ReturnType<typeof signIn>,
+    let resolve!: () => void;
+    vi.mocked(loginAction).mockReturnValue(
+      new Promise((r) => {
+        resolve = () => r(undefined);
+      }) as ReturnType<typeof loginAction>,
     );
 
     render(<LoginForm />);
@@ -94,20 +76,18 @@ describe("LoginForm — handleSubmit éxito", () => {
       expect(screen.getByRole("button", { name: "Entrando…" })).toBeDisabled();
     });
 
-    // Resolvemos para limpiar timers
-    resolveSignIn({ error: null });
-    await waitFor(() => {
-      expect(window.location.href).toBe("/");
-    });
+    resolve();
   });
 });
 
-describe("LoginForm — handleSubmit error de credenciales", () => {
+describe("LoginForm — error de credenciales", () => {
   beforeEach(() => {
-    vi.mocked(signIn).mockResolvedValue({ error: "CredentialsSignin" });
+    vi.mocked(loginAction).mockResolvedValue({
+      error: "Credenciales incorrectas",
+    });
   });
 
-  it('muestra "Credenciales incorrectas" cuando signIn devuelve error', async () => {
+  it("muestra mensaje de error cuando loginAction devuelve error", async () => {
     render(<LoginForm />);
 
     fireEvent.submit(
@@ -133,20 +113,8 @@ describe("LoginForm — handleSubmit error de credenciales", () => {
     });
   });
 
-  it("no redirige cuando hay error de credenciales", async () => {
-    Object.defineProperty(window, "location", {
-      value: { href: "" },
-      writable: true,
-    });
+  it("no muestra error antes de hacer submit", () => {
     render(<LoginForm />);
-
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Entrar" }).closest("form")!,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
-    });
-    expect(window.location.href).not.toBe("/");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

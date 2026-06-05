@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
-import { ClientSection } from "@/components/dashboard/ClientSection";
-import type { Cliente } from "@/lib/mock-data";
+import { describe, it, expect, vi } from "vitest";
 
-const cliente: Cliente = {
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+vi.mock("@/app/(panel)/actions", () => ({
+  logoutAction: vi.fn(),
+  iniciarAction: vi.fn().mockResolvedValue(undefined),
+  detenerAction: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { ClientSection } from "@/components/dashboard/ClientSection";
+import type { ClienteConProyectos } from "@/lib/schemas/dashboard";
+
+const cliente: ClienteConProyectos = {
   slug: "cliente-test",
   nombre: "Cliente Test",
   proyectos: [

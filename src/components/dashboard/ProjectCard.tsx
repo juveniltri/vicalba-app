@@ -1,16 +1,44 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { detenerAction, iniciarAction } from "@/app/(panel)/actions";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 import { StatusBadge } from "./StatusBadge";
 
 export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isDeploying = proyecto.estado === "deploying" || loading;
+
+  async function handleIniciar() {
+    setLoading(true);
+    setError(null);
+    const result = await iniciarAction(proyecto.id);
+    if (result?.error) {
+      setError(result.error);
+    } else {
+      router.refresh();
+    }
+    setLoading(false);
+  }
+
+  async function handleDetener() {
+    setLoading(true);
+    setError(null);
+    const result = await detenerAction(proyecto.id);
+    if (result?.error) {
+      setError(result.error);
+    } else {
+      router.refresh();
+    }
+    setLoading(false);
+  }
 
   function handleAction(accion: string) {
     setLoading(true);
-    // TODO: reemplazar con mutación tRPC
+    // TODO: implementar restart y deploy
     setTimeout(() => setLoading(false), 1500);
   }
 
@@ -35,15 +63,19 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
         </p>
       )}
 
+      {error && (
+        <p role="alert" className="font-body text-xs text-state-error">
+          {error}
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2 pt-1">
         {!isDeploying && proyecto.estado === "running" && (
-          <ActionButton onClick={() => handleAction("stop")}>Stop</ActionButton>
+          <ActionButton onClick={handleDetener}>Stop</ActionButton>
         )}
         {!isDeploying &&
           (proyecto.estado === "stopped" || proyecto.estado === "error") && (
-            <ActionButton onClick={() => handleAction("start")}>
-              Start
-            </ActionButton>
+            <ActionButton onClick={handleIniciar}>Start</ActionButton>
           )}
         {!isDeploying &&
           (proyecto.estado === "running" || proyecto.estado === "error") && (
