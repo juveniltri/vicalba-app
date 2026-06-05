@@ -1,0 +1,35 @@
+api:
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  # Panel y servicios del propio stack (descubiertos por labels en docker-compose)
+  docker:
+    exposedByDefault: false
+    network: vicalba-net
+  # Proyectos de clientes — generados dinámicamente por el panel
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${ACME_EMAIL}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+log:
+  level: INFO

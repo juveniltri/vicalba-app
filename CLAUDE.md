@@ -166,6 +166,57 @@ npm run db:reset         # reset + migrate + seed
 
 ---
 
+## Despliegue en producción (VPS)
+
+### Requisitos previos en la VPS
+
+```bash
+# Crear directorios persistentes
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+touch /var/vicalba/traefik/acme.json
+chmod 600 /var/vicalba/traefik/acme.json
+
+# Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
+```
+
+### Primera vez
+
+```bash
+git clone <repo> vicalba-app && cd vicalba-app
+cp .env.production.example .env
+# Editar .env con los valores reales
+docker compose up -d --build
+```
+
+### Actualizaciones
+
+```bash
+git pull
+docker compose up -d --build panel
+```
+
+### Desarrollo local
+
+```bash
+docker compose -f docker-compose.dev.yml up -d   # solo PostgreSQL
+cp .env.production.example .env.local             # ajustar DATABASE_URL y vars mínimas
+npm run db:migrate && npm run db:seed
+npm run dev
+```
+
+### Nota — redes de clientes y Traefik
+
+Cuando el panel crea la red `cliente-[slug]-network` para un proyecto, Traefik debe
+conectarse a ella para poder enrutar tráfico a los contenedores del cliente. Esto
+requiere conectar el contenedor `traefik` manualmente o via script hasta que se
+automatice:
+
+```bash
+docker network connect cliente-<slug>-network traefik
+```
+
+---
+
 ## Skills disponibles
 
 | Skill                            | Cuándo invocarla                                          |

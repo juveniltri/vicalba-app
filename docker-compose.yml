@@ -1,0 +1,95 @@
+networks:
+  vicalba-net:
+    name: vicalba-net
+    driver: bridge
+
+volumes:
+  db-data:
+  letsencrypt:
+
+services:
+
+  # ── Traefik — proxy inverso + SSL automático ─────────────────────────────────
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      - vicalba-net
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      - letsencrypt:/letsencrypt
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: vicalba-db
+    restart: unless-stopped
+    networks:
+      - vicalba-net
+    environment:
+      POSTGRES_DB: vicalba
+      POSTGRES_USER: vicalba
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vicalba"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Migraciones — se ejecuta una vez y termina ───────────────────────────────
+  migrate:
+    build: .
+    container_name: vicalba-migrate
+    command: ["npx", "prisma", "migrate", "deploy"]
+    networks:
+      - vicalba-net
+    environment:
+      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Panel vicalba-app ────────────────────────────────────────────────────────
+  panel:
+    build: .
+    container_name: vicalba-panel
+    restart: unless-stopped
+    networks:
+      - vicalba-net
+    environment:
+      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: https://${PANEL_DOMAIN}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      PANEL_DOMAIN: ${PANEL_DOMAIN}
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
+      REPOS_DIR: /var/vicalba/repos
+      NODE_ENV: production
+    volumes:
+      # Acceso al daemon Docker del host para gestionar contenedores de clientes
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Config dinámica de Traefik — compartida con el contenedor traefik
+      - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      # Repositorios clonados para los deploys
+      - /var/vicalba/repos:/var/vicalba/repos
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.panel.rule=Host(`${PANEL_DOMAIN}`)"
+      - "traefik.http.routers.panel.entrypoints=websecure"
+      - "traefik.http.routers.panel.tls.certresolver=letsencrypt"
+      - "traefik.http.services.panel.loadbalancer.server.port=3000"
