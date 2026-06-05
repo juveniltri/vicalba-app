@@ -13,10 +13,35 @@ Implementado en Fase 4:
 - `ProjectCard` → botones Editar/Eliminar con confirmación inline
 - Dashboard → botón "Nuevo cliente" en cabecera
 
-## TODO: Deploy
+## Fase 5 — Deploy (próximo)
 
-Deploy real requiere webhooks GitHub + Traefik config dinámica. Scope grande — planificar en sesión separada.
+### Schema DB — campos nuevos en `Proyecto`
 
-## TODO: Gestión de Traefik
+- `repositorioUrl: String?` — URL del repo GitHub (e.g. `https://github.com/org/repo`)
+- `rama: String?` (default `main`) — rama que dispara el deploy
+- `autoDeployHabilitado: Boolean` (default `false`) — toggle auto-deploy
 
-Cuando se crea un proyecto con dominio, hay que generar la config dinámica de Traefik en `src/lib/traefik/`. Pendiente para cuando se implemente Deploy.
+### Traefik config dinámica (`src/lib/traefik/`)
+
+- Función pura `generarConfigProyecto({ dominio, proyectoSlug, clienteSlug })` → objeto YAML
+- Función `escribirConfigTraefik(proyectoSlug, config)` → escribe fichero en directorio Traefik
+- Función `eliminarConfigTraefik(proyectoSlug)` → borra fichero al eliminar proyecto
+- Llamadas integradas en `proyectos.crear`, `proyectos.editar`, `proyectos.eliminar`
+
+### Deploy lib (`src/lib/docker/deploy.ts`)
+
+- `deployProyecto(proyectoId)` → pull imagen + recrear contenedores via dockerode
+- Estado `deploying` durante el proceso, `running` al completar, `error` si falla
+
+### Webhook GitHub (`src/app/api/webhooks/github/route.ts`)
+
+- Validar HMAC-SHA256 de `X-Hub-Signature-256` contra `GITHUB_WEBHOOK_SECRET`
+- Parsear evento `push` y extraer `repository.clone_url` + `ref` (rama)
+- Buscar proyecto con `repositorioUrl` + `rama` coincidentes
+- Trigger `deployProyecto` si `autoDeployHabilitado === true`
+
+### UI
+
+- Campos `repositorioUrl` y `rama` en `ProyectoFormModal`
+- Toggle auto-deploy en `ProjectCard`
+- Botón "Deploy manual" en `ProjectCard` (llama a deploy action)

@@ -2,11 +2,11 @@
 
 ## Regla 100/80/0
 
-| Tier | Qué contiene | Cobertura mínima | Gate en CI |
-|---|---|---|---|
-| **Core** | Lógica Docker, lógica Traefik, schemas Zod | **100%** | Sí — bloquea merge |
-| **Important** | Componentes UI, hooks | **80%** | Sí — bloquea merge |
-| **Infrastructure** | tRPC routers, Next.js App, Prisma, env.ts | **0%** | No aplica |
+| Tier               | Qué contiene                                         | Cobertura mínima | Gate en CI         |
+| ------------------ | ---------------------------------------------------- | ---------------- | ------------------ |
+| **Core**           | tRPC routers, schemas Zod, lógica de dominio         | **100%**         | Sí — bloquea merge |
+| **Important**      | Componentes UI, hooks, utils                         | **80%**          | Sí — bloquea merge |
+| **Infrastructure** | Docker lib, Traefik lib, Next.js App, Prisma, env.ts | **0%**           | No aplica          |
 
 ---
 
@@ -15,9 +15,9 @@
 ### Core — 100%
 
 ```
-src/lib/docker/     ← lógica de comunicación con dockerode (operaciones de contenedor, redes)
-src/lib/traefik/    ← generación de config dinámica de Traefik (transformaciones puras)
+src/server/routers/ ← tRPC routers (lógica de negocio, validaciones, guards)
 src/lib/schemas/    ← schemas Zod compartidos (validaciones del dominio)
+src/domain/         ← lógica de dominio pura (si existe)
 ```
 
 ### Important — 80%
@@ -25,14 +25,16 @@ src/lib/schemas/    ← schemas Zod compartidos (validaciones del dominio)
 ```
 src/components/     ← componentes React reutilizables
 src/hooks/          ← hooks personalizados
+src/utils/          ← utilidades puras
 ```
 
 ### Infrastructure — 0% (excluido)
 
 ```
+src/lib/docker/     ← integración dockerode — se mockea en tests de routers
+src/lib/traefik/    ← generación config Traefik — se mockea en tests de routers
 src/app/            ← Next.js App Router (pages, layouts, API routes)
-src/server/         ← tRPC routers y queries Prisma
-src/db/             ← migraciones y seed
+src/server/db/      ← queries Prisma
 src/env.ts          ← validación de variables de entorno al arranque
 ```
 
@@ -63,41 +65,20 @@ npm run test:unit -- --ui            # interfaz visual de Vitest
 
 ---
 
-## Qué testear en `src/lib/docker/`
+## Qué testear en `src/server/routers/`
 
-La lógica Docker es el core más crítico del proyecto — un bug aquí tumba contenedores de producción.
+Los routers son el core de la lógica de negocio — guards, validaciones, flujos de error.
 
 ```typescript
-// Ejemplo: test del servicio de deploy
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import Dockerode from 'dockerode'
-import { deployProject } from './deploy'
-
-vi.mock('dockerode')
-
-describe('deployProject', () => {
-  it('crea la red del proyecto si no existe', async () => { ... })
-  it('lanza los contenedores del compose', async () => { ... })
-  it('devuelve error si el repo no es accesible', async () => { ... })
+// Ejemplo: test de guard en proyectos.eliminar
+describe('proyectos.eliminar', () => {
+  it('elimina el proyecto si está stopped', async () => { ... })
+  it('lanza CONFLICT si el proyecto está running', async () => { ... })
+  it('lanza NOT_FOUND si el proyecto no existe', async () => { ... })
 })
 ```
 
-## Qué testear en `src/lib/traefik/`
-
-La generación de config Traefik son transformaciones puras — sin efectos secundarios, fáciles de testear:
-
-```typescript
-// Ejemplo: test de generación de router
-import { generateRouter } from './config'
-
-describe('generateRouter', () => {
-  it('genera el router con el dominio correcto', () => {
-    const config = generateRouter({ domain: 'cliente.example.com', serviceId: 'web' })
-    expect(config.rule).toBe('Host(`cliente.example.com`)')
-  })
-  it('activa TLS en producción', () => { ... })
-})
-```
+Los routers mockean `@/lib/docker/proyectos` y `@/lib/prisma` — nunca tocan Docker real ni DB real.
 
 ---
 
