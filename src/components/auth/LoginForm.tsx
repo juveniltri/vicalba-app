@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { loginAction } from "@/app/(auth)/login/actions";
 
 export function LoginForm() {
   const [loading, setLoading] = useState(false);
@@ -14,16 +14,10 @@ export function LoginForm() {
     const data = new FormData(e.currentTarget);
     const email = data.get("email") as string;
     const password = data.get("password") as string;
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    const result = await loginAction(email, password);
     if (result?.error) {
-      setError("Credenciales incorrectas");
+      setError(result.error);
       setLoading(false);
-    } else {
-      window.location.href = "/";
     }
   }
 

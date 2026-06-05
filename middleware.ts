@@ -1,6 +1,8 @@
-export { auth as middleware } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
+
+export const { auth: middleware } = NextAuth(authConfig);
 
 export const config = {
-  // Protege todas las rutas excepto: login, api/*, _next/*, favicon.ico
   matcher: ["/((?!login|api|_next/static|_next/image|favicon\\.ico).*)"],
 };

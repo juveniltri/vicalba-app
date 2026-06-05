@@ -1,3 +1,4 @@
+import { logoutAction } from "@/app/(panel)/actions";
 import { SidebarLink } from "./SidebarLink";
 
 export function Sidebar() {
@@ -16,6 +17,16 @@ export function Sidebar() {
         <SidebarLink href="/proyectos">Proyectos</SidebarLink>
         <SidebarLink href="/configuracion">Configuración</SidebarLink>
       </nav>
+      <div className="p-2 border-t border-border">
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="w-full px-3 py-2 text-left font-body text-sm text-text-muted hover:text-text-primary hover:bg-background rounded-[var(--radius-sm)] transition-colors"
+          >
+            Cerrar sesión
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }
