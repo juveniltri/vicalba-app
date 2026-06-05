@@ -522,6 +522,28 @@ describe("proyectos.crear", () => {
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
+
+  it("throws BAD_REQUEST when nombre contains path traversal characters", async () => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.crear({
+        clienteId: "c1",
+        nombre: "../../etc",
+        servicios: ["nginx"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("throws BAD_REQUEST when nombre contains uppercase letters", async () => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.crear({
+        clienteId: "c1",
+        nombre: "MyProject",
+        servicios: ["nginx"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
 
 describe("proyectos.editar", () => {
@@ -581,6 +603,17 @@ describe("proyectos.editar", () => {
         servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("throws BAD_REQUEST when nombre contains path traversal characters", async () => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.editar({
+        id: "p1",
+        nombre: "../../etc",
+        servicios: ["nginx"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
 

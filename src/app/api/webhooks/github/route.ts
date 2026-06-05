@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verificarFirmaGitHub } from "@/lib/github/webhook";
+import { deployProyecto } from "@/lib/docker/deploy";
 import { prisma } from "@/lib/prisma";
-import { createServerCaller } from "@/server/caller";
 import { env } from "@/env";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -33,14 +33,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const proyecto = await prisma.proyecto.findFirst({
     where: { repositorioUrl: repoUrl, rama, autoDeployHabilitado: true },
+    include: { cliente: true },
   });
 
   if (!proyecto) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const api = await createServerCaller();
-  await api.proyectos.deploy({ id: proyecto.id });
+  await prisma.proyecto.update({
+    where: { id: proyecto.id },
+    data: { estado: "deploying" },
+  });
+
+  try {
+    await deployProyecto({
+      repoUrl: proyecto.repositorioUrl!,
+      rama: proyecto.rama,
+      clienteSlug: proyecto.cliente.slug,
+      proyectoNombre: proyecto.nombre,
+    });
+    await prisma.proyecto.update({
+      where: { id: proyecto.id },
+      data: {
+        estado: "running",
+        ultimoDeployEn: new Date(),
+        ultimoDeployRama: proyecto.rama,
+      },
+    });
+  } catch {
+    await prisma.proyecto.update({
+      where: { id: proyecto.id },
+      data: { estado: "error" },
+    });
+  }
 
   return NextResponse.json({ ok: true, deployed: proyecto.id });
 }

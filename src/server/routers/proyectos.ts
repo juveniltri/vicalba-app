@@ -18,7 +18,13 @@ import {
 import { protectedProcedure, router } from "@/server/trpc";
 
 const proyectoInput = z.object({
-  nombre: z.string().min(1),
+  nombre: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/, {
+      message:
+        "El nombre solo puede contener letras minúsculas, números y guiones",
+    }),
   dominio: z.string().optional(),
   repositorioUrl: z.string().url().optional(),
   rama: z.string().optional(),
