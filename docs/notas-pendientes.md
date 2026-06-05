@@ -1,22 +1,22 @@
 # Notas pendientes
 
-## Fase 3 — gestión Docker avanzada
+## Fase 4 — CRUD de proyectos (completado)
 
-### TODO: implementar restart en docker lib y router
+Implementado en Fase 4:
 
-`ProjectCard` tiene `handleAction("restart")` como stub (`setTimeout`). Pendiente:
+- Router `clientes`: crear, editar, eliminar (con guard: no eliminar si tiene proyectos)
+- Router `proyectos`: crear, editar (reconcilia servicios), eliminar (no si running)
+- 6 Server Actions CRUD en `actions.ts`
+- `ClienteFormModal` + `NuevoClienteButton` en `ClienteForm.tsx`
+- `ProyectoFormModal` en `ProyectoForm.tsx`
+- `ClientSection` → client component con botones Editar/Eliminar/Nuevo proyecto
+- `ProjectCard` → botones Editar/Eliminar con confirmación inline
+- Dashboard → botón "Nuevo cliente" en cabecera
 
-1. `restartProyecto` en `src/lib/docker/proyectos.ts` — stop + start por servicio
-2. Procedimiento `restart` en `src/server/routers/proyectos.ts`
-3. Server Action `restartAction` en `src/app/(panel)/actions.ts`
-4. Conectar botón Restart en `ProjectCard`
-
-### TODO: logs en tiempo real (SSE)
-
-- Route handler `src/app/api/projects/[id]/logs/route.ts` — stream SSE desde dockerode
-- Hook `useContainerLogs(id)` en componente de detalle
-- Nunca almacenar logs en BD (ver CLAUDE.md Observabilidad)
-
-### TODO: Deploy
+## TODO: Deploy
 
 Deploy real requiere webhooks GitHub + Traefik config dinámica. Scope grande — planificar en sesión separada.
+
+## TODO: Gestión de Traefik
+
+Cuando se crea un proyecto con dominio, hay que generar la config dinámica de Traefik en `src/lib/traefik/`. Pendiente para cuando se implemente Deploy.

@@ -11,6 +11,7 @@ vi.mock("@/app/(panel)/actions", () => ({
   iniciarAction: vi.fn().mockResolvedValue(undefined),
   detenerAction: vi.fn().mockResolvedValue(undefined),
   restartAction: vi.fn().mockResolvedValue(undefined),
+  eliminarProyectoAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/hooks/useContainerLogs", () => ({
@@ -22,10 +23,19 @@ vi.mock("@/hooks/useContainerLogs", () => ({
   }),
 }));
 
+vi.mock("./ProyectoForm", () => ({
+  ProyectoFormModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="proyecto-form-modal">
+      <button onClick={onClose}>Cerrar</button>
+    </div>
+  ),
+}));
+
 import {
   iniciarAction,
   detenerAction,
   restartAction,
+  eliminarProyectoAction,
 } from "@/app/(panel)/actions";
 
 const base: ProyectoResumen = {
@@ -201,5 +211,58 @@ describe("ProjectCard — mutaciones tRPC", () => {
     await waitFor(() =>
       expect(screen.getByText(/Restart failed/)).toBeInTheDocument(),
     );
+  });
+});
+
+describe("ProjectCard — editar y eliminar proyecto", () => {
+  it("stopped: muestra botones Editar y Eliminar", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /eliminar/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("running: no muestra botones Editar ni Eliminar", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    expect(
+      screen.queryByRole("button", { name: /editar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /eliminar/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("click en Editar abre el modal de edición", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    expect(screen.getByTestId("proyecto-form-modal")).toBeInTheDocument();
+  });
+
+  it("click en Eliminar muestra confirmación inline", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar/i }));
+    expect(screen.getByText(/¿Eliminar\?/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^sí$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^no$/i })).toBeInTheDocument();
+  });
+
+  it("confirmar eliminar llama eliminarProyectoAction con el id del proyecto", async () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^sí$/i }));
+    await waitFor(() => {
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1");
+    });
+  });
+
+  it("click en No cancela la confirmación de eliminar", () => {
+    render(<ProjectCard proyecto={{ ...base, estado: "stopped" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^no$/i }));
+    expect(screen.queryByText(/¿Eliminar\?/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /eliminar/i }),
+    ).toBeInTheDocument();
   });
 });

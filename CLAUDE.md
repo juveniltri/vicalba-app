@@ -211,10 +211,12 @@ Ver `CONTEXT.md` para el glosario completo.
 
 <!-- Actualiza esta sección al inicio de cada sesión relevante -->
 
-- **Fase activa:** Fase 3 — gestión Docker avanzada
+- **Fase activa:** Fase 5 — Deploy (webhooks GitHub + Traefik config)
 - **Completado:**
   - Fase 1: Auth (NextAuth v5 JWT, login/logout, middleware, rutas protegidas)
   - Fase 2: Start/Stop (dockerode lib, tRPC iniciar/detener, Server Actions, ProjectCard UI)
-- **En construcción:** Logs en tiempo real (SSE) + Restart Docker
+  - Fase 3: Restart + Logs SSE (streamProyectoLogs, SSE route, useContainerLogs, LogsPanel)
+  - Fase 4: CRUD (clientes router, proyectos.crear/editar/eliminar, formularios modales, dashboard interactivo)
+- **En construcción:** —
 - **Bloqueado / pendiente:** —
-- **Próximo hito:** `GET /api/projects/[id]/logs` SSE · `restartProyecto` en docker lib · acción Restart en ProjectCard
+- **Próximo hito:** Fase 5 — Deploy real (GitHub webhooks HMAC, Traefik config dinámica, auto-deploy toggle)

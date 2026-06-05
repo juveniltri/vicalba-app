@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   detenerAction,
+  eliminarProyectoAction,
   iniciarAction,
   restartAction,
 } from "@/app/(panel)/actions";
 import { useContainerLogs } from "@/hooks/useContainerLogs";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 import { LogsPanel } from "./LogsPanel";
+import { ProyectoFormModal } from "./ProyectoForm";
 import { StatusBadge } from "./StatusBadge";
 
 export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
@@ -17,7 +19,13 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const isDeploying = proyecto.estado === "deploying" || loading;
+  const canEdit =
+    !isDeploying &&
+    (proyecto.estado === "stopped" || proyecto.estado === "error");
 
   const {
     lines,
@@ -120,6 +128,43 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
         <ActionButton onClick={handleToggleLogs}>
           {logsOpen ? "Hide Logs" : "Logs"}
         </ActionButton>
+        {canEdit && (
+          <>
+            <ActionButton onClick={() => setShowEditModal(true)}>
+              Editar
+            </ActionButton>
+            {confirmDelete ? (
+              <>
+                <span className="font-body text-xs text-state-error self-center">
+                  ¿Eliminar?
+                </span>
+                <ActionButton
+                  onClick={async () => {
+                    setDeleteLoading(true);
+                    const result = await eliminarProyectoAction(proyecto.id);
+                    if (result?.error) {
+                      setError(result.error);
+                      setDeleteLoading(false);
+                      setConfirmDelete(false);
+                    } else {
+                      router.refresh();
+                    }
+                  }}
+                  disabled={deleteLoading}
+                >
+                  Sí
+                </ActionButton>
+                <ActionButton onClick={() => setConfirmDelete(false)}>
+                  No
+                </ActionButton>
+              </>
+            ) : (
+              <ActionButton onClick={() => setConfirmDelete(true)}>
+                Eliminar
+              </ActionButton>
+            )}
+          </>
+        )}
       </div>
 
       {logsOpen && (
@@ -128,6 +173,13 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
           connected={connected}
           error={logsError}
           onClose={handleToggleLogs}
+        />
+      )}
+
+      {showEditModal && (
+        <ProyectoFormModal
+          proyecto={proyecto}
+          onClose={() => setShowEditModal(false)}
         />
       )}
     </div>
