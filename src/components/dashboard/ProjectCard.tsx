@@ -7,14 +7,24 @@ import {
   iniciarAction,
   restartAction,
 } from "@/app/(panel)/actions";
+import { useContainerLogs } from "@/hooks/useContainerLogs";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
+import { LogsPanel } from "./LogsPanel";
 import { StatusBadge } from "./StatusBadge";
 
 export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const isDeploying = proyecto.estado === "deploying" || loading;
+
+  const {
+    lines,
+    connected,
+    error: logsError,
+    clear,
+  } = useContainerLogs(logsOpen ? proyecto.id : null);
 
   async function handleIniciar() {
     setLoading(true);
@@ -50,6 +60,15 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
       router.refresh();
     }
     setLoading(false);
+  }
+
+  function handleToggleLogs() {
+    if (logsOpen) {
+      clear();
+      setLogsOpen(false);
+    } else {
+      setLogsOpen(true);
+    }
   }
 
   return (
@@ -98,7 +117,19 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
         >
           {isDeploying ? "Deploying..." : "Deploy"}
         </ActionButton>
+        <ActionButton onClick={handleToggleLogs}>
+          {logsOpen ? "Hide Logs" : "Logs"}
+        </ActionButton>
       </div>
+
+      {logsOpen && (
+        <LogsPanel
+          lines={lines}
+          connected={connected}
+          error={logsError}
+          onClose={handleToggleLogs}
+        />
+      )}
     </div>
   );
 }

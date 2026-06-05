@@ -13,6 +13,15 @@ vi.mock("@/app/(panel)/actions", () => ({
   restartAction: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/hooks/useContainerLogs", () => ({
+  useContainerLogs: vi.fn().mockReturnValue({
+    lines: [],
+    connected: false,
+    error: null,
+    clear: vi.fn(),
+  }),
+}));
+
 import {
   iniciarAction,
   detenerAction,
