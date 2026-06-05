@@ -33,6 +33,12 @@ vi.mock("@/lib/docker/proyectos", () => ({
   },
 }));
 
+vi.mock("@/lib/traefik/config", () => ({
+  generarConfigTraefik: vi.fn().mockReturnValue("yaml-content"),
+  escribirConfigTraefik: vi.fn().mockResolvedValue(undefined),
+  eliminarConfigTraefik: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -41,6 +47,11 @@ import {
   restartProyecto,
   DockerError,
 } from "@/lib/docker/proyectos";
+import {
+  generarConfigTraefik,
+  escribirConfigTraefik,
+  eliminarConfigTraefik,
+} from "@/lib/traefik/config";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -64,6 +75,9 @@ const mockDbData = [
         clienteId: "c1",
         estado: "running" as const,
         dominio: "app.cliente-uno.com",
+        repositorioUrl: "https://github.com/org/web-app",
+        rama: "main",
+        autoDeployHabilitado: false,
         ultimoDeployEn: new Date(Date.now() - 2 * 60 * 60 * 1000),
         ultimoDeployRama: "main",
         creadoEn: new Date(),
@@ -174,6 +188,9 @@ const mockProyecto = {
   clienteId: "c1",
   estado: "stopped" as const,
   dominio: "app.cliente-uno.com",
+  repositorioUrl: "https://github.com/org/web-app",
+  rama: "main",
+  autoDeployHabilitado: false,
   ultimoDeployEn: null,
   ultimoDeployRama: null,
   creadoEn: new Date(),
@@ -608,5 +625,139 @@ describe("proyectos.eliminar", () => {
     await expect(
       createCaller(ctx).proyectos.eliminar({ id: "p1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+describe("proyectos — integración Traefik", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(generarConfigTraefik).mockReturnValue("yaml-content");
+    vi.mocked(escribirConfigTraefik).mockResolvedValue(undefined);
+    vi.mocked(eliminarConfigTraefik).mockResolvedValue(undefined);
+  });
+
+  it("crear: escribe config Traefik cuando el proyecto tiene dominio", async () => {
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      dominio: "app.cliente-uno.com",
+      servicios: ["nginx"],
+    });
+
+    expect(generarConfigTraefik).toHaveBeenCalledWith({
+      dominio: "app.cliente-uno.com",
+      proyectoSlug: "web-app",
+      clienteSlug: "cliente-uno",
+    });
+    expect(escribirConfigTraefik).toHaveBeenCalledWith(
+      "web-app",
+      "yaml-content",
+    );
+  });
+
+  it("crear: no escribe config Traefik cuando no hay dominio", async () => {
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(escribirConfigTraefik).not.toHaveBeenCalled();
+  });
+
+  it("editar: reescribe config Traefik cuando el proyecto tiene dominio", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "nuevo.example.com",
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      dominio: "nuevo.example.com",
+      servicios: ["nginx"],
+    });
+
+    expect(escribirConfigTraefik).toHaveBeenCalledWith(
+      "web-app",
+      "yaml-content",
+    );
+  });
+
+  it("editar: elimina config Traefik cuando se quita el dominio", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(eliminarConfigTraefik).toHaveBeenCalledWith("web-app");
+    expect(escribirConfigTraefik).not.toHaveBeenCalled();
+  });
+
+  it("eliminar: elimina config Traefik si el proyecto tenía dominio", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
+      count: 1,
+    } as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarConfigTraefik).toHaveBeenCalledWith("web-app");
+  });
+
+  it("eliminar: no llama a Traefik si el proyecto no tenía dominio", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+    } as never);
+    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
+      count: 1,
+    } as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarConfigTraefik).not.toHaveBeenCalled();
   });
 });

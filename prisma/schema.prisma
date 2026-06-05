@@ -24,17 +24,20 @@ model Cliente {
 }
 
 model Proyecto {
-  id               String         @id @default(cuid())
-  nombre           String
-  cliente          Cliente        @relation(fields: [clienteId], references: [id])
-  clienteId        String
-  estado           EstadoServicio @default(stopped)
-  dominio          String?
-  ultimoDeployEn   DateTime?
-  ultimoDeployRama String?
-  servicios        Servicio[]
-  creadoEn         DateTime       @default(now())
-  actualizadoEn    DateTime       @updatedAt
+  id                   String         @id @default(cuid())
+  nombre               String
+  cliente              Cliente        @relation(fields: [clienteId], references: [id])
+  clienteId            String
+  estado               EstadoServicio @default(stopped)
+  dominio              String?
+  repositorioUrl       String?
+  rama                 String         @default("main")
+  autoDeployHabilitado Boolean        @default(false)
+  ultimoDeployEn       DateTime?
+  ultimoDeployRama     String?
+  servicios            Servicio[]
+  creadoEn             DateTime       @default(now())
+  actualizadoEn        DateTime       @updatedAt
 }
 
 model Servicio {

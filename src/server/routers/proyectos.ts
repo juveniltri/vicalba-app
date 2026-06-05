@@ -9,6 +9,11 @@ import {
 } from "@/lib/docker/proyectos";
 import { formatHace } from "@/lib/formatHace";
 import { prisma } from "@/lib/prisma";
+import {
+  eliminarConfigTraefik,
+  escribirConfigTraefik,
+  generarConfigTraefik,
+} from "@/lib/traefik/config";
 import { protectedProcedure, router } from "@/server/trpc";
 
 const proyectoInput = z.object({
@@ -110,7 +115,7 @@ export const proyectosRouter = router({
           code: "NOT_FOUND",
           message: "Cliente no encontrado",
         });
-      return prisma.proyecto.create({
+      const creado = await prisma.proyecto.create({
         data: {
           nombre: input.nombre,
           clienteId: input.clienteId,
@@ -119,6 +124,17 @@ export const proyectosRouter = router({
         },
         include: { servicios: true, cliente: true },
       });
+
+      if (creado.dominio) {
+        const yaml = generarConfigTraefik({
+          dominio: creado.dominio,
+          proyectoSlug: creado.nombre,
+          clienteSlug: creado.cliente.slug,
+        });
+        await escribirConfigTraefik(creado.nombre, yaml);
+      }
+
+      return creado;
     }),
 
   editar: protectedProcedure
@@ -135,7 +151,7 @@ export const proyectosRouter = router({
       const toAdd = input.servicios.filter((n) => !currentNames.includes(n));
       const toRemove = currentNames.filter((n) => !input.servicios.includes(n));
 
-      return prisma.proyecto.update({
+      const actualizado = await prisma.proyecto.update({
         where: { id: input.id },
         data: {
           nombre: input.nombre,
@@ -147,6 +163,19 @@ export const proyectosRouter = router({
         },
         include: { servicios: true, cliente: true },
       });
+
+      if (actualizado.dominio) {
+        const yaml = generarConfigTraefik({
+          dominio: actualizado.dominio,
+          proyectoSlug: actualizado.nombre,
+          clienteSlug: actualizado.cliente.slug,
+        });
+        await escribirConfigTraefik(actualizado.nombre, yaml);
+      } else {
+        await eliminarConfigTraefik(proyecto.nombre);
+      }
+
+      return actualizado;
     }),
 
   eliminar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
@@ -158,6 +187,9 @@ export const proyectosRouter = router({
       });
     await prisma.servicio.deleteMany({ where: { proyectoId: input.id } });
     await prisma.proyecto.delete({ where: { id: input.id } });
+    if (proyecto.dominio) {
+      await eliminarConfigTraefik(proyecto.nombre);
+    }
   }),
 
   listar: protectedProcedure.query(async () => {
@@ -181,6 +213,9 @@ export const proyectosRouter = router({
         clienteSlug: cliente.slug,
         estado: p.estado,
         dominio: p.dominio,
+        repositorioUrl: p.repositorioUrl,
+        rama: p.rama,
+        autoDeployHabilitado: p.autoDeployHabilitado,
         servicios: p.servicios.map((s) => ({
           nombre: s.nombre,
           estado: s.estado,
