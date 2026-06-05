@@ -211,7 +211,10 @@ Ver `CONTEXT.md` para el glosario completo.
 
 <!-- Actualiza esta sección al inicio de cada sesión relevante -->
 
-- **Fase activa:** Fase 1 — backend + auth (pendiente de merge a master)
-- **En construcción:** —
-- **Bloqueado / pendiente:** Merge de `feature/fase1-backend-auth` → `master` (requiere PostgreSQL para ejecutar `prisma migrate dev` y `npm run db:seed` localmente antes de validar)
-- **Próximo hito:** Fase 2 — gestión Docker (arrancar/detener servicios, logs en tiempo real)
+- **Fase activa:** Fase 3 — gestión Docker avanzada
+- **Completado:**
+  - Fase 1: Auth (NextAuth v5 JWT, login/logout, middleware, rutas protegidas)
+  - Fase 2: Start/Stop (dockerode lib, tRPC iniciar/detener, Server Actions, ProjectCard UI)
+- **En construcción:** Logs en tiempo real (SSE) + Restart Docker
+- **Bloqueado / pendiente:** —
+- **Próximo hito:** `GET /api/projects/[id]/logs` SSE · `restartProyecto` en docker lib · acción Restart en ProjectCard

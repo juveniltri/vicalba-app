@@ -1,33 +1,22 @@
 # Notas pendientes
 
-## Antes de mergear `feature/fase1-backend-auth` → `master`
+## Fase 3 — gestión Docker avanzada
 
-La rama tiene todo implementado y revisado (54 tests, cobertura OK), pero necesita validación manual con una base de datos real.
+### TODO: implementar restart en docker lib y router
 
-### Pasos en orden
+`ProjectCard` tiene `handleAction("restart")` como stub (`setTimeout`). Pendiente:
 
-1. Asegúrate de tener PostgreSQL corriendo y `.env.local` con `DATABASE_URL` apuntando a la base de datos de desarrollo.
+1. `restartProyecto` en `src/lib/docker/proyectos.ts` — stop + start por servicio
+2. Procedimiento `restart` en `src/server/routers/proyectos.ts`
+3. Server Action `restartAction` en `src/app/(panel)/actions.ts`
+4. Conectar botón Restart en `ProjectCard`
 
-2. Aplica la migración inicial:
+### TODO: logs en tiempo real (SSE)
 
-   ```bash
-   npx prisma migrate dev
-   ```
+- Route handler `src/app/api/projects/[id]/logs/route.ts` — stream SSE desde dockerode
+- Hook `useContainerLogs(id)` en componente de detalle
+- Nunca almacenar logs en BD (ver CLAUDE.md Observabilidad)
 
-3. Pobla la base de datos con datos de prueba:
+### TODO: Deploy
 
-   ```bash
-   npm run db:seed
-   ```
-
-   Crea dos clientes con proyectos en distintos estados y el usuario `admin@vicalba.local` / `dev-password-2026`.
-
-4. Arranca el servidor y verifica que el dashboard carga datos reales:
-
-   ```bash
-   npm run dev
-   ```
-
-   Abre `http://localhost:3000` — debe redirigir a `/login`. Entra con las credenciales del seed y comprueba que el dashboard muestra los proyectos de la base de datos.
-
-5. Si todo va bien, mergea a `master`.
+Deploy real requiere webhooks GitHub + Traefik config dinámica. Scope grande — planificar en sesión separada.
