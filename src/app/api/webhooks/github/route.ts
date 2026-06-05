@@ -33,7 +33,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const proyecto = await prisma.proyecto.findFirst({
     where: { repositorioUrl: repoUrl, rama, autoDeployHabilitado: true },
-    include: { cliente: true },
+    include: { cliente: true, servicios: true },
   });
 
   if (!proyecto) {
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       rama: proyecto.rama,
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
+      servicios: proyecto.servicios.map((s) => s.nombre),
     });
     await prisma.proyecto.update({
       where: { id: proyecto.id },

@@ -9,6 +9,7 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
+      count: vi.fn(),
     },
     servicio: { deleteMany: vi.fn() },
   },
@@ -43,6 +44,11 @@ vi.mock("@/lib/docker/deploy", () => ({
   deployProyecto: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/docker/networks", () => ({
+  asegurarRedCliente: vi.fn().mockResolvedValue(undefined),
+  eliminarRedCliente: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -57,6 +63,7 @@ import {
   eliminarConfigTraefik,
 } from "@/lib/traefik/config";
 import { deployProyecto } from "@/lib/docker/deploy";
+import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -544,6 +551,26 @@ describe("proyectos.crear", () => {
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("llama asegurarRedCliente con el slug del cliente tras crear", async () => {
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(asegurarRedCliente).toHaveBeenCalledWith("cliente-uno");
+  });
 });
 
 describe("proyectos.editar", () => {
@@ -625,6 +652,7 @@ describe("proyectos.eliminar", () => {
       count: 1,
     } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
   });
 
   it("deletes proyecto and its servicios when stopped", async () => {
@@ -663,6 +691,30 @@ describe("proyectos.eliminar", () => {
     await expect(
       createCaller(ctx).proyectos.eliminar({ id: "p1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("llama eliminarRedCliente cuando era el último proyecto del cliente", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarRedCliente).toHaveBeenCalledWith("cliente-uno");
+  });
+
+  it("no llama eliminarRedCliente si quedan proyectos en el cliente", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarRedCliente).not.toHaveBeenCalled();
   });
 });
 
@@ -827,6 +879,7 @@ describe("proyectos.deploy", () => {
       rama: "main",
       clienteSlug: "cliente-uno",
       proyectoNombre: "web-app",
+      servicios: ["nginx", "node"],
     });
     expect(prisma.proyecto.update).toHaveBeenCalledWith(
       expect.objectContaining({

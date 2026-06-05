@@ -10,6 +10,7 @@ import {
 } from "@/lib/docker/proyectos";
 import { formatHace } from "@/lib/formatHace";
 import { prisma } from "@/lib/prisma";
+import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import {
   eliminarConfigTraefik,
   escribirConfigTraefik,
@@ -136,6 +137,8 @@ export const proyectosRouter = router({
         include: { servicios: true, cliente: true },
       });
 
+      await asegurarRedCliente(creado.cliente.slug);
+
       if (creado.dominio) {
         const yaml = generarConfigTraefik({
           dominio: creado.dominio,
@@ -203,6 +206,12 @@ export const proyectosRouter = router({
     if (proyecto.dominio) {
       await eliminarConfigTraefik(proyecto.nombre);
     }
+    const restantes = await prisma.proyecto.count({
+      where: { clienteId: proyecto.clienteId },
+    });
+    if (restantes === 0) {
+      await eliminarRedCliente(proyecto.cliente.slug);
+    }
   }),
 
   deploy: protectedProcedure.input(idInput).mutation(async ({ input }) => {
@@ -229,6 +238,7 @@ export const proyectosRouter = router({
         rama: proyecto.rama,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
+        servicios: proyecto.servicios.map((s) => s.nombre),
       });
     } catch (err) {
       await prisma.proyecto.update({

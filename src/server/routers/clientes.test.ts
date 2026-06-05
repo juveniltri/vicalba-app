@@ -25,6 +25,11 @@ vi.mock("@/lib/docker/deploy", () => ({
   deployProyecto: vi.fn(),
 }));
 
+vi.mock("@/lib/docker/networks", () => ({
+  asegurarRedCliente: vi.fn(),
+  eliminarRedCliente: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: {
