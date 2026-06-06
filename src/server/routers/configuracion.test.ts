@@ -211,6 +211,22 @@ describe("configuracion.guardar — email", () => {
     };
     expect(Object.keys(updateArg.update)).not.toContain("emailSmtpPass");
   });
+
+  it("guarda null en campos email opcionales cuando no vienen", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).configuracion.guardar({
+      email: { habilitado: false },
+    });
+
+    const updateArg = mockUpsert.mock.calls[0][0] as {
+      update: Record<string, unknown>;
+    };
+    expect(updateArg.update.emailSmtpHost).toBeNull();
+    expect(updateArg.update.emailSmtpPort).toBeNull();
+    expect(updateArg.update.emailSmtpUser).toBeNull();
+    expect(updateArg.update.emailRemitente).toBeNull();
+    expect(updateArg.update.emailDestinatario).toBeNull();
+  });
 });
 
 describe("configuracion.guardar — telegram", () => {

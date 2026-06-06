@@ -1753,4 +1753,20 @@ describe("proyectos.rollback — notificaciones", () => {
       createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
     ).resolves.toBeDefined();
   });
+
+  it("pasa sha null cuando el deploy no tiene sha", async () => {
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
+      ...mockDeploy,
+      sha: null,
+    } as never);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "ok",
+    });
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
