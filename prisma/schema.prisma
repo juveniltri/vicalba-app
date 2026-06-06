@@ -92,3 +92,24 @@ model Deploy {
 
   @@index([proyectoId, iniciadoEn(sort: Desc)])
 }
+
+model ConfiguracionNotificacion {
+  id String @id @default("default")
+
+  webhookHabilitado  Boolean @default(false)
+  webhookUrl         String?
+
+  emailHabilitado    Boolean @default(false)
+  emailSmtpHost      String?
+  emailSmtpPort      Int?
+  emailSmtpUser      String?
+  emailSmtpPass      String?
+  emailSmtpPassIv    String?
+  emailSmtpPassTag   String?
+  emailRemitente     String?
+  emailDestinatario  String?
+
+  telegramHabilitado Boolean @default(false)
+  telegramBotToken   String?
+  telegramChatId     String?
+}
