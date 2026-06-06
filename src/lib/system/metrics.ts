@@ -61,8 +61,8 @@ function parsearDisco(): MetricasSistema["disco"] {
   const totalBytes = stats.bsize * stats.blocks;
   const libresBytes = stats.bsize * stats.bavail;
   return {
-    usado: parseFloat(((totalBytes - libresBytes) / 1e9).toFixed(1)),
-    total: parseFloat((totalBytes / 1e9).toFixed(1)),
+    usado: parseFloat(((totalBytes - libresBytes) / 1_073_741_824).toFixed(1)),
+    total: parseFloat((totalBytes / 1_073_741_824).toFixed(1)),
     unidad: "GB",
   };
 }

@@ -156,8 +156,8 @@ describe("Disco", () => {
 
   it("calcula usado y total en GB", () => {
     const { disco } = obtenerMetricas();
-    expect(disco.total).toBeCloseTo(102.4, 1);
-    expect(disco.usado).toBeCloseTo(51.2, 1);
+    expect(disco.total).toBeCloseTo(95.4, 1);
+    expect(disco.usado).toBeCloseTo(47.7, 1);
     expect(disco.unidad).toBe("GB");
   });
 });

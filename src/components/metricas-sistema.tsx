@@ -81,7 +81,9 @@ export function MetricasSistema() {
         <BarraMetrica
           label="RAM"
           porcentaje={
-            metricas ? (metricas.ram.usado / metricas.ram.total) * 100 : 0
+            metricas && metricas.ram.total > 0
+              ? (metricas.ram.usado / metricas.ram.total) * 100
+              : 0
           }
           etiqueta={
             metricas
@@ -92,7 +94,9 @@ export function MetricasSistema() {
         <BarraMetrica
           label="Disco"
           porcentaje={
-            metricas ? (metricas.disco.usado / metricas.disco.total) * 100 : 0
+            metricas && metricas.disco.total > 0
+              ? (metricas.disco.usado / metricas.disco.total) * 100
+              : 0
           }
           etiqueta={
             metricas
