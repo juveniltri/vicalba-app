@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -209,6 +210,13 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
           onClose={() => setShowEditModal(false)}
         />
       )}
+
+      <Link
+        href={`/proyectos/${proyecto.id}`}
+        className="self-start font-body text-xs text-text-muted hover:text-primary-300 transition-colors duration-[var(--duration-fast)]"
+      >
+        Ver detalle →
+      </Link>
     </div>
   );
 }
