@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 
@@ -44,10 +44,13 @@ export async function deployProyecto(params: {
   clienteSlug: string;
   proyectoNombre: string;
   servicios: string[];
+  variables?: Array<{ clave: string; valor: string }>;
 }): Promise<void> {
-  const { repoUrl, rama, clienteSlug, proyectoNombre, servicios } = params;
+  const { repoUrl, rama, clienteSlug, proyectoNombre, servicios, variables } =
+    params;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const overridePath = `${repoDir}/docker-compose.network.yml`;
+  const envFilePath = `${repoDir}/.env.panel`;
 
   await ensureRepo(repoUrl, repoDir);
   await execFileAsync("git", ["-C", repoDir, "checkout", rama]);
@@ -56,15 +59,33 @@ export async function deployProyecto(params: {
   const overrideYaml = generarComposeOverride(clienteSlug, servicios);
   await writeFile(overridePath, overrideYaml, "utf-8");
 
-  await execFileAsync("docker", [
+  const hasVars = variables && variables.length > 0;
+
+  if (hasVars) {
+    const envContent = variables
+      .map(({ clave, valor }) => `${clave}=${valor}`)
+      .join("\n");
+    await writeFile(envFilePath, envContent, "utf-8");
+  }
+
+  const composeArgs = [
     "compose",
     "-f",
     `${repoDir}/docker-compose.yml`,
     "-f",
     overridePath,
+    ...(hasVars ? ["--env-file", envFilePath] : []),
     "up",
     "--build",
     "-d",
     "--force-recreate",
-  ]);
+  ];
+
+  try {
+    await execFileAsync("docker", composeArgs);
+  } finally {
+    if (hasVars) {
+      await unlink(envFilePath).catch(() => {});
+    }
+  }
 }

@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecFile, mockWriteFile, mockMkdir } = vi.hoisted(() => ({
-  mockExecFile: vi.fn(),
-  mockWriteFile: vi.fn().mockResolvedValue(undefined),
-  mockMkdir: vi.fn().mockResolvedValue(undefined),
-}));
+const { mockExecFile, mockWriteFile, mockMkdir, mockUnlink } = vi.hoisted(
+  () => ({
+    mockExecFile: vi.fn(),
+    mockWriteFile: vi.fn().mockResolvedValue(undefined),
+    mockMkdir: vi.fn().mockResolvedValue(undefined),
+    mockUnlink: vi.fn().mockResolvedValue(undefined),
+  }),
+);
 
 vi.mock("node:child_process", () => ({ execFile: mockExecFile }));
 vi.mock("node:fs/promises", () => ({
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
+  unlink: mockUnlink,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -77,5 +81,86 @@ describe("deployProyecto", () => {
     expect(
       composeArgs.some((a) => a.includes("docker-compose.network.yml")),
     ).toBe(true);
+  });
+});
+
+describe("deployProyecto con variables de entorno", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("escribe .env.panel y lo pasa como --env-file cuando hay variables", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [
+        { clave: "DATABASE_URL", valor: "postgres://localhost/db" },
+        { clave: "JWT_SECRET", valor: "supersecret" },
+      ],
+    });
+
+    const envFilePath = "/var/vicalba/repos/acme/web-app/.env.panel";
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      envFilePath,
+      "DATABASE_URL=postgres://localhost/db\nJWT_SECRET=supersecret",
+      "utf-8",
+    );
+
+    const dockerCall = vi
+      .mocked(mockExecFile)
+      .mock.calls.find((c) => c[0] === "docker");
+    expect(dockerCall?.[1]).toContain("--env-file");
+    expect(dockerCall?.[1]).toContain(envFilePath);
+  });
+
+  it("elimina .env.panel en el bloque finally tras deploy exitoso", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [{ clave: "X", valor: "y" }],
+    });
+    expect(mockUnlink).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/web-app/.env.panel",
+    );
+  });
+
+  it("elimina .env.panel aunque el deploy falle", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[0] === "compose") return cb(new Error("docker error"), "", "");
+        return cb(null, "", "");
+      },
+    );
+    await expect(
+      deployProyecto({
+        ...baseParams,
+        variables: [{ clave: "X", valor: "y" }],
+      }),
+    ).rejects.toThrow();
+    expect(mockUnlink).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/web-app/.env.panel",
+    );
+  });
+
+  it("no escribe .env.panel cuando no hay variables", async () => {
+    await deployProyecto(baseParams);
+    const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
+    const envFileCall = writeFileCalls.find((c) =>
+      String(c[0]).endsWith(".env.panel"),
+    );
+    expect(envFileCall).toBeUndefined();
+    expect(mockUnlink).not.toHaveBeenCalled();
   });
 });
