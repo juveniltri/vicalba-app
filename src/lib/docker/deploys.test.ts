@@ -112,4 +112,18 @@ describe("ejecutarDeploy", () => {
     expect(result.resultado).toBe("error");
     expect(result.output).toBe("plain string error");
   });
+
+  it("retorna exito aunque prisma.deploy.update falle en éxito", async () => {
+    mockDeployProyecto.mockResolvedValue("build output");
+    mockDeployUpdate.mockRejectedValue(new Error("DB down"));
+    const result = await ejecutarDeploy(baseParams);
+    expect(result.resultado).toBe("exito");
+  });
+
+  it("retorna error aunque prisma.deploy.update falle en error", async () => {
+    mockDeployProyecto.mockRejectedValue(new Error("build failed"));
+    mockDeployUpdate.mockRejectedValue(new Error("DB down"));
+    const result = await ejecutarDeploy(baseParams);
+    expect(result.resultado).toBe("error");
+  });
 });

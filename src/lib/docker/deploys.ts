@@ -18,20 +18,24 @@ export async function ejecutarDeploy(params: {
 
   try {
     const output = await deployProyecto(deployParams);
-    await prisma.deploy.update({
-      where: { id: registro.id },
-      data: { resultado: "exito", output, finalizadoEn: new Date() },
-    });
+    await prisma.deploy
+      .update({
+        where: { id: registro.id },
+        data: { resultado: "exito", output, finalizadoEn: new Date() },
+      })
+      .catch(() => {});
     return { resultado: "exito", output };
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string };
     const output =
       [e.stdout ?? "", e.stderr ?? ""].filter(Boolean).join("\n") ||
       (err instanceof Error ? err.message : String(err));
-    await prisma.deploy.update({
-      where: { id: registro.id },
-      data: { resultado: "error", output, finalizadoEn: new Date() },
-    });
+    await prisma.deploy
+      .update({
+        where: { id: registro.id },
+        data: { resultado: "error", output, finalizadoEn: new Date() },
+      })
+      .catch(() => {});
     return { resultado: "error", output };
   }
 }
