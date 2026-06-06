@@ -33,7 +33,14 @@ function BarraMetrica({
           {etiqueta}
         </span>
       </div>
-      <div className="h-1 bg-border rounded-full overflow-hidden">
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuenow={Math.round(Math.min(100, porcentaje))}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="h-1 bg-border rounded-full overflow-hidden"
+      >
         <div
           className={`h-full rounded-full transition-all duration-[var(--duration-slow)] ${bg}`}
           style={{ width: `${Math.min(100, porcentaje)}%` }}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MetricasSistema } from "./metricas-sistema";
 
@@ -72,16 +72,15 @@ describe("MetricasSistema — colores semafóricos", () => {
 });
 
 describe("MetricasSistema — resiliencia", () => {
-  it("no rompe si el fetch lanza error", () => {
+  it("no rompe si el fetch lanza error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network")));
     render(<MetricasSistema />);
-    expect(screen.getAllByText("—")).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByText("—")).toHaveLength(3));
   });
 
   it("mantiene — si la respuesta no es ok", async () => {
     mockFetch(null, false);
     render(<MetricasSistema />);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(screen.getAllByText("—")).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByText("—")).toHaveLength(3));
   });
 });
