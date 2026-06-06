@@ -32,6 +32,8 @@ const serverSchema = z.object({
   TRAEFIK_DYNAMIC_DIR: z.string().default("/etc/traefik/dynamic"),
   // Deploy — directorio local donde se clonan los repos de los proyectos
   REPOS_DIR: z.string().default("/var/vicalba/repos"),
+  TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
+  ACME_JSON_PATH: z.string().default("/var/vicalba/traefik/acme.json"),
 
   // Panel — dominio público del panel (usado en next.config.ts para redirects HTTPS)
   PANEL_DOMAIN: z.string().optional(),
