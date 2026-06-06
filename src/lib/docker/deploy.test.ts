@@ -164,3 +164,88 @@ describe("deployProyecto con variables de entorno", () => {
     expect(mockUnlink).not.toHaveBeenCalled();
   });
 });
+
+describe("deployProyecto — captura de SHA y path con sha", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+  });
+
+  it("sin sha: hace checkout de la rama y retorna el sha capturado", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[2] === "rev-parse" && args[3] === "HEAD")
+          return cb(null, "abc123def456\n", "");
+        cb(null, "", "");
+      },
+    );
+
+    const result = await deployProyecto(baseParams);
+
+    const gitCalls = vi
+      .mocked(mockExecFile)
+      .mock.calls.filter(([cmd]) => cmd === "git");
+    const checkoutCall = gitCalls.find(([, a]) => a[2] === "checkout");
+    expect(checkoutCall?.[1]).toContain("main");
+    expect(result.sha).toBe("abc123def456");
+  });
+
+  it("con sha: hace fetch y checkout del sha exacto, retorna ese sha", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[2] === "rev-parse" && args[3] === "HEAD")
+          return cb(null, "deadbeef1234\n", "");
+        cb(null, "", "");
+      },
+    );
+
+    const result = await deployProyecto({ ...baseParams, sha: "deadbeef1234" });
+
+    const gitCalls = vi
+      .mocked(mockExecFile)
+      .mock.calls.filter(([cmd]) => cmd === "git");
+    const fetchCall = gitCalls.find(([, a]) => a[2] === "fetch");
+    expect(fetchCall).toBeDefined();
+    const checkoutCall = gitCalls.find(([, a]) => a[2] === "checkout");
+    expect(checkoutCall?.[1]).toContain("deadbeef1234");
+    expect(result.sha).toBe("deadbeef1234");
+  });
+
+  it("con sha: no hace git pull explícito después del checkout", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[2] === "rev-parse" && args[3] === "HEAD")
+          return cb(null, "deadbeef\n", "");
+        cb(null, "", "");
+      },
+    );
+
+    await deployProyecto({ ...baseParams, sha: "deadbeef" });
+
+    const gitCalls = vi
+      .mocked(mockExecFile)
+      .mock.calls.filter(([cmd]) => cmd === "git");
+    // La única llamada pull viene de ensureRepo, no del path sha
+    const fetchCalls = gitCalls.filter(([, a]) => a[2] === "fetch");
+    // Con sha hay fetch pero no pull explícito después de checkout
+    expect(fetchCalls.length).toBeGreaterThan(0);
+    const checkoutIdx = gitCalls.findIndex(([, a]) => a[2] === "checkout");
+    const pullAfterCheckout = gitCalls
+      .slice(checkoutIdx + 1)
+      .filter(([, a]) => a[2] === "pull");
+    expect(pullAfterCheckout).toHaveLength(0);
+  });
+});

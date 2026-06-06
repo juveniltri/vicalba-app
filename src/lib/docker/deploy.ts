@@ -41,20 +41,46 @@ function generarComposeOverride(
 export async function deployProyecto(params: {
   repoUrl: string;
   rama: string;
+  sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
   servicios: string[];
   variables?: Array<{ clave: string; valor: string }>;
-}): Promise<string> {
-  const { repoUrl, rama, clienteSlug, proyectoNombre, servicios, variables } =
-    params;
+}): Promise<{ output: string; sha: string }> {
+  const {
+    repoUrl,
+    rama,
+    sha,
+    clienteSlug,
+    proyectoNombre,
+    servicios,
+    variables,
+  } = params;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const overridePath = `${repoDir}/docker-compose.network.yml`;
   const envFilePath = `${repoDir}/.env.panel`;
 
   await ensureRepo(repoUrl, repoDir);
-  await execFileAsync("git", ["-C", repoDir, "checkout", rama]);
-  await execFileAsync("git", ["-C", repoDir, "pull"]);
+
+  if (sha) {
+    await execFileAsync("git", ["-C", repoDir, "fetch", "origin"]);
+    await execFileAsync("git", ["-C", repoDir, "checkout", sha]);
+  } else {
+    await execFileAsync("git", ["-C", repoDir, "checkout", rama]);
+    await execFileAsync("git", ["-C", repoDir, "pull"]);
+  }
+
+  const revParseResult = await execFileAsync("git", [
+    "-C",
+    repoDir,
+    "rev-parse",
+    "HEAD",
+  ]);
+  const shaRaw =
+    typeof revParseResult === "string"
+      ? revParseResult
+      : (revParseResult as { stdout: string }).stdout;
+  const capturedSha = (shaRaw ?? "").trim();
 
   const overrideYaml = generarComposeOverride(clienteSlug, servicios);
   await writeFile(overridePath, overrideYaml, "utf-8");
@@ -90,5 +116,5 @@ export async function deployProyecto(params: {
       await unlink(envFilePath).catch(() => {});
     }
   }
-  return output;
+  return { output, sha: capturedSha };
 }
