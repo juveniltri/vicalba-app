@@ -68,7 +68,7 @@ vi.mock("@/lib/docker/traefik", () => ({
 }));
 
 vi.mock("@/lib/ssl/acme", () => ({
-  leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true, expira: null }),
+  leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true }),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -1534,7 +1534,7 @@ describe("proyectos.estadoSSL", () => {
   });
 
   it("devuelve el estado SSL del dominio", async () => {
-    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true, expira: null });
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true });
 
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.estadoSSL({
@@ -1542,7 +1542,7 @@ describe("proyectos.estadoSSL", () => {
     });
 
     expect(leerEstadoSSL).toHaveBeenCalledWith("app.ejemplo.com");
-    expect(result).toEqual({ activo: true, expira: null });
+    expect(result).toEqual({ activo: true });
   });
 
   it("requiere autenticación", async () => {

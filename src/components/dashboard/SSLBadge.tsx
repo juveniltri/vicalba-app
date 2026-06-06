@@ -1,8 +1,4 @@
-export function SSLBadge({
-  estado,
-}: {
-  estado: { activo: boolean; expira: Date | null };
-}) {
+export function SSLBadge({ estado }: { estado: { activo: boolean } }) {
   if (estado.activo) {
     return (
       <span className="font-body text-xs text-state-running">● SSL activo</span>

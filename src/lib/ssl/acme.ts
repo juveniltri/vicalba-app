@@ -20,17 +20,17 @@ const acmeSchema = z.record(
 
 export async function leerEstadoSSL(
   dominio: string,
-): Promise<{ activo: boolean; expira: Date | null }> {
+): Promise<{ activo: boolean }> {
   try {
     const content = await readFile(env.ACME_JSON_PATH, "utf-8");
     const parsed = acmeSchema.safeParse(JSON.parse(content));
-    if (!parsed.success) return { activo: false, expira: null };
+    if (!parsed.success) return { activo: false };
     const certs = Object.values(parsed.data).flatMap(
       (r) => r.Certificates ?? [],
     );
     const activo = certs.some((c) => c.domain.main === dominio);
-    return { activo, expira: null };
+    return { activo };
   } catch {
-    return { activo: false, expira: null };
+    return { activo: false };
   }
 }

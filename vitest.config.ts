@@ -79,6 +79,12 @@ export default defineConfig({
           lines: 100,
           statements: 100,
         },
+        "src/lib/ssl/**": {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
         // Important — 80%
         "src/components/**": {
           branches: 80,

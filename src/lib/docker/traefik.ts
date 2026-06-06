@@ -33,7 +33,8 @@ export async function desconectarTraefikDeRed(
   const network = docker.getNetwork(nombreRed(clienteSlug));
   try {
     await network.disconnect({ Container: traefik.Id });
-  } catch {
-    // absorb — no estaba conectado
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("not connected")) return;
+    throw err;
   }
 }

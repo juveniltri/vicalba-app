@@ -26,13 +26,13 @@ describe("leerEstadoSSL", () => {
   it("devuelve activo: true si el dominio tiene certificado", async () => {
     mockReadFile.mockResolvedValue(acmeConCerts);
     const result = await leerEstadoSSL("app.ejemplo.com");
-    expect(result).toEqual({ activo: true, expira: null });
+    expect(result).toEqual({ activo: true });
   });
 
   it("devuelve activo: false si el dominio no está en los certificados", async () => {
     mockReadFile.mockResolvedValue(acmeConCerts);
     const result = await leerEstadoSSL("noexiste.com");
-    expect(result).toEqual({ activo: false, expira: null });
+    expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: false si acme.json no existe", async () => {
@@ -40,13 +40,21 @@ describe("leerEstadoSSL", () => {
       Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
-    expect(result).toEqual({ activo: false, expira: null });
+    expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: false si acme.json está malformado", async () => {
     mockReadFile.mockResolvedValue("{ invalid json }");
     const result = await leerEstadoSSL("app.ejemplo.com");
-    expect(result).toEqual({ activo: false, expira: null });
+    expect(result).toEqual({ activo: false });
+  });
+
+  it("devuelve activo: false si el JSON es válido pero no coincide con el schema", async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ letsencrypt: "no-soy-objeto" }),
+    );
+    const result = await leerEstadoSSL("app.ejemplo.com");
+    expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: false si no hay Certificates en el resolver", async () => {
@@ -54,6 +62,6 @@ describe("leerEstadoSSL", () => {
       JSON.stringify({ letsencrypt: { Account: {} } }),
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
-    expect(result).toEqual({ activo: false, expira: null });
+    expect(result).toEqual({ activo: false });
   });
 });

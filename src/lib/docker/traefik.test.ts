@@ -59,6 +59,17 @@ describe("conectarTraefikARed", () => {
     await expect(conectarTraefikARed("acme")).resolves.not.toThrow();
   });
 
+  it("propaga errores de conexión distintos de 'already exists'", async () => {
+    mockListContainers.mockResolvedValue([mockTraefik]);
+    const mockNetwork = {
+      connect: vi.fn().mockRejectedValue(new Error("network not found")),
+    };
+    mockGetNetwork.mockReturnValue(mockNetwork);
+    await expect(conectarTraefikARed("acme")).rejects.toThrow(
+      "network not found",
+    );
+  });
+
   it("no hace nada si no hay contenedor traefik", async () => {
     mockListContainers.mockResolvedValue([]);
 
@@ -91,6 +102,17 @@ describe("desconectarTraefikDeRed", () => {
     mockNetworkDisconnect.mockRejectedValue(new Error("not connected"));
 
     await expect(desconectarTraefikDeRed("acme")).resolves.not.toThrow();
+  });
+
+  it("propaga errores inesperados", async () => {
+    mockListContainers.mockResolvedValue([mockTraefik]);
+    const mockNetwork = {
+      disconnect: vi.fn().mockRejectedValue(new Error("daemon socket error")),
+    };
+    mockGetNetwork.mockReturnValue(mockNetwork);
+    await expect(desconectarTraefikDeRed("acme")).rejects.toThrow(
+      "daemon socket error",
+    );
   });
 
   it("no hace nada si no hay contenedor traefik", async () => {
