@@ -45,7 +45,7 @@ export async function deployProyecto(params: {
   proyectoNombre: string;
   servicios: string[];
   variables?: Array<{ clave: string; valor: string }>;
-}): Promise<void> {
+}): Promise<string> {
   const { repoUrl, rama, clienteSlug, proyectoNombre, servicios, variables } =
     params;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
@@ -81,11 +81,14 @@ export async function deployProyecto(params: {
     "--force-recreate",
   ];
 
+  let output = "";
   try {
-    await execFileAsync("docker", composeArgs);
+    const { stdout, stderr } = await execFileAsync("docker", composeArgs);
+    output = stdout + "\n" + stderr;
   } finally {
     if (hasVars) {
       await unlink(envFilePath).catch(() => {});
     }
   }
+  return output;
 }
