@@ -17,6 +17,14 @@ const serverSchema = z.object({
   // GitHub Webhooks — validación HMAC-SHA256 de payloads entrantes
   GITHUB_WEBHOOK_SECRET: z.string().min(16),
 
+  // Cifrado AES-256-GCM para variables de entorno de proyectos
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(
+      /^[0-9a-f]{64}$/,
+      "ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales (32 bytes)",
+    ),
+
   // Docker — ruta al socket del daemon (por defecto el estándar de Linux)
   DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
 
