@@ -77,9 +77,13 @@ export function obtenerMetricas(): MetricasSistema {
   if (process.env.NODE_ENV !== "production" || !existsSync("/host/proc/stat")) {
     return DATOS_DEV;
   }
-  return {
-    cpu: parseFloat(parsearCpu().toFixed(1)),
-    ram: parsearRam(),
-    disco: parsearDisco(),
-  };
+  try {
+    return {
+      cpu: parseFloat(parsearCpu().toFixed(1)),
+      ram: parsearRam(),
+      disco: parsearDisco(),
+    };
+  } catch {
+    return DATOS_DEV;
+  }
 }

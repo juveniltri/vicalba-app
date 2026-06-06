@@ -72,6 +72,18 @@ describe("obtenerMetricas — modo dev", () => {
     exs.mockReturnValue(false);
     expect(obtenerMetricas().cpu).toBe(42);
   });
+
+  it("devuelve datos simulados cuando parsearRam lanza", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    exs.mockReturnValue(true);
+    avg.mockReturnValue([1.6, 1.0, 0.8]);
+    cpu.mockReturnValue([{}, {}, {}, {}] as ReturnType<typeof cpus>);
+    rfs.mockImplementation((path: unknown) => {
+      if (path === "/host/proc/stat") return STAT_1;
+      throw new Error("permiso denegado");
+    });
+    expect(obtenerMetricas().cpu).toBe(42);
+  });
 });
 
 describe("CPU — primera llamada (fallback loadavg)", () => {
@@ -102,6 +114,21 @@ describe("CPU — segunda llamada (delta real)", () => {
   });
 });
 
+describe("CPU — sin actividad entre lecturas", () => {
+  it("devuelve 0 cuando no hay actividad entre lecturas (deltaTotal === 0)", () => {
+    setupProduccion();
+    obtenerMetricas(); // calienta caché con STAT_1
+    // Misma lectura → deltaTotal = 0
+    rfs.mockImplementation((path: unknown) => {
+      if (path === "/host/proc/stat") return STAT_1;
+      if (path === "/host/proc/meminfo") return MEMINFO;
+      throw new Error(`path inesperado: ${path}`);
+    });
+    const r = obtenerMetricas();
+    expect(r.cpu).toBe(0);
+  });
+});
+
 describe("RAM", () => {
   beforeEach(setupProduccion);
 
@@ -110,6 +137,17 @@ describe("RAM", () => {
     expect(ram.total).toBe(8);
     expect(ram.usado).toBe(4);
     expect(ram.unidad).toBe("GB");
+  });
+
+  it("devuelve 0 para claves ausentes en meminfo", () => {
+    rfs.mockImplementation((path: unknown) => {
+      if (path === "/host/proc/stat") return STAT_1;
+      if (path === "/host/proc/meminfo") return "MemFree: 1000 kB\n"; // sin MemTotal ni MemAvailable
+      throw new Error(`path inesperado: ${path}`);
+    });
+    const { ram } = obtenerMetricas();
+    expect(ram.total).toBe(0);
+    expect(ram.usado).toBe(0);
   });
 });
 
