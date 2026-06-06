@@ -2,6 +2,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { deployProyecto } from "@/lib/docker/deploy";
+import { descifrar } from "@/lib/crypto";
 import {
   DockerError,
   detenerProyecto,
@@ -259,12 +260,21 @@ export const proyectosRouter = router({
     });
 
     try {
+      const variablesDB = await prisma.variableEntorno.findMany({
+        where: { proyectoId: input.id },
+      });
+      const variables = variablesDB.map((v) => ({
+        clave: v.clave,
+        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+      }));
+
       await deployProyecto({
         repoUrl: proyecto.repositorioUrl,
         rama: proyecto.rama,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         servicios: proyecto.servicios.map((s) => s.nombre),
+        variables,
       });
     } catch (err) {
       await prisma.proyecto.update({
