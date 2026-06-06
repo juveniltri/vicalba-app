@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import {
@@ -126,11 +127,23 @@ export default async function DetalleProyectoPage({
       {/* Información */}
       <Section titulo="Información">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo
-            label="Dominio"
-            valor={proyecto.dominio ?? "—"}
-            mono={!!proyecto.dominio}
-          />
+          <div className="flex flex-col gap-1">
+            <span className="font-body text-xs text-text-muted">Dominio</span>
+            {proyecto.dominio ? (
+              <div className="flex flex-col gap-1">
+                <span className="font-body text-sm text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
+                  {proyecto.dominio}
+                </span>
+                <SSLBadge
+                  estado={await api.proyectos.estadoSSL({
+                    dominio: proyecto.dominio,
+                  })}
+                />
+              </div>
+            ) : (
+              <span className="font-body text-sm text-text-primary">—</span>
+            )}
+          </div>
           <Campo
             label="Repositorio"
             valor={proyecto.repositorioUrl ?? "—"}
