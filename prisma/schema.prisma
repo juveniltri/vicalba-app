@@ -36,6 +36,7 @@ model Proyecto {
   ultimoDeployEn       DateTime?
   ultimoDeployRama     String?
   servicios            Servicio[]
+  variables            VariableEntorno[]
   creadoEn             DateTime       @default(now())
   actualizadoEn        DateTime       @updatedAt
 }
@@ -47,6 +48,20 @@ model Servicio {
   proyecto   Proyecto       @relation(fields: [proyectoId], references: [id])
   proyectoId String
   creadoEn   DateTime       @default(now())
+}
+
+model VariableEntorno {
+  id            String   @id @default(cuid())
+  proyecto      Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  proyectoId    String
+  clave         String
+  valorCifrado  String
+  iv            String
+  authTag       String
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([proyectoId, clave])
 }
 
 model User {
