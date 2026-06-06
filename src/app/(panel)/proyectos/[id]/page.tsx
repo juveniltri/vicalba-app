@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
+import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import {
   deployProyectoAction,
   detenerAction,
@@ -30,6 +31,7 @@ export default async function DetalleProyectoPage({
   }
 
   const variables = await api.variables.listar({ proyectoId: id });
+  const deploys = await api.proyectos.listarDeploys({ proyectoId: id });
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
@@ -159,6 +161,11 @@ export default async function DetalleProyectoPage({
       {/* Variables de entorno */}
       <Section titulo="Variables de entorno">
         <VariablesPanel proyectoId={id} variablesIniciales={variables} />
+      </Section>
+
+      {/* Historial de deploys */}
+      <Section titulo="Historial de deploys">
+        <HistorialDeploys deploys={deploys} />
       </Section>
     </div>
   );
