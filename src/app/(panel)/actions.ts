@@ -150,3 +150,54 @@ export async function eliminarProyectoAction(id: string) {
     };
   }
 }
+
+export async function crearVariableAction(
+  proyectoId: string,
+  clave: string,
+  valor: string,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.variables.crear({ proyectoId, clave, valor });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al crear variable",
+    };
+  }
+}
+
+export async function actualizarVariableAction(id: string, valor: string) {
+  try {
+    const api = await createServerCaller();
+    await api.variables.actualizar({ id, valor });
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error ? err.message : "Error al actualizar variable",
+    };
+  }
+}
+
+export async function eliminarVariableAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.variables.eliminar({ id });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al eliminar variable",
+    };
+  }
+}
+
+export async function revelarVariableAction(
+  id: string,
+): Promise<{ valor: string } | { error: string }> {
+  try {
+    const api = await createServerCaller();
+    return await api.variables.revelar({ id });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al revelar variable",
+    };
+  }
+}
