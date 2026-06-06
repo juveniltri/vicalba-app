@@ -37,15 +37,18 @@ describe("ejecutarDeploy", () => {
   });
 
   it("crea registro Deploy con estado en_curso al inicio", async () => {
-    mockDeployProyecto.mockResolvedValue("");
+    mockDeployProyecto.mockResolvedValue({ output: "", sha: "sha1" });
     await ejecutarDeploy(baseParams);
     expect(mockDeployCreate).toHaveBeenCalledWith({
       data: { proyectoId: "p1", rama: "main", resultado: "en_curso" },
     });
   });
 
-  it("en éxito actualiza el registro con resultado exito, output y finalizadoEn", async () => {
-    mockDeployProyecto.mockResolvedValue("build output");
+  it("en éxito actualiza el registro con resultado exito, output, sha y finalizadoEn", async () => {
+    mockDeployProyecto.mockResolvedValue({
+      output: "build output",
+      sha: "abc123",
+    });
     await ejecutarDeploy(baseParams);
     expect(mockDeployUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -53,6 +56,7 @@ describe("ejecutarDeploy", () => {
         data: expect.objectContaining({
           resultado: "exito",
           output: "build output",
+          sha: "abc123",
           finalizadoEn: expect.any(Date),
         }),
       }),
@@ -60,9 +64,30 @@ describe("ejecutarDeploy", () => {
   });
 
   it("en éxito retorna { resultado: 'exito', output }", async () => {
-    mockDeployProyecto.mockResolvedValue("build output");
+    mockDeployProyecto.mockResolvedValue({
+      output: "build output",
+      sha: "abc123",
+    });
     const result = await ejecutarDeploy(baseParams);
     expect(result).toEqual({ resultado: "exito", output: "build output" });
+  });
+
+  it("sha recibido en params se pasa a deployProyecto", async () => {
+    mockDeployProyecto.mockResolvedValue({ output: "", sha: "deadbeef" });
+    await ejecutarDeploy({ ...baseParams, sha: "deadbeef" });
+    expect(mockDeployProyecto).toHaveBeenCalledWith(
+      expect.objectContaining({ sha: "deadbeef" }),
+    );
+  });
+
+  it("sha retornado por deployProyecto se guarda en el registro Deploy", async () => {
+    mockDeployProyecto.mockResolvedValue({ output: "ok", sha: "cafebabe" });
+    await ejecutarDeploy(baseParams);
+    expect(mockDeployUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sha: "cafebabe" }),
+      }),
+    );
   });
 
   it("en error actualiza el registro con resultado error y stdout+stderr del error", async () => {
@@ -114,7 +139,10 @@ describe("ejecutarDeploy", () => {
   });
 
   it("retorna exito aunque prisma.deploy.update falle en éxito", async () => {
-    mockDeployProyecto.mockResolvedValue("build output");
+    mockDeployProyecto.mockResolvedValue({
+      output: "build output",
+      sha: "sha1",
+    });
     mockDeployUpdate.mockRejectedValue(new Error("DB down"));
     const result = await ejecutarDeploy(baseParams);
     expect(result.resultado).toBe("exito");

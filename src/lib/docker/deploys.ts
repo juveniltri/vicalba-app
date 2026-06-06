@@ -5,6 +5,7 @@ export async function ejecutarDeploy(params: {
   proyectoId: string;
   repoUrl: string;
   rama: string;
+  sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
   servicios: string[];
@@ -17,11 +18,11 @@ export async function ejecutarDeploy(params: {
   });
 
   try {
-    const output = await deployProyecto(deployParams);
+    const { output, sha } = await deployProyecto(deployParams);
     await prisma.deploy
       .update({
         where: { id: registro.id },
-        data: { resultado: "exito", output, finalizadoEn: new Date() },
+        data: { resultado: "exito", output, sha, finalizadoEn: new Date() },
       })
       .catch(() => {});
     return { resultado: "exito", output };
