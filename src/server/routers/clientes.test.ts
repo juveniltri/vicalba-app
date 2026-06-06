@@ -30,6 +30,15 @@ vi.mock("@/lib/docker/networks", () => ({
   eliminarRedCliente: vi.fn(),
 }));
 
+vi.mock("@/lib/docker/traefik", () => ({
+  conectarTraefikARed: vi.fn(),
+  desconectarTraefikDeRed: vi.fn(),
+}));
+
+vi.mock("@/lib/ssl/acme", () => ({
+  leerEstadoSSL: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: {
