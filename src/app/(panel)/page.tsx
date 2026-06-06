@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { EstadoServicio } from "@/lib/schemas/dashboard";
+import { MetricasSistema } from "@/components/metricas-sistema";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -78,17 +79,7 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {/* Placeholder métricas */}
-      <section>
-        <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">
-          Métricas de sistema
-        </h2>
-        <div className="border border-dashed border-border rounded-[var(--radius-md)] p-8 text-center">
-          <p className="font-body text-xs text-text-muted">
-            CPU · RAM · Disco — próximamente
-          </p>
-        </div>
-      </section>
+      <MetricasSistema />
     </div>
   );
 }

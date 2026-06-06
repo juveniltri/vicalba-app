@@ -84,6 +84,9 @@ services:
       - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
       # Repositorios clonados para los deploys
       - /var/vicalba/repos:/var/vicalba/repos
+      # Métricas del host — solo lectura
+      - /proc:/host/proc:ro
+      - /:/hostroot:ro,rslave
     depends_on:
       migrate:
         condition: service_completed_successfully
