@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verificarFirmaGitHub } from "@/lib/github/webhook";
-import { deployProyecto } from "@/lib/docker/deploy";
+import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
 
@@ -45,28 +45,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     data: { estado: "deploying" },
   });
 
-  try {
-    await deployProyecto({
-      repoUrl: proyecto.repositorioUrl!,
-      rama: proyecto.rama,
-      clienteSlug: proyecto.cliente.slug,
-      proyectoNombre: proyecto.nombre,
-      servicios: proyecto.servicios.map((s) => s.nombre),
-    });
-    await prisma.proyecto.update({
-      where: { id: proyecto.id },
-      data: {
-        estado: "running",
-        ultimoDeployEn: new Date(),
-        ultimoDeployRama: proyecto.rama,
-      },
-    });
-  } catch {
-    await prisma.proyecto.update({
-      where: { id: proyecto.id },
-      data: { estado: "error" },
-    });
-  }
+  const { resultado } = await ejecutarDeploy({
+    proyectoId: proyecto.id,
+    repoUrl: proyecto.repositorioUrl!,
+    rama: proyecto.rama,
+    clienteSlug: proyecto.cliente.slug,
+    proyectoNombre: proyecto.nombre,
+    servicios: proyecto.servicios.map((s) => s.nombre),
+  });
+
+  await prisma.proyecto.update({
+    where: { id: proyecto.id },
+    data: {
+      estado: resultado === "exito" ? "running" : "error",
+      ...(resultado === "exito"
+        ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
+        : {}),
+    },
+  });
 
   return NextResponse.json({ ok: true, deployed: proyecto.id });
 }
