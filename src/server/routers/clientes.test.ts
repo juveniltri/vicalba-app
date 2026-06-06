@@ -48,6 +48,15 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
 }));
 
+vi.mock("@/lib/crypto", () => ({
+  cifrar: vi.fn().mockReturnValue({
+    valorCifrado: "cifrado-base64",
+    iv: "iv-hex",
+    authTag: "tag-hex",
+  }),
+  descifrar: vi.fn().mockReturnValue("valor-descifrado"),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createCallerFactory, createContext } from "@/server/trpc";
