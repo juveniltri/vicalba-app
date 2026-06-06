@@ -49,6 +49,15 @@ vi.mock("@/lib/docker/networks", () => ({
   eliminarRedCliente: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/crypto", () => ({
+  cifrar: vi.fn().mockReturnValue({
+    valorCifrado: "cifrado-base64",
+    iv: "iv-hex",
+    authTag: "tag-hex",
+  }),
+  descifrar: vi.fn().mockReturnValue("valor-descifrado"),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -1001,5 +1010,72 @@ describe("proyectos.toggleAutoDeploy", () => {
     await expect(
       createCaller(ctx).proyectos.toggleAutoDeploy({ id: "nope" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("proyectos.obtener", () => {
+  const mockProyecto = {
+    id: "p1",
+    nombre: "web-app",
+    clienteId: "c1",
+    estado: "running" as const,
+    dominio: "app.cliente-uno.com",
+    repositorioUrl: "https://github.com/org/web-app",
+    rama: "main",
+    autoDeployHabilitado: false,
+    ultimoDeployEn: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    ultimoDeployRama: "main",
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    cliente: {
+      id: "c1",
+      slug: "cliente-uno",
+      nombre: "Cliente Uno",
+      creadoEn: new Date(),
+    },
+    servicios: [
+      {
+        id: "s1",
+        nombre: "nginx",
+        estado: "running" as const,
+        proyectoId: "p1",
+        creadoEn: new Date(),
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve el proyecto con cliente y servicios", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+    expect(result.nombre).toBe("web-app");
+    expect(result.clienteNombre).toBe("Cliente Uno");
+    expect(result.clienteSlug).toBe("cliente-uno");
+    expect(result.servicios[0].nombre).toBe("nginx");
+  });
+
+  it("mapea ultimoDeployEn a objeto ultimoDeploy", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+    expect(result.ultimoDeploy).not.toBeNull();
+    expect(result.ultimoDeploy?.rama).toBe("main");
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.obtener({ id: "no-existe" }),
+    ).rejects.toThrow("no encontrado");
   });
 });

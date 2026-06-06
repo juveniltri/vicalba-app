@@ -48,6 +48,32 @@ async function findProyectoOrThrow(id: string) {
 }
 
 export const proyectosRouter = router({
+  obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
+    const proyecto = await findProyectoOrThrow(input.id);
+    return {
+      id: proyecto.id,
+      nombre: proyecto.nombre,
+      clienteSlug: proyecto.cliente.slug,
+      clienteNombre: proyecto.cliente.nombre,
+      estado: proyecto.estado,
+      dominio: proyecto.dominio,
+      repositorioUrl: proyecto.repositorioUrl,
+      rama: proyecto.rama,
+      autoDeployHabilitado: proyecto.autoDeployHabilitado,
+      servicios: proyecto.servicios.map((s) => ({
+        nombre: s.nombre,
+        estado: s.estado,
+      })),
+      ultimoDeploy:
+        proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
+          ? {
+              hace: formatHace(proyecto.ultimoDeployEn),
+              rama: proyecto.ultimoDeployRama,
+            }
+          : null,
+    };
+  }),
+
   iniciar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
