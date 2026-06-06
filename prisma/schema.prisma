@@ -84,6 +84,7 @@ model Deploy {
   proyecto     Proyecto        @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
   proyectoId   String
   rama         String
+  sha          String?
   resultado    ResultadoDeploy @default(en_curso)
   output       String?
   iniciadoEn   DateTime        @default(now())
