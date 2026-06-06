@@ -15,7 +15,7 @@ vi.mock("@/lib/prisma", () => ({
     variableEntorno: {
       findMany: vi.fn().mockResolvedValue([]),
     },
-    deploy: { findMany: vi.fn() },
+    deploy: { findMany: vi.fn(), findUnique: vi.fn() },
   },
 }));
 
@@ -1184,11 +1184,12 @@ describe("proyectos.listarDeploys", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("devuelve los últimos deploys del proyecto", async () => {
+  it("devuelve los últimos deploys del proyecto incluyendo sha", async () => {
     const deploys = [
       {
         id: "d1",
         rama: "main",
+        sha: "abc123",
         resultado: "exito",
         output: "ok",
         iniciadoEn: new Date(),
@@ -1205,11 +1206,13 @@ describe("proyectos.listarDeploys", () => {
     expect(result).toHaveLength(1);
     expect(result[0].rama).toBe("main");
     expect(result[0].resultado).toBe("exito");
+    expect(result[0].sha).toBe("abc123");
     expect(prisma.deploy.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { proyectoId: "p1" },
         orderBy: { iniciadoEn: "desc" },
         take: 20,
+        select: expect.objectContaining({ sha: true }),
       }),
     );
   });
@@ -1219,6 +1222,138 @@ describe("proyectos.listarDeploys", () => {
     const ctx = await createContext();
     await expect(
       createCaller(ctx).proyectos.listarDeploys({ proyectoId: "p1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("proyectos.rollback", () => {
+  const mockDeploy = {
+    id: "d1",
+    proyectoId: "p1",
+    rama: "main",
+    sha: "abc123",
+    resultado: "exito" as const,
+    output: "ok",
+    iniciadoEn: new Date(),
+    finalizadoEn: new Date(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue(mockDeploy as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "running",
+    } as never);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+  });
+
+  it("llama a ejecutarDeploy con sha, proyectoId y rama del deploy anterior", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proyectoId: "p1",
+        sha: "abc123",
+        rama: "main",
+        clienteSlug: "cliente-uno",
+        proyectoNombre: "web-app",
+      }),
+    );
+  });
+
+  it("actualiza estado a running cuando ejecutarDeploy retorna exito", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: "p1" },
+        data: expect.objectContaining({ estado: "running" }),
+      }),
+    );
+  });
+
+  it("actualiza estado a error cuando ejecutarDeploy retorna error", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "error",
+      output: "fallo",
+    });
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "error",
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: "error" }),
+      }),
+    );
+  });
+
+  it("lanza NOT_FOUND si el deploy no existe", async () => {
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lanza BAD_REQUEST si resultado no es exito", async () => {
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
+      ...mockDeploy,
+      resultado: "error" as const,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("lanza BAD_REQUEST si sha es null", async () => {
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
+      ...mockDeploy,
+      sha: null,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("lanza CONFLICT si el proyecto está en estado deploying", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      estado: "deploying" as const,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("requiere autenticación", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

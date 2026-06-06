@@ -308,10 +308,71 @@ export const proyectosRouter = router({
         select: {
           id: true,
           rama: true,
+          sha: true,
           resultado: true,
           output: true,
           iniciadoEn: true,
           finalizadoEn: true,
+        },
+      });
+    }),
+
+  rollback: protectedProcedure
+    .input(z.object({ deployId: z.string() }))
+    .mutation(async ({ input }) => {
+      const deploy = await prisma.deploy.findUnique({
+        where: { id: input.deployId },
+      });
+      if (!deploy)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Deploy no encontrado",
+        });
+      if (deploy.resultado !== "exito" || !deploy.sha)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Solo se puede hacer rollback de deploys exitosos con SHA registrado",
+        });
+
+      const proyecto = await findProyectoOrThrow(deploy.proyectoId);
+      if (proyecto.estado === "deploying")
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "El proyecto ya está en proceso de deploy",
+        });
+
+      await prisma.proyecto.update({
+        where: { id: deploy.proyectoId },
+        data: { estado: "deploying" },
+      });
+
+      const variablesDB = await prisma.variableEntorno.findMany({
+        where: { proyectoId: deploy.proyectoId },
+      });
+      const variables = variablesDB.map((v) => ({
+        clave: v.clave,
+        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+      }));
+
+      const { resultado } = await ejecutarDeploy({
+        proyectoId: deploy.proyectoId,
+        repoUrl: proyecto.repositorioUrl!,
+        rama: deploy.rama,
+        sha: deploy.sha,
+        clienteSlug: proyecto.cliente.slug,
+        proyectoNombre: proyecto.nombre,
+        servicios: proyecto.servicios.map((s) => s.nombre),
+        variables,
+      });
+
+      return prisma.proyecto.update({
+        where: { id: deploy.proyectoId },
+        data: {
+          estado: resultado === "exito" ? "running" : "error",
+          ...(resultado === "exito"
+            ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
+            : {}),
         },
       });
     }),
