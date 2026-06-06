@@ -23,6 +23,7 @@ import {
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
 import { leerEstadoSSL } from "@/lib/ssl/acme";
+import { enviarNotificacion } from "@/lib/notificaciones";
 
 const proyectoInput = z.object({
   nombre: z
@@ -296,7 +297,7 @@ export const proyectosRouter = router({
       valor: descifrar(v.valorCifrado, v.iv, v.authTag),
     }));
 
-    const { resultado } = await ejecutarDeploy({
+    const { resultado, output } = await ejecutarDeploy({
       proyectoId: input.id,
       repoUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
@@ -305,6 +306,15 @@ export const proyectosRouter = router({
       servicios: proyecto.servicios.map((s) => s.nombre),
       variables,
     });
+
+    enviarNotificacion({
+      proyectoNombre: proyecto.nombre,
+      clienteSlug: proyecto.cliente.slug,
+      rama: proyecto.rama,
+      sha: null,
+      resultado,
+      output,
+    }).catch(() => {});
 
     return prisma.proyecto.update({
       where: { id: input.id },
@@ -384,7 +394,7 @@ export const proyectosRouter = router({
         valor: descifrar(v.valorCifrado, v.iv, v.authTag),
       }));
 
-      const { resultado } = await ejecutarDeploy({
+      const { resultado, output } = await ejecutarDeploy({
         proyectoId: deploy.proyectoId,
         repoUrl: proyecto.repositorioUrl!,
         rama: deploy.rama,
@@ -394,6 +404,15 @@ export const proyectosRouter = router({
         servicios: proyecto.servicios.map((s) => s.nombre),
         variables,
       });
+
+      enviarNotificacion({
+        proyectoNombre: proyecto.nombre,
+        clienteSlug: proyecto.cliente.slug,
+        rama: deploy.rama,
+        sha: deploy.sha ?? null,
+        resultado,
+        output,
+      }).catch(() => {});
 
       return prisma.proyecto.update({
         where: { id: deploy.proyectoId },

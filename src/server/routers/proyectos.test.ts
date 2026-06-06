@@ -71,6 +71,10 @@ vi.mock("@/lib/ssl/acme", () => ({
   leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true }),
 }));
 
+vi.mock("@/lib/notificaciones", () => ({
+  enviarNotificacion: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -92,6 +96,7 @@ import {
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
 import { leerEstadoSSL } from "@/lib/ssl/acme";
+import { enviarNotificacion } from "@/lib/notificaciones";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -1552,5 +1557,200 @@ describe("proyectos.estadoSSL", () => {
     await expect(
       createCaller(ctx).proyectos.estadoSSL({ dominio: "app.ejemplo.com" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("proyectos.deploy — notificaciones", () => {
+  const mockProyectoParaDeploy = {
+    id: "p1",
+    nombre: "web-app",
+    clienteId: "c1",
+    estado: "stopped" as const,
+    dominio: null,
+    repositorioUrl: "https://github.com/org/repo",
+    rama: "main",
+    autoDeployHabilitado: false,
+    ultimoDeployEn: null,
+    ultimoDeployRama: null,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    cliente: {
+      id: "c1",
+      slug: "cliente-uno",
+      nombre: "Cliente Uno",
+      creadoEn: new Date(),
+    },
+    servicios: [
+      {
+        id: "s1",
+        nombre: "nginx",
+        estado: "stopped" as const,
+        proyectoId: "p1",
+        creadoEn: new Date(),
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyectoParaDeploy as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(
+      mockProyectoParaDeploy as never,
+    );
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(enviarNotificacion).mockResolvedValue(undefined);
+  });
+
+  it("llama enviarNotificacion tras deploy exitoso", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "Build OK",
+    });
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(enviarNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proyectoNombre: "web-app",
+        clienteSlug: "cliente-uno",
+        rama: "main",
+        resultado: "exito",
+        output: "Build OK",
+      }),
+    );
+  });
+
+  it("llama enviarNotificacion tras deploy fallido", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "error",
+      output: "Build failed",
+    });
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(enviarNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({ resultado: "error", output: "Build failed" }),
+    );
+  });
+
+  it("enviarNotificacion que falla no rompe el resultado del deploy", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "ok",
+    });
+    vi.mocked(enviarNotificacion).mockRejectedValue(new Error("notif falló"));
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).resolves.toBeDefined();
+  });
+});
+
+describe("proyectos.rollback — notificaciones", () => {
+  const mockDeploy = {
+    id: "d1",
+    proyectoId: "p1",
+    rama: "main",
+    sha: "deadbeef",
+    resultado: "exito" as const,
+    output: "prev build",
+    iniciadoEn: new Date(),
+    finalizadoEn: new Date(),
+  };
+
+  const mockProyectoParaRollback = {
+    id: "p1",
+    nombre: "web-app",
+    clienteId: "c1",
+    estado: "running" as const,
+    dominio: null,
+    repositorioUrl: "https://github.com/org/repo",
+    rama: "main",
+    autoDeployHabilitado: false,
+    ultimoDeployEn: null,
+    ultimoDeployRama: null,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    cliente: {
+      id: "c1",
+      slug: "cliente-uno",
+      nombre: "Cliente Uno",
+      creadoEn: new Date(),
+    },
+    servicios: [
+      {
+        id: "s1",
+        nombre: "nginx",
+        estado: "running" as const,
+        proyectoId: "p1",
+        creadoEn: new Date(),
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue(mockDeploy as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyectoParaRollback as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(
+      mockProyectoParaRollback as never,
+    );
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(enviarNotificacion).mockResolvedValue(undefined);
+  });
+
+  it("llama enviarNotificacion tras rollback exitoso con el sha correcto", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "Rollback OK",
+    });
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(enviarNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proyectoNombre: "web-app",
+        sha: "deadbeef",
+        resultado: "exito",
+        output: "Rollback OK",
+      }),
+    );
+  });
+
+  it("llama enviarNotificacion tras rollback fallido", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "error",
+      output: "Rollback failed",
+    });
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(enviarNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({ resultado: "error" }),
+    );
+  });
+
+  it("enviarNotificacion que falla no rompe el resultado del rollback", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "ok",
+    });
+    vi.mocked(enviarNotificacion).mockRejectedValue(new Error("notif falló"));
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).resolves.toBeDefined();
   });
 });
