@@ -1,7 +1,7 @@
 // src/server/routers/proyectos.ts
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { deployProyecto } from "@/lib/docker/deploy";
+import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { descifrar } from "@/lib/crypto";
 import {
   DockerError,
@@ -259,37 +259,31 @@ export const proyectosRouter = router({
       data: { estado: "deploying" },
     });
 
-    try {
-      const variablesDB = await prisma.variableEntorno.findMany({
-        where: { proyectoId: input.id },
-      });
-      const variables = variablesDB.map((v) => ({
-        clave: v.clave,
-        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-      }));
+    const variablesDB = await prisma.variableEntorno.findMany({
+      where: { proyectoId: input.id },
+    });
+    const variables = variablesDB.map((v) => ({
+      clave: v.clave,
+      valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+    }));
 
-      await deployProyecto({
-        repoUrl: proyecto.repositorioUrl,
-        rama: proyecto.rama,
-        clienteSlug: proyecto.cliente.slug,
-        proyectoNombre: proyecto.nombre,
-        servicios: proyecto.servicios.map((s) => s.nombre),
-        variables,
-      });
-    } catch (err) {
-      await prisma.proyecto.update({
-        where: { id: input.id },
-        data: { estado: "error" },
-      });
-      throw err;
-    }
+    const { resultado } = await ejecutarDeploy({
+      proyectoId: input.id,
+      repoUrl: proyecto.repositorioUrl,
+      rama: proyecto.rama,
+      clienteSlug: proyecto.cliente.slug,
+      proyectoNombre: proyecto.nombre,
+      servicios: proyecto.servicios.map((s) => s.nombre),
+      variables,
+    });
 
     return prisma.proyecto.update({
       where: { id: input.id },
       data: {
-        estado: "running",
-        ultimoDeployEn: new Date(),
-        ultimoDeployRama: proyecto.rama,
+        estado: resultado === "exito" ? "running" : "error",
+        ...(resultado === "exito"
+          ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
+          : {}),
       },
     });
   }),
@@ -301,6 +295,24 @@ export const proyectosRouter = router({
       return prisma.proyecto.update({
         where: { id: input.id },
         data: { autoDeployHabilitado: !proyecto.autoDeployHabilitado },
+      });
+    }),
+
+  listarDeploys: protectedProcedure
+    .input(z.object({ proyectoId: z.string() }))
+    .query(async ({ input }) => {
+      return prisma.deploy.findMany({
+        where: { proyectoId: input.proyectoId },
+        orderBy: { iniciadoEn: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          rama: true,
+          resultado: true,
+          output: true,
+          iniciadoEn: true,
+          finalizadoEn: true,
+        },
       });
     }),
 

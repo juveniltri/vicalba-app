@@ -15,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
     variableEntorno: {
       findMany: vi.fn().mockResolvedValue([]),
     },
+    deploy: { findMany: vi.fn() },
   },
 }));
 
@@ -43,8 +44,8 @@ vi.mock("@/lib/traefik/config", () => ({
   eliminarConfigTraefik: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/docker/deploy", () => ({
-  deployProyecto: vi.fn().mockResolvedValue(undefined),
+vi.mock("@/lib/docker/deploys", () => ({
+  ejecutarDeploy: vi.fn().mockResolvedValue({ resultado: "exito", output: "" }),
 }));
 
 vi.mock("@/lib/docker/networks", () => ({
@@ -74,7 +75,7 @@ import {
   escribirConfigTraefik,
   eliminarConfigTraefik,
 } from "@/lib/traefik/config";
-import { deployProyecto } from "@/lib/docker/deploy";
+import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
 import { createCallerFactory, createContext } from "@/server/trpc";
@@ -869,10 +870,13 @@ describe("proyectos.deploy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(deployProyecto).mockResolvedValue(undefined);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
   });
 
-  it("llama a deployProyecto y actualiza estado a running con ultimoDeploy", async () => {
+  it("llama a ejecutarDeploy con proyectoId y actualiza estado a running en éxito", async () => {
     const proyecto = {
       ...mockProyecto,
       repositorioUrl: "https://github.com/org/repo",
@@ -887,8 +891,9 @@ describe("proyectos.deploy", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.deploy({ id: "p1" });
 
-    expect(deployProyecto).toHaveBeenCalledWith(
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
       expect.objectContaining({
+        proyectoId: "p1",
         repoUrl: "https://github.com/org/repo",
         rama: "main",
         clienteSlug: "cliente-uno",
@@ -903,6 +908,31 @@ describe("proyectos.deploy", () => {
       }),
     );
     expect(result.estado).toBe("running");
+  });
+
+  it("actualiza estado a error cuando ejecutarDeploy retorna error", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: "https://github.com/org/repo",
+    } as never);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "error",
+      output: "build failed",
+    });
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "error",
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: "error" }),
+      }),
+    );
+    expect(result.estado).toBe("error");
   });
 
   it("lanza CONFLICT si el proyecto está en estado deploying", async () => {
@@ -927,26 +957,6 @@ describe("proyectos.deploy", () => {
     await expect(
       createCaller(ctx).proyectos.deploy({ id: "p1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-  });
-
-  it("establece estado a error y relanza si deployProyecto falla", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      repositorioUrl: "https://github.com/org/repo",
-    } as never);
-    vi.mocked(deployProyecto).mockRejectedValue(new Error("build failed"));
-    vi.mocked(prisma.proyecto.update).mockResolvedValue(mockProyecto as never);
-
-    const ctx = await createContext();
-    await expect(
-      createCaller(ctx).proyectos.deploy({ id: "p1" }),
-    ).rejects.toThrow("build failed");
-
-    expect(prisma.proyecto.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ estado: "error" }),
-      }),
-    );
   });
 
   it("lanza NOT_FOUND si el proyecto no existe", async () => {
@@ -1127,9 +1137,13 @@ describe("proyectos.deploy — con variables de entorno", () => {
       ...mockProyectoConRepo,
       estado: "running",
     } as never);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
   });
 
-  it("descifra variables y las pasa a deployProyecto", async () => {
+  it("descifra variables y las pasa a ejecutarDeploy", async () => {
     vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
       {
         id: "v1",
@@ -1147,19 +1161,64 @@ describe("proyectos.deploy — con variables de entorno", () => {
     await createCaller(ctx).proyectos.deploy({ id: "p1" });
 
     expect(descifrar).toHaveBeenCalledWith("cifrado", "iv", "tag");
-    expect(deployProyecto).toHaveBeenCalledWith(
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
       expect.objectContaining({
         variables: [{ clave: "DATABASE_URL", valor: "valor-descifrado" }],
       }),
     );
   });
 
-  it("llama a deployProyecto con variables vacías si no hay ninguna", async () => {
+  it("llama a ejecutarDeploy con variables vacías si no hay ninguna", async () => {
     vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
     const ctx = await createContext();
     await createCaller(ctx).proyectos.deploy({ id: "p1" });
-    expect(deployProyecto).toHaveBeenCalledWith(
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
       expect.objectContaining({ variables: [] }),
     );
+  });
+});
+
+describe("proyectos.listarDeploys", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve los últimos deploys del proyecto", async () => {
+    const deploys = [
+      {
+        id: "d1",
+        rama: "main",
+        resultado: "exito",
+        output: "ok",
+        iniciadoEn: new Date(),
+        finalizadoEn: new Date(),
+      },
+    ];
+    vi.mocked(prisma.deploy.findMany).mockResolvedValue(deploys as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listarDeploys({
+      proyectoId: "p1",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].rama).toBe("main");
+    expect(result[0].resultado).toBe("exito");
+    expect(prisma.deploy.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { proyectoId: "p1" },
+        orderBy: { iniciadoEn: "desc" },
+        take: 20,
+      }),
+    );
+  });
+
+  it("requiere autenticación", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.listarDeploys({ proyectoId: "p1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
