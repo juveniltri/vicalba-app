@@ -36,7 +36,21 @@ export const configuracionRouter = router({
       where: { id: "default" },
     });
     if (!config) return null;
-    return { ...config, emailSmtpPass: null };
+    return {
+      id: config.id,
+      webhookHabilitado: config.webhookHabilitado,
+      webhookUrl: config.webhookUrl,
+      emailHabilitado: config.emailHabilitado,
+      emailSmtpHost: config.emailSmtpHost,
+      emailSmtpPort: config.emailSmtpPort,
+      emailSmtpUser: config.emailSmtpUser,
+      emailSmtpPass: null,
+      emailRemitente: config.emailRemitente,
+      emailDestinatario: config.emailDestinatario,
+      telegramHabilitado: config.telegramHabilitado,
+      telegramBotToken: config.telegramBotToken,
+      telegramChatId: config.telegramChatId,
+    };
   }),
 
   guardar: protectedProcedure

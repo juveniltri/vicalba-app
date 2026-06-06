@@ -194,6 +194,23 @@ describe("configuracion.guardar — email", () => {
     expect(updateArg.update.emailSmtpPassIv).toBe("iv123");
     expect(updateArg.update.emailSmtpPassTag).toBe("tag123");
   });
+
+  it("no cifra si smtpPass no viene en el input", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).configuracion.guardar({
+      email: {
+        habilitado: true,
+        smtpHost: "smtp.ejemplo.com",
+        // smtpPass ausente
+      },
+    });
+
+    expect(mockCifrar).not.toHaveBeenCalled();
+    const updateArg = mockUpsert.mock.calls[0][0] as {
+      update: Record<string, unknown>;
+    };
+    expect(Object.keys(updateArg.update)).not.toContain("emailSmtpPass");
+  });
 });
 
 describe("configuracion.guardar — telegram", () => {
@@ -222,5 +239,18 @@ describe("configuracion.guardar — telegram", () => {
         }),
       }),
     );
+  });
+
+  it("guarda null cuando botToken y chatId no vienen", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).configuracion.guardar({
+      telegram: { habilitado: false },
+    });
+
+    const updateArg = mockUpsert.mock.calls[0][0] as {
+      update: Record<string, unknown>;
+    };
+    expect(updateArg.update.telegramBotToken).toBeNull();
+    expect(updateArg.update.telegramChatId).toBeNull();
   });
 });

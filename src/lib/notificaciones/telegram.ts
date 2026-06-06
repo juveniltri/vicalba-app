@@ -11,19 +11,18 @@ export async function enviarTelegram(
 
     const emoji = payload.resultado === "exito" ? "✅" : "❌";
     const text = [
-      `${emoji} *Deploy ${payload.resultado}* — ${payload.proyectoNombre}`,
-      `Rama: \`${payload.rama}\``,
-      `SHA: \`${payload.sha ?? "—"}\``,
+      `${emoji} Deploy ${payload.resultado} — ${payload.proyectoNombre}`,
+      `Rama: ${payload.rama}`,
+      `SHA: ${payload.sha ?? "—"}`,
       "",
-      "```",
+      "Output (últimas 20 líneas):",
       outputTruncado,
-      "```",
     ].join("\n");
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+      body: JSON.stringify({ chat_id: chatId, text }),
     });
   } catch {
     // absorb

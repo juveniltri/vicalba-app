@@ -54,6 +54,30 @@ describe("enviarTelegram", () => {
     expect(body.text).not.toContain("Línea 10");
   });
 
+  it("muestra '—' cuando sha es null", async () => {
+    await enviarTelegram("bot-token-123", "chat-456", {
+      ...payload,
+      sha: null,
+    });
+
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    ) as { text: string };
+    expect(body.text).toContain("SHA: —");
+  });
+
+  it("usa emoji ✅ cuando resultado es exito", async () => {
+    await enviarTelegram("bot-token-123", "chat-456", {
+      ...payload,
+      resultado: "exito" as const,
+    });
+
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    ) as { text: string };
+    expect(body.text).toContain("✅");
+  });
+
   it("no lanza si fetch falla", async () => {
     mockFetch.mockRejectedValue(new Error("network error"));
 

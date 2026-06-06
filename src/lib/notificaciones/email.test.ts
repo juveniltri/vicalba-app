@@ -65,6 +65,13 @@ describe("enviarEmail", () => {
     expect(mailOptions.text).not.toContain("Línea 10");
   });
 
+  it("muestra '—' en el cuerpo cuando sha es null", async () => {
+    await enviarEmail(smtpConfig, { ...payload, sha: null });
+
+    const mailOptions = mockSendMail.mock.calls[0][0] as { text: string };
+    expect(mailOptions.text).toContain("SHA: —");
+  });
+
   it("no lanza si nodemailer falla", async () => {
     mockSendMail.mockRejectedValue(new Error("SMTP error"));
 
