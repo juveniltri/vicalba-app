@@ -270,6 +270,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fase 4: CRUD (clientes router, proyectos.crear/editar/eliminar, formularios modales, dashboard interactivo)
   - Fase 5: Deploy (HMAC webhook GitHub, Traefik config dinámica, deployProyecto lib, auto-deploy toggle, security review aplicado)
   - Fase 6: Redes Docker por cliente (cliente-[slug]-network, compose override, asegurar/eliminar en crear/eliminar proyecto), health check real (DB + Docker daemon, 503 si degraded)
+  - Rollback: campo sha en Deploy, deployProyecto retorna sha, procedure rollback, botón Rollback en historial (303 tests)
 - **En construcción:** —
 - **Bloqueado / pendiente:** —
-- **Próximo hito:** —
+- **Próximo hito:** Gestión de dominios + Notificaciones de deploy
