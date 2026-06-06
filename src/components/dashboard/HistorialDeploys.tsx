@@ -3,13 +3,22 @@ import { formatHace } from "@/lib/formatHace";
 type Deploy = {
   id: string;
   rama: string;
+  sha: string | null;
   resultado: "en_curso" | "exito" | "error";
   output: string | null;
   iniciadoEn: Date;
   finalizadoEn: Date | null;
 };
 
-export function HistorialDeploys({ deploys }: { deploys: Deploy[] }) {
+export function HistorialDeploys({
+  deploys,
+  isDeploying,
+  onRollback,
+}: {
+  deploys: Deploy[];
+  isDeploying: boolean;
+  onRollback: (deployId: string) => Promise<unknown>;
+}) {
   if (deploys.length === 0) {
     return (
       <p className="font-body text-sm text-text-muted">
@@ -54,6 +63,21 @@ export function HistorialDeploys({ deploys }: { deploys: Deploy[] }) {
               <span className="font-body text-xs text-text-muted">
                 {duracion}
               </span>
+              {d.resultado === "exito" && d.sha && (
+                <form
+                  action={async () => {
+                    await onRollback(d.id);
+                  }}
+                >
+                  <button
+                    type="submit"
+                    disabled={isDeploying}
+                    className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
+                  >
+                    Rollback
+                  </button>
+                </form>
+              )}
             </div>
             {d.output && (
               <details className="mt-3">

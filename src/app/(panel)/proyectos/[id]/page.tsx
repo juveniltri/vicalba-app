@@ -9,6 +9,7 @@ import {
   detenerAction,
   iniciarAction,
   restartAction,
+  rollbackAction,
   toggleAutoDeployAction,
 } from "@/app/(panel)/actions";
 
@@ -165,7 +166,11 @@ export default async function DetalleProyectoPage({
 
       {/* Historial de deploys */}
       <Section titulo="Historial de deploys">
-        <HistorialDeploys deploys={deploys} />
+        <HistorialDeploys
+          deploys={deploys}
+          isDeploying={isDeploying}
+          onRollback={rollbackAction}
+        />
       </Section>
     </div>
   );

@@ -201,3 +201,14 @@ export async function revelarVariableAction(
     };
   }
 }
+
+export async function rollbackAction(deployId: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.rollback({ deployId });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al hacer rollback",
+    };
+  }
+}
