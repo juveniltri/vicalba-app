@@ -18,6 +18,11 @@ import {
   generarConfigTraefik,
 } from "@/lib/traefik/config";
 import { protectedProcedure, router } from "@/server/trpc";
+import {
+  conectarTraefikARed,
+  desconectarTraefikDeRed,
+} from "@/lib/docker/traefik";
+import { leerEstadoSSL } from "@/lib/ssl/acme";
 
 const proyectoInput = z.object({
   nombre: z
@@ -173,6 +178,7 @@ export const proyectosRouter = router({
           clienteSlug: creado.cliente.slug,
         });
         await escribirConfigTraefik(creado.nombre, yaml);
+        await conectarTraefikARed(creado.cliente.slug);
       }
 
       return creado;
@@ -218,6 +224,20 @@ export const proyectosRouter = router({
         await eliminarConfigTraefik(proyecto.nombre);
       }
 
+      if (!proyecto.dominio && actualizado.dominio) {
+        await conectarTraefikARed(actualizado.cliente.slug);
+      } else if (proyecto.dominio && !actualizado.dominio) {
+        const otrosConDominio = await prisma.proyecto.count({
+          where: {
+            clienteId: proyecto.clienteId,
+            dominio: { not: null },
+            id: { not: input.id },
+          },
+        });
+        if (otrosConDominio === 0)
+          await desconectarTraefikDeRed(actualizado.cliente.slug);
+      }
+
       return actualizado;
     }),
 
@@ -232,6 +252,15 @@ export const proyectosRouter = router({
     await prisma.proyecto.delete({ where: { id: input.id } });
     if (proyecto.dominio) {
       await eliminarConfigTraefik(proyecto.nombre);
+      const otrosConDominio = await prisma.proyecto.count({
+        where: {
+          clienteId: proyecto.clienteId,
+          dominio: { not: null },
+          id: { not: input.id },
+        },
+      });
+      if (otrosConDominio === 0)
+        await desconectarTraefikDeRed(proyecto.cliente.slug);
     }
     const restantes = await prisma.proyecto.count({
       where: { clienteId: proyecto.clienteId },
@@ -375,6 +404,12 @@ export const proyectosRouter = router({
             : {}),
         },
       });
+    }),
+
+  estadoSSL: protectedProcedure
+    .input(z.object({ dominio: z.string() }))
+    .query(async ({ input }) => {
+      return leerEstadoSSL(input.dominio);
     }),
 
   listar: protectedProcedure.query(async () => {

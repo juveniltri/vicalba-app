@@ -62,6 +62,15 @@ vi.mock("@/lib/crypto", () => ({
   descifrar: vi.fn().mockReturnValue("valor-descifrado"),
 }));
 
+vi.mock("@/lib/docker/traefik", () => ({
+  conectarTraefikARed: vi.fn().mockResolvedValue(undefined),
+  desconectarTraefikDeRed: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/ssl/acme", () => ({
+  leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true, expira: null }),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import {
@@ -78,6 +87,11 @@ import {
 import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
+import {
+  conectarTraefikARed,
+  desconectarTraefikDeRed,
+} from "@/lib/docker/traefik";
+import { leerEstadoSSL } from "@/lib/ssl/acme";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -1354,6 +1368,189 @@ describe("proyectos.rollback", () => {
     const ctx = await createContext();
     await expect(
       createCaller(ctx).proyectos.rollback({ deployId: "d1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("proyectos — integración Traefik redes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(conectarTraefikARed).mockResolvedValue(undefined);
+    vi.mocked(desconectarTraefikDeRed).mockResolvedValue(undefined);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+  });
+
+  it("crear con dominio llama conectarTraefikARed", async () => {
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "app.ejemplo.com",
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      dominio: "app.ejemplo.com",
+      servicios: ["nginx"],
+    });
+
+    expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
+  });
+
+  it("crear sin dominio no llama conectarTraefikARed", async () => {
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(conectarTraefikARed).not.toHaveBeenCalled();
+  });
+
+  it("editar añadiendo dominio llama conectarTraefikARed", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "nuevo.ejemplo.com",
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      dominio: "nuevo.ejemplo.com",
+      servicios: ["nginx"],
+    });
+
+    expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
+  });
+
+  it("editar quitando dominio (sin otros con dominio) llama desconectarTraefikDeRed", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "viejo.ejemplo.com",
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(desconectarTraefikDeRed).toHaveBeenCalledWith("cliente-uno");
+  });
+
+  it("editar quitando dominio (hay otros con dominio) no llama desconectarTraefikDeRed", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "viejo.ejemplo.com",
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: mockClienteRow,
+    } as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      servicios: ["nginx"],
+    });
+
+    expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
+  });
+
+  it("eliminar con dominio (último del cliente) llama desconectarTraefikDeRed", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "app.ejemplo.com",
+    } as never);
+    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
+      count: 1,
+    } as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+    vi.mocked(prisma.proyecto.count)
+      .mockResolvedValueOnce(0) // otrosConDominio
+      .mockResolvedValueOnce(0); // restantes (para eliminarRedCliente)
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(desconectarTraefikDeRed).toHaveBeenCalledWith("cliente-uno");
+  });
+
+  it("eliminar con dominio (quedan otros con dominio) no llama desconectarTraefikDeRed", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: "app.ejemplo.com",
+    } as never);
+    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
+      count: 1,
+    } as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+    vi.mocked(prisma.proyecto.count)
+      .mockResolvedValueOnce(1) // otrosConDominio
+      .mockResolvedValueOnce(1); // restantes
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos.estadoSSL", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve el estado SSL del dominio", async () => {
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true, expira: null });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.estadoSSL({
+      dominio: "app.ejemplo.com",
+    });
+
+    expect(leerEstadoSSL).toHaveBeenCalledWith("app.ejemplo.com");
+    expect(result).toEqual({ activo: true, expira: null });
+  });
+
+  it("requiere autenticación", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.estadoSSL({ dominio: "app.ejemplo.com" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
