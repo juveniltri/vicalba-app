@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
+import { createServerCaller } from "@/server/caller";
+import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
 
 export default async function ConfiguracionPage() {
   const session = await auth();
   if (!session) redirect("/login");
+
+  const api = await createServerCaller();
+  const config = await api.configuracion.obtener();
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
 
@@ -31,6 +36,13 @@ export default async function ConfiguracionPage() {
             label="Secret"
             valor="Ver variable GITHUB_WEBHOOK_SECRET en el servidor"
           />
+        </Section>
+
+        <Section titulo="Notificaciones">
+          <p className="font-body text-xs text-text-muted mb-3">
+            Configura alertas cuando un deploy termine en éxito o error.
+          </p>
+          <ConfiguracionNotificaciones config={config} />
         </Section>
 
         <Section titulo="Sistema">
