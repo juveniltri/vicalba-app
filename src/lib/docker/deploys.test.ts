@@ -26,7 +26,6 @@ const baseParams = {
   rama: "main",
   clienteSlug: "acme",
   proyectoNombre: "web-app",
-  servicios: ["nginx"],
 };
 
 describe("ejecutarDeploy", () => {
@@ -153,5 +152,12 @@ describe("ejecutarDeploy", () => {
     mockDeployUpdate.mockRejectedValue(new Error("DB down"));
     const result = await ejecutarDeploy(baseParams);
     expect(result.resultado).toBe("error");
+  });
+
+  it("no incluye servicios en los params pasados a deployProyecto", async () => {
+    mockDeployProyecto.mockResolvedValue({ output: "", sha: "sha1" });
+    await ejecutarDeploy(baseParams);
+    const call = mockDeployProyecto.mock.calls[0][0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty("servicios");
   });
 });

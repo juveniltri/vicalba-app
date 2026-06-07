@@ -1,13 +1,47 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecFile, mockWriteFile, mockMkdir, mockUnlink } = vi.hoisted(
-  () => ({
-    mockExecFile: vi.fn(),
+const {
+  mockExecFile,
+  mockWriteFile,
+  mockMkdir,
+  mockUnlink,
+  mockListContainers,
+  mockConnect,
+  mockGetNetwork,
+} = vi.hoisted(() => {
+  const execFileMock = vi.fn();
+  // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
+  const customSymbol = Symbol.for("nodejs.util.promisify.custom");
+  (
+    execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>
+  )[customSymbol] = (
+    cmd: unknown,
+    args: unknown,
+  ): Promise<{ stdout: string; stderr: string }> =>
+    new Promise((resolve, reject) => {
+      execFileMock(
+        cmd,
+        args,
+        (
+          err: Error | null,
+          stdout: string,
+          stderr: string,
+        ) => {
+          if (err) reject(err);
+          else resolve({ stdout, stderr });
+        },
+      );
+    });
+  return {
+    mockExecFile: execFileMock,
     mockWriteFile: vi.fn().mockResolvedValue(undefined),
     mockMkdir: vi.fn().mockResolvedValue(undefined),
     mockUnlink: vi.fn().mockResolvedValue(undefined),
-  }),
-);
+    mockListContainers: vi.fn().mockResolvedValue([]),
+    mockConnect: vi.fn().mockResolvedValue(undefined),
+    mockGetNetwork: vi.fn(),
+  };
+});
 
 vi.mock("node:child_process", () => ({ execFile: mockExecFile }));
 vi.mock("node:fs/promises", () => ({
@@ -19,7 +53,16 @@ vi.mock("@/env", () => ({
   env: {
     REPOS_DIR: "/var/vicalba/repos",
     DOCKER_SOCKET_PATH: "/var/run/docker.sock",
+    NODE_ENV: "test",
   },
+}));
+vi.mock("dockerode", () => ({
+  default: vi.fn().mockImplementation(function () {
+    return {
+      listContainers: mockListContainers,
+      getNetwork: mockGetNetwork,
+    };
+  }),
 }));
 
 import { deployProyecto } from "./deploy";
@@ -29,7 +72,6 @@ const baseParams = {
   rama: "main",
   clienteSlug: "acme",
   proyectoNombre: "web-app",
-  servicios: ["nginx", "node"],
 };
 
 describe("deployProyecto", () => {
@@ -37,9 +79,8 @@ describe("deployProyecto", () => {
     vi.clearAllMocks();
     mockWriteFile.mockResolvedValue(undefined);
     mockMkdir.mockResolvedValue(undefined);
-  });
-
-  it("escribe el compose override con la red del cliente y los servicios", async () => {
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -47,30 +88,9 @@ describe("deployProyecto", () => {
         cb: (err: null, stdout: string, stderr: string) => void,
       ) => cb(null, "", ""),
     );
-
-    await deployProyecto(baseParams);
-
-    const overridePath =
-      "/var/vicalba/repos/acme/web-app/docker-compose.network.yml";
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      overridePath,
-      expect.stringContaining("cliente-acme-network"),
-      "utf-8",
-    );
-    const yaml = vi.mocked(mockWriteFile).mock.calls[0][1] as string;
-    expect(yaml).toContain("nginx");
-    expect(yaml).toContain("node");
   });
 
-  it("ejecuta docker compose con el override de red", async () => {
-    mockExecFile.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        cb: (err: null, stdout: string, stderr: string) => void,
-      ) => cb(null, "", ""),
-    );
-
+  it("ejecuta docker compose con -p projectSlug y sin override de red", async () => {
     await deployProyecto(baseParams);
 
     const composeCalls = vi
@@ -78,9 +98,45 @@ describe("deployProyecto", () => {
       .mock.calls.filter(([cmd]) => cmd === "docker");
     expect(composeCalls.length).toBeGreaterThan(0);
     const composeArgs = composeCalls[composeCalls.length - 1][1] as string[];
+    expect(composeArgs).toContain("-p");
+    expect(composeArgs).toContain("acme-web-app");
     expect(
       composeArgs.some((a) => a.includes("docker-compose.network.yml")),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("no escribe ningún archivo override de red", async () => {
+    await deployProyecto(baseParams);
+
+    const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
+    const overrideCall = writeFileCalls.find((c) =>
+      String(c[0]).includes("network.yml"),
+    );
+    expect(overrideCall).toBeUndefined();
+  });
+
+  it("conecta los contenedores del proyecto a la red del cliente tras el deploy", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/web"] }]);
+
+    await deployProyecto(baseParams);
+
+    expect(mockListContainers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: {
+          label: ["com.docker.compose.project=acme-web-app"],
+        },
+      }),
+    );
+    expect(mockConnect).toHaveBeenCalledWith({ Container: "c1" });
+  });
+
+  it("ignora silenciosamente el error 'already exists' al conectar a la red", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/web"] }]);
+    mockConnect.mockRejectedValueOnce(
+      new Error("already exists in network"),
+    );
+
+    await expect(deployProyecto(baseParams)).resolves.toBeDefined();
   });
 });
 
@@ -90,6 +146,8 @@ describe("deployProyecto con variables de entorno", () => {
     mockWriteFile.mockResolvedValue(undefined);
     mockMkdir.mockResolvedValue(undefined);
     mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -170,6 +228,8 @@ describe("deployProyecto — captura de SHA y path con sha", () => {
     vi.clearAllMocks();
     mockWriteFile.mockResolvedValue(undefined);
     mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
   });
 
   it("sin sha: hace checkout de la rama y retorna el sha capturado", async () => {
@@ -238,14 +298,29 @@ describe("deployProyecto — captura de SHA y path con sha", () => {
     const gitCalls = vi
       .mocked(mockExecFile)
       .mock.calls.filter(([cmd]) => cmd === "git");
-    // La única llamada pull viene de ensureRepo, no del path sha
     const fetchCalls = gitCalls.filter(([, a]) => a[2] === "fetch");
-    // Con sha hay fetch pero no pull explícito después de checkout
     expect(fetchCalls.length).toBeGreaterThan(0);
     const checkoutIdx = gitCalls.findIndex(([, a]) => a[2] === "checkout");
     const pullAfterCheckout = gitCalls
       .slice(checkoutIdx + 1)
       .filter(([, a]) => a[2] === "pull");
     expect(pullAfterCheckout).toHaveLength(0);
+  });
+
+  it("usa stdout.trim() directamente para capturar el sha", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[2] === "rev-parse" && args[3] === "HEAD")
+          return cb(null, "  cafebabe  \n", "");
+        cb(null, "", "");
+      },
+    );
+
+    const result = await deployProyecto(baseParams);
+    expect(result.sha).toBe("cafebabe");
   });
 });

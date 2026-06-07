@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
@@ -59,6 +60,7 @@ export default async function DetalleProyectoPage({
             action={async () => {
               "use server";
               await iniciarAction(id);
+              revalidatePath(`/proyectos/${id}`);
             }}
           >
             <button
@@ -73,6 +75,7 @@ export default async function DetalleProyectoPage({
             action={async () => {
               "use server";
               await detenerAction(id);
+              revalidatePath(`/proyectos/${id}`);
             }}
           >
             <button
@@ -87,6 +90,7 @@ export default async function DetalleProyectoPage({
             action={async () => {
               "use server";
               await restartAction(id);
+              revalidatePath(`/proyectos/${id}`);
             }}
           >
             <button
@@ -101,6 +105,7 @@ export default async function DetalleProyectoPage({
             action={async () => {
               "use server";
               await deployProyectoAction(id);
+              revalidatePath(`/proyectos/${id}`);
             }}
           >
             <button
@@ -115,6 +120,7 @@ export default async function DetalleProyectoPage({
             action={async () => {
               "use server";
               await toggleAutoDeployAction(id);
+              revalidatePath(`/proyectos/${id}`);
             }}
           >
             <button
@@ -157,19 +163,6 @@ export default async function DetalleProyectoPage({
             mono={!!proyecto.repositorioUrl}
           />
           <Campo label="Rama de deploy" valor={proyecto.rama} mono />
-          <div className="flex flex-col gap-1">
-            <span className="font-body text-xs text-text-muted">Servicios</span>
-            <div className="flex flex-wrap gap-2">
-              {proyecto.servicios.map((s) => (
-                <div key={s.nombre} className="flex items-center gap-1.5">
-                  <StatusBadge estado={s.estado} />
-                  <span className="font-body text-xs text-text-primary">
-                    {s.nombre}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
           {proyecto.ultimoDeploy && (
             <Campo
               label="Último deploy"

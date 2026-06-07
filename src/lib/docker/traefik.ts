@@ -14,42 +14,45 @@ async function encontrarContenedorTraefik() {
 }
 
 export async function conectarTraefikARed(clienteSlug: string): Promise<void> {
+  let traefik: Awaited<ReturnType<typeof encontrarContenedorTraefik>>;
   try {
-    const traefik = await encontrarContenedorTraefik();
-    if (!traefik) return;
-    const network = docker.getNetwork(nombreRed(clienteSlug));
-    try {
-      await network.connect({ Container: traefik.Id });
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("already exists"))
-        return;
-      throw err;
-    }
+    traefik = await encontrarContenedorTraefik();
   } catch (err) {
-    if (env.NODE_ENV === "production") throw err;
+    if (process.env.NODE_ENV === "production") throw err;
     console.warn(
       `[docker] Skipping conectarTraefikARed in dev: ${(err as Error).message}`,
     );
+    return;
+  }
+  if (!traefik) return;
+  const network = docker.getNetwork(nombreRed(clienteSlug));
+  try {
+    await network.connect({ Container: traefik.Id });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("already exists")) return;
+    throw err;
   }
 }
 
 export async function desconectarTraefikDeRed(
   clienteSlug: string,
 ): Promise<void> {
+  let traefik: Awaited<ReturnType<typeof encontrarContenedorTraefik>>;
   try {
-    const traefik = await encontrarContenedorTraefik();
-    if (!traefik) return;
-    const network = docker.getNetwork(nombreRed(clienteSlug));
-    try {
-      await network.disconnect({ Container: traefik.Id });
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("not connected")) return;
-      throw err;
-    }
+    traefik = await encontrarContenedorTraefik();
   } catch (err) {
-    if (env.NODE_ENV === "production") throw err;
+    if (process.env.NODE_ENV === "production") throw err;
     console.warn(
       `[docker] Skipping desconectarTraefikDeRed in dev: ${(err as Error).message}`,
     );
+    return;
+  }
+  if (!traefik) return;
+  const network = docker.getNetwork(nombreRed(clienteSlug));
+  try {
+    await network.disconnect({ Container: traefik.Id });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("not connected")) return;
+    throw err;
   }
 }

@@ -26,9 +26,7 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const isDeploying = proyecto.estado === "deploying" || loading;
-  const canEdit =
-    !isDeploying &&
-    (proyecto.estado === "stopped" || proyecto.estado === "error");
+  const canEdit = !isDeploying;
 
   const {
     lines,

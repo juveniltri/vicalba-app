@@ -1,47 +1,24 @@
 # Notas pendientes
 
-## Fase 4 — CRUD de proyectos (completado)
+## Estado actual (junio 2026)
 
-Implementado en Fase 4:
+Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master y en producción.
+Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
-- Router `clientes`: crear, editar, eliminar (con guard: no eliminar si tiene proyectos)
-- Router `proyectos`: crear, editar (reconcilia servicios), eliminar (no si running)
-- 6 Server Actions CRUD en `actions.ts`
-- `ClienteFormModal` + `NuevoClienteButton` en `ClienteForm.tsx`
-- `ProyectoFormModal` en `ProyectoForm.tsx`
-- `ClientSection` → client component con botones Editar/Eliminar/Nuevo proyecto
-- `ProjectCard` → botones Editar/Eliminar con confirmación inline
-- Dashboard → botón "Nuevo cliente" en cabecera
+---
 
-## Fase 5 — Deploy (próximo)
+## Deuda técnica
 
-### Schema DB — campos nuevos en `Proyecto`
+- **Deploy real no testeado en VPS**: el refactor de deploy vía compose labels (`-p ${clienteSlug}-${proyectoNombre}`) funciona localmente. Pendiente de validar el flujo completo (clone → `docker compose up`) contra un repositorio GitHub real en la VPS.
 
-- `repositorioUrl: String?` — URL del repo GitHub (e.g. `https://github.com/org/repo`)
-- `rama: String?` (default `main`) — rama que dispara el deploy
-- `autoDeployHabilitado: Boolean` (default `false`) — toggle auto-deploy
+- **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
 
-### Traefik config dinámica (`src/lib/traefik/`)
+- **Variables de entorno en deploy**: el `docker compose` ejecutado en deploy no inyecta automáticamente las variables de entorno cifradas en BD. Pendiente decidir estrategia (archivo `.env` temporal, `--env-file`, o variables de entorno del proceso).
 
-- Función pura `generarConfigProyecto({ dominio, proyectoSlug, clienteSlug })` → objeto YAML
-- Función `escribirConfigTraefik(proyectoSlug, config)` → escribe fichero en directorio Traefik
-- Función `eliminarConfigTraefik(proyectoSlug)` → borra fichero al eliminar proyecto
-- Llamadas integradas en `proyectos.crear`, `proyectos.editar`, `proyectos.eliminar`
+- **Entorno dev sin Docker daemon**: las llamadas a dockerode se silencian en desarrollo con un `console.warn`. Valorar un mock de dockerode para tests de integración más realistas.
 
-### Deploy lib (`src/lib/docker/deploy.ts`)
+---
 
-- `deployProyecto(proyectoId)` → pull imagen + recrear contenedores via dockerode
-- Estado `deploying` durante el proceso, `running` al completar, `error` si falla
+## Decisiones pendientes
 
-### Webhook GitHub (`src/app/api/webhooks/github/route.ts`)
-
-- Validar HMAC-SHA256 de `X-Hub-Signature-256` contra `GITHUB_WEBHOOK_SECRET`
-- Parsear evento `push` y extraer `repository.clone_url` + `ref` (rama)
-- Buscar proyecto con `repositorioUrl` + `rama` coincidentes
-- Trigger `deployProyecto` si `autoDeployHabilitado === true`
-
-### UI
-
-- Campos `repositorioUrl` y `rama` en `ProyectoFormModal`
-- Toggle auto-deploy en `ProjectCard`
-- Botón "Deploy manual" en `ProjectCard` (llama a deploy action)
+- **Próxima feature**: sin hito definido. Candidatos: monitorización de recursos (CPU/RAM por proyecto), soporte multi-VPS, o interfaz de logs persistente.
