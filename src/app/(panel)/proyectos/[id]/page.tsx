@@ -57,6 +57,7 @@ export default async function DetalleProyectoPage({
         <div className="flex flex-wrap gap-2">
           <form
             action={async () => {
+              "use server";
               await iniciarAction(id);
             }}
           >
@@ -70,6 +71,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await detenerAction(id);
             }}
           >
@@ -83,6 +85,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await restartAction(id);
             }}
           >
@@ -96,6 +99,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await deployProyectoAction(id);
             }}
           >
@@ -109,6 +113,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await toggleAutoDeployAction(id);
             }}
           >
@@ -185,6 +190,7 @@ export default async function DetalleProyectoPage({
           deploys={deploys}
           isDeploying={isDeploying}
           onRollback={async (id) => {
+            "use server";
             await rollbackAction(id);
           }}
         />
