@@ -157,19 +157,6 @@ export default async function DetalleProyectoPage({
             mono={!!proyecto.repositorioUrl}
           />
           <Campo label="Rama de deploy" valor={proyecto.rama} mono />
-          <div className="flex flex-col gap-1">
-            <span className="font-body text-xs text-text-muted">Servicios</span>
-            <div className="flex flex-wrap gap-2">
-              {proyecto.servicios.map((s) => (
-                <div key={s.nombre} className="flex items-center gap-1.5">
-                  <StatusBadge estado={s.estado} />
-                  <span className="font-body text-xs text-text-primary">
-                    {s.nombre}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
           {proyecto.ultimoDeploy && (
             <Campo
               label="Último deploy"

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { docker } from "./client";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,23 +20,33 @@ async function ensureRepo(repoUrl: string, repoDir: string): Promise<void> {
   }
 }
 
-function generarComposeOverride(
+async function conectarContenedoresARedCliente(
+  projectSlug: string,
   clienteSlug: string,
-  servicios: string[],
-): string {
-  const nombreRed = `cliente-${clienteSlug}-network`;
-  const serviciosYaml = servicios
-    .map((s) => `  ${s}:\n    networks:\n      - default\n      - cliente-net`)
-    .join("\n");
-
-  return [
-    "networks:",
-    "  cliente-net:",
-    `    name: ${nombreRed}`,
-    "    external: true",
-    "services:",
-    serviciosYaml,
-  ].join("\n");
+): Promise<void> {
+  try {
+    const redNombre = `cliente-${clienteSlug}-network`;
+    const containers = await docker.listContainers({
+      all: false,
+      filters: { label: [`com.docker.compose.project=${projectSlug}`] },
+    });
+    await Promise.all(
+      containers.map(async (c) => {
+        try {
+          await docker.getNetwork(redNombre).connect({ Container: c.Id });
+        } catch (err) {
+          const msg = (err as { message?: string }).message ?? "";
+          // NOTE: "already exists" means the container is already on the network — safe to ignore
+          if (!msg.includes("already exists")) throw err;
+        }
+      }),
+    );
+  } catch (err) {
+    if (env.NODE_ENV === "production") throw err;
+    console.warn(
+      `[docker] Skipping conectarContenedoresARedCliente in dev: ${(err as Error).message}`,
+    );
+  }
 }
 
 export async function deployProyecto(params: {
@@ -44,21 +55,13 @@ export async function deployProyecto(params: {
   sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
-  servicios: string[];
   variables?: Array<{ clave: string; valor: string }>;
 }): Promise<{ output: string; sha: string }> {
-  const {
-    repoUrl,
-    rama,
-    sha,
-    clienteSlug,
-    proyectoNombre,
-    servicios,
-    variables,
-  } = params;
+  const { repoUrl, rama, sha, clienteSlug, proyectoNombre, variables } =
+    params;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
-  const overridePath = `${repoDir}/docker-compose.network.yml`;
   const envFilePath = `${repoDir}/.env.panel`;
+  const projectSlug = `${clienteSlug}-${proyectoNombre}`;
 
   await ensureRepo(repoUrl, repoDir);
 
@@ -76,14 +79,7 @@ export async function deployProyecto(params: {
     "rev-parse",
     "HEAD",
   ]);
-  const shaRaw =
-    typeof revParseResult === "string"
-      ? revParseResult
-      : (revParseResult as { stdout: string }).stdout;
-  const capturedSha = (shaRaw ?? "").trim();
-
-  const overrideYaml = generarComposeOverride(clienteSlug, servicios);
-  await writeFile(overridePath, overrideYaml, "utf-8");
+  const capturedSha = revParseResult.stdout.trim();
 
   const hasVars = variables && variables.length > 0;
 
@@ -96,10 +92,10 @@ export async function deployProyecto(params: {
 
   const composeArgs = [
     "compose",
+    "-p",
+    projectSlug,
     "-f",
     `${repoDir}/docker-compose.yml`,
-    "-f",
-    overridePath,
     ...(hasVars ? ["--env-file", envFilePath] : []),
     "up",
     "--build",
@@ -116,5 +112,8 @@ export async function deployProyecto(params: {
       await unlink(envFilePath).catch(() => {});
     }
   }
+
+  await conectarContenedoresARedCliente(projectSlug, clienteSlug);
+
   return { output, sha: capturedSha };
 }

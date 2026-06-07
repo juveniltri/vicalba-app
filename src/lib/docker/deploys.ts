@@ -8,7 +8,6 @@ export async function ejecutarDeploy(params: {
   sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
-  servicios: string[];
   variables?: Array<{ clave: string; valor: string }>;
 }): Promise<{ resultado: "exito" | "error"; output: string }> {
   const { proyectoId, ...deployParams } = params;

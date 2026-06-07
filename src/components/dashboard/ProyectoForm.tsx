@@ -27,31 +27,11 @@ export function ProyectoFormModal({
     proyecto?.repositorioUrl ?? "",
   );
   const [rama, setRama] = useState(proyecto?.rama ?? "main");
-  const [servicios, setServicios] = useState<string[]>(
-    proyecto ? proyecto.servicios.map((s) => s.nombre) : [""],
-  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function addServicio() {
-    setServicios((prev) => [...prev, ""]);
-  }
-
-  function removeServicio(index: number) {
-    setServicios((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateServicio(index: number, value: string) {
-    setServicios((prev) => prev.map((s, i) => (i === index ? value : s)));
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const serviciosFiltrados = servicios.filter((s) => s.trim() !== "");
-    if (serviciosFiltrados.length === 0) {
-      setError("Añade al menos un servicio");
-      return;
-    }
     setLoading(true);
     setError(null);
     const dominioFinal = dominio.trim() || undefined;
@@ -61,7 +41,6 @@ export function ProyectoFormModal({
           proyecto!.id,
           nombre,
           dominioFinal,
-          serviciosFiltrados,
           repoFinal,
           rama,
         )
@@ -69,7 +48,6 @@ export function ProyectoFormModal({
           clienteId!,
           nombre,
           dominioFinal,
-          serviciosFiltrados,
           repoFinal,
           rama,
         );
@@ -154,39 +132,6 @@ export function ProyectoFormModal({
               placeholder="main"
               className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
             />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <span className="font-body text-xs text-text-muted">Servicios</span>
-            {servicios.map((s, i) => (
-              <div key={i} className="flex gap-2">
-                <input
-                  aria-label={`Servicio ${i + 1}`}
-                  type="text"
-                  value={s}
-                  onChange={(e) => updateServicio(i, e.target.value)}
-                  placeholder="ej: nginx"
-                  className="font-body text-sm flex-1 bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
-                />
-                {servicios.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeServicio(i)}
-                    aria-label={`Eliminar servicio ${i + 1}`}
-                    className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-state-error hover:text-state-error transition-opacity duration-[var(--duration-fast)]"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addServicio}
-              className="font-body text-xs self-start px-3 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 hover:text-text-primary transition-opacity duration-[var(--duration-fast)]"
-            >
-              + Añadir servicio
-            </button>
           </div>
 
           {error && (

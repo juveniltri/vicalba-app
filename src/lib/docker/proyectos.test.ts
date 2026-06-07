@@ -1,19 +1,27 @@
 import { PassThrough } from "stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockStop, mockStart, mockGetContainer, mockLogs, mockDemuxStream } =
-  vi.hoisted(() => ({
-    mockStop: vi.fn(),
-    mockStart: vi.fn(),
-    mockGetContainer: vi.fn(),
-    mockLogs: vi.fn(),
-    mockDemuxStream: vi.fn(),
-  }));
+const {
+  mockStop,
+  mockStart,
+  mockGetContainer,
+  mockLogs,
+  mockDemuxStream,
+  mockListContainers,
+} = vi.hoisted(() => ({
+  mockStop: vi.fn(),
+  mockStart: vi.fn(),
+  mockGetContainer: vi.fn(),
+  mockLogs: vi.fn(),
+  mockDemuxStream: vi.fn(),
+  mockListContainers: vi.fn(),
+}));
 
 vi.mock("dockerode", () => ({
   default: vi.fn().mockImplementation(function () {
     return {
       getContainer: mockGetContainer,
+      listContainers: mockListContainers,
       modem: { demuxStream: mockDemuxStream },
     };
   }),
@@ -31,8 +39,23 @@ import {
   streamProyectoLogs,
 } from "./proyectos";
 
+const makeContainer = (
+  id: string,
+  serviceName: string,
+  extraLabels: Record<string, string> = {},
+) => ({
+  Id: id,
+  Names: [`/${id}`],
+  Labels: {
+    "com.docker.compose.project": "cliente-uno-web-app",
+    "com.docker.compose.service": serviceName,
+    ...extraLabels,
+  },
+});
+
 describe("detenerProyecto", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockGetContainer.mockReturnValue({
       stop: mockStop,
       start: mockStart,
@@ -42,47 +65,72 @@ describe("detenerProyecto", () => {
     mockStart.mockResolvedValue(undefined);
   });
 
-  it("stops each container with the correct name", async () => {
-    await detenerProyecto("cliente-uno", "web-app", ["nginx", "node"]);
+  it("queries containers by compose project label", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
+    await detenerProyecto("cliente-uno", "web-app");
 
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-nginx");
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-node");
+    expect(mockListContainers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: {
+          label: ["com.docker.compose.project=cliente-uno-web-app"],
+        },
+      }),
+    );
+  });
+
+  it("stops each container found by label", async () => {
+    mockListContainers.mockResolvedValue([
+      makeContainer("c1", "nginx"),
+      makeContainer("c2", "node"),
+    ]);
+    await detenerProyecto("cliente-uno", "web-app");
+
+    expect(mockGetContainer).toHaveBeenCalledWith("c1");
+    expect(mockGetContainer).toHaveBeenCalledWith("c2");
     expect(mockStop).toHaveBeenCalledTimes(2);
   });
 
   it("ignores 304 (container already stopped)", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce({ statusCode: 304 });
 
     await expect(
-      detenerProyecto("cliente-uno", "web-app", ["nginx"]),
+      detenerProyecto("cliente-uno", "web-app"),
     ).resolves.toBeUndefined();
   });
 
   it("throws DockerError NOT_FOUND on 404", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce({ statusCode: 404 });
 
-    const err = await detenerProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await detenerProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("NOT_FOUND");
   });
 
   it("throws DockerError UNKNOWN on unexpected errors", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce(new Error("daemon error"));
 
-    const err = await detenerProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await detenerProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("UNKNOWN");
+  });
+
+  it("does nothing when no containers found", async () => {
+    mockListContainers.mockResolvedValue([]);
+    await expect(
+      detenerProyecto("cliente-uno", "web-app"),
+    ).resolves.toBeUndefined();
+    expect(mockStop).not.toHaveBeenCalled();
   });
 });
 
 describe("iniciarProyecto", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockGetContainer.mockReturnValue({
       stop: mockStop,
       start: mockStart,
@@ -92,39 +140,51 @@ describe("iniciarProyecto", () => {
     mockStart.mockResolvedValue(undefined);
   });
 
-  it("starts each container with the correct name", async () => {
-    await iniciarProyecto("cliente-uno", "web-app", ["nginx", "node"]);
+  it("queries all containers (including stopped) by compose project label", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
+    await iniciarProyecto("cliente-uno", "web-app");
 
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-nginx");
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-node");
+    expect(mockListContainers).toHaveBeenCalledWith(
+      expect.objectContaining({ all: true }),
+    );
+  });
+
+  it("starts each container found by label", async () => {
+    mockListContainers.mockResolvedValue([
+      makeContainer("c1", "nginx"),
+      makeContainer("c2", "node"),
+    ]);
+    await iniciarProyecto("cliente-uno", "web-app");
+
+    expect(mockGetContainer).toHaveBeenCalledWith("c1");
+    expect(mockGetContainer).toHaveBeenCalledWith("c2");
     expect(mockStart).toHaveBeenCalledTimes(2);
   });
 
   it("ignores 304 (container already running)", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStart.mockRejectedValueOnce({ statusCode: 304 });
 
     await expect(
-      iniciarProyecto("cliente-uno", "web-app", ["nginx"]),
+      iniciarProyecto("cliente-uno", "web-app"),
     ).resolves.toBeUndefined();
   });
 
   it("throws DockerError NOT_FOUND on 404", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStart.mockRejectedValueOnce({ statusCode: 404 });
 
-    const err = await iniciarProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await iniciarProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("NOT_FOUND");
   });
 
   it("throws DockerError UNKNOWN on unexpected errors", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStart.mockRejectedValueOnce(new Error("daemon error"));
 
-    const err = await iniciarProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await iniciarProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("UNKNOWN");
@@ -133,6 +193,7 @@ describe("iniciarProyecto", () => {
 
 describe("restartProyecto", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockGetContainer.mockReturnValue({
       stop: mockStop,
       start: mockStart,
@@ -142,60 +203,63 @@ describe("restartProyecto", () => {
     mockStart.mockResolvedValue(undefined);
   });
 
-  it("stops then starts each container with the correct name", async () => {
-    await restartProyecto("cliente-uno", "web-app", ["nginx", "node"]);
+  it("stops then starts each container found by label", async () => {
+    mockListContainers.mockResolvedValue([
+      makeContainer("c1", "nginx"),
+      makeContainer("c2", "node"),
+    ]);
+    await restartProyecto("cliente-uno", "web-app");
 
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-nginx");
-    expect(mockGetContainer).toHaveBeenCalledWith("cliente-uno-web-app-node");
+    expect(mockGetContainer).toHaveBeenCalledWith("c1");
+    expect(mockGetContainer).toHaveBeenCalledWith("c2");
     expect(mockStop).toHaveBeenCalledTimes(2);
     expect(mockStart).toHaveBeenCalledTimes(2);
   });
 
   it("ignores 304 on stop (already stopped) and still starts", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce({ statusCode: 304 });
 
     await expect(
-      restartProyecto("cliente-uno", "web-app", ["nginx"]),
+      restartProyecto("cliente-uno", "web-app"),
     ).resolves.toBeUndefined();
     expect(mockStart).toHaveBeenCalledTimes(1);
   });
 
   it("ignores 304 on start (already running after stop)", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStart.mockRejectedValueOnce({ statusCode: 304 });
 
     await expect(
-      restartProyecto("cliente-uno", "web-app", ["nginx"]),
+      restartProyecto("cliente-uno", "web-app"),
     ).resolves.toBeUndefined();
   });
 
   it("throws DockerError NOT_FOUND on 404 during stop", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce({ statusCode: 404 });
 
-    const err = await restartProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("NOT_FOUND");
   });
 
   it("throws DockerError NOT_FOUND on 404 during start", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStart.mockRejectedValueOnce({ statusCode: 404 });
 
-    const err = await restartProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("NOT_FOUND");
   });
 
   it("throws DockerError UNKNOWN on unexpected error during stop", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockStop.mockRejectedValueOnce(new Error("daemon error"));
 
-    const err = await restartProyecto("cliente-uno", "web-app", [
-      "nginx",
-    ]).catch((e) => e);
+    const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("UNKNOWN");
@@ -217,7 +281,8 @@ describe("streamProyectoLogs", () => {
     );
   });
 
-  it("calls onLine for each log line received from the container", async () => {
+  it("calls onLine with service name from compose label", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     const mockStream = new PassThrough();
     mockLogs.mockResolvedValue(mockStream);
     const onLine = vi.fn();
@@ -226,7 +291,6 @@ describe("streamProyectoLogs", () => {
     const promise = streamProyectoLogs(
       "cliente-uno",
       "web-app",
-      ["nginx"],
       onLine,
       controller.signal,
     );
@@ -242,7 +306,38 @@ describe("streamProyectoLogs", () => {
     expect(onLine).toHaveBeenCalledTimes(2);
   });
 
-  it("streams logs from multiple services with correct servicio label", async () => {
+  it("falls back to container name when compose service label is missing", async () => {
+    const containerWithoutServiceLabel = {
+      Id: "c1",
+      Names: ["/mycontainer"],
+      Labels: { "com.docker.compose.project": "cliente-uno-web-app" },
+    };
+    mockListContainers.mockResolvedValue([containerWithoutServiceLabel]);
+    const mockStream = new PassThrough();
+    mockLogs.mockResolvedValue(mockStream);
+    const onLine = vi.fn();
+    const controller = new AbortController();
+
+    const promise = streamProyectoLogs(
+      "cliente-uno",
+      "web-app",
+      onLine,
+      controller.signal,
+    );
+
+    mockStream.write("log line\n");
+    mockStream.end();
+
+    await promise;
+
+    expect(onLine).toHaveBeenCalledWith("/mycontainer", "log line");
+  });
+
+  it("streams logs from multiple containers with correct service labels", async () => {
+    mockListContainers.mockResolvedValue([
+      makeContainer("c1", "nginx"),
+      makeContainer("c2", "node"),
+    ]);
     const streamA = new PassThrough();
     const streamB = new PassThrough();
     mockLogs.mockResolvedValueOnce(streamA).mockResolvedValueOnce(streamB);
@@ -252,7 +347,6 @@ describe("streamProyectoLogs", () => {
     const promise = streamProyectoLogs(
       "cliente-uno",
       "web-app",
-      ["nginx", "node"],
       onLine,
       controller.signal,
     );
@@ -269,39 +363,30 @@ describe("streamProyectoLogs", () => {
   });
 
   it("skips container silently when it is not found (404)", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockLogs.mockRejectedValue({ statusCode: 404 });
     const onLine = vi.fn();
     const controller = new AbortController();
 
     await expect(
-      streamProyectoLogs(
-        "cliente-uno",
-        "web-app",
-        ["nginx"],
-        onLine,
-        controller.signal,
-      ),
+      streamProyectoLogs("cliente-uno", "web-app", onLine, controller.signal),
     ).resolves.toBeUndefined();
 
     expect(onLine).not.toHaveBeenCalled();
   });
 
   it("rethrows non-404 error from container.logs()", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     mockLogs.mockRejectedValue(new Error("daemon unavailable"));
     const controller = new AbortController();
 
     await expect(
-      streamProyectoLogs(
-        "cliente-uno",
-        "web-app",
-        ["nginx"],
-        vi.fn(),
-        controller.signal,
-      ),
+      streamProyectoLogs("cliente-uno", "web-app", vi.fn(), controller.signal),
     ).rejects.toThrow("daemon unavailable");
   });
 
   it("rejects when the log stream emits an error event", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     const mockStream = new PassThrough();
     mockLogs.mockResolvedValue(mockStream);
     const controller = new AbortController();
@@ -309,7 +394,6 @@ describe("streamProyectoLogs", () => {
     const promise = streamProyectoLogs(
       "cliente-uno",
       "web-app",
-      ["nginx"],
       vi.fn(),
       controller.signal,
     );
@@ -320,6 +404,7 @@ describe("streamProyectoLogs", () => {
   });
 
   it("stops streaming when AbortSignal is triggered", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
     const mockStream = new PassThrough();
     mockLogs.mockResolvedValue(mockStream);
     const destroySpy = vi.spyOn(mockStream, "destroy");
@@ -329,17 +414,25 @@ describe("streamProyectoLogs", () => {
     const promise = streamProyectoLogs(
       "cliente-uno",
       "web-app",
-      ["nginx"],
       onLine,
       controller.signal,
     );
 
-    // yield so the async fn registers the abort listener before we abort
-    await Promise.resolve();
-    controller.abort(); // triggers abort() → destroy() → 'close' → resolve
+    // Wait for listProjectContainers + container.logs() to both resolve
+    await new Promise((r) => setTimeout(r, 0));
+    controller.abort();
 
     await promise;
 
     expect(destroySpy).toHaveBeenCalled();
+  });
+
+  it("resolves immediately when no containers found", async () => {
+    mockListContainers.mockResolvedValue([]);
+    const controller = new AbortController();
+
+    await expect(
+      streamProyectoLogs("cliente-uno", "web-app", vi.fn(), controller.signal),
+    ).resolves.toBeUndefined();
   });
 });

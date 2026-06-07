@@ -13,7 +13,7 @@ export async function GET(
   const { id } = await params;
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
-    include: { cliente: true, servicios: true },
+    include: { cliente: true },
   });
 
   if (!proyecto) return new Response("Not Found", { status: 404 });
@@ -27,7 +27,6 @@ export async function GET(
         await streamProyectoLogs(
           proyecto.cliente.slug,
           proyecto.nombre,
-          proyecto.servicios.map((s) => s.nombre),
           (servicio, line) => {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ servicio, line })}\n\n`),

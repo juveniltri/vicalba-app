@@ -36,7 +36,6 @@ const proyectoInput = z.object({
   dominio: z.string().optional(),
   repositorioUrl: z.string().url().optional(),
   rama: z.string().optional(),
-  servicios: z.array(z.string().min(1)).min(1),
 });
 
 const idInput = z.object({ id: z.string() });
@@ -44,7 +43,7 @@ const idInput = z.object({ id: z.string() });
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
-    include: { cliente: true, servicios: true },
+    include: { cliente: true },
   });
   if (!proyecto)
     throw new TRPCError({
@@ -67,10 +66,6 @@ export const proyectosRouter = router({
       repositorioUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
       autoDeployHabilitado: proyecto.autoDeployHabilitado,
-      servicios: proyecto.servicios.map((s) => ({
-        nombre: s.nombre,
-        estado: s.estado,
-      })),
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
           ? {
@@ -84,11 +79,7 @@ export const proyectosRouter = router({
   iniciar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await iniciarProyecto(
-        proyecto.cliente.slug,
-        proyecto.nombre,
-        proyecto.servicios.map((s) => s.nombre),
-      );
+      await iniciarProyecto(proyecto.cliente.slug, proyecto.nombre);
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
@@ -106,11 +97,7 @@ export const proyectosRouter = router({
   detener: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await detenerProyecto(
-        proyecto.cliente.slug,
-        proyecto.nombre,
-        proyecto.servicios.map((s) => s.nombre),
-      );
+      await detenerProyecto(proyecto.cliente.slug, proyecto.nombre);
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
@@ -128,11 +115,7 @@ export const proyectosRouter = router({
   restart: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await restartProyecto(
-        proyecto.cliente.slug,
-        proyecto.nombre,
-        proyecto.servicios.map((s) => s.nombre),
-      );
+      await restartProyecto(proyecto.cliente.slug, proyecto.nombre);
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
@@ -165,9 +148,8 @@ export const proyectosRouter = router({
           dominio: input.dominio,
           repositorioUrl: input.repositorioUrl,
           rama: input.rama ?? "main",
-          servicios: { create: input.servicios.map((nombre) => ({ nombre })) },
         },
-        include: { servicios: true, cliente: true },
+        include: { cliente: true },
       });
 
       await asegurarRedCliente(creado.cliente.slug);
@@ -189,15 +171,14 @@ export const proyectosRouter = router({
     .input(proyectoInput.extend({ id: z.string() }))
     .mutation(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.id);
-      if (proyecto.estado === "running" || proyecto.estado === "deploying")
+      if (
+        input.nombre !== proyecto.nombre &&
+        (proyecto.estado === "running" || proyecto.estado === "deploying")
+      )
         throw new TRPCError({
           code: "CONFLICT",
-          message: "No se puede editar un proyecto en ejecución",
+          message: "No se puede renombrar un proyecto en ejecución",
         });
-
-      const currentNames = proyecto.servicios.map((s) => s.nombre);
-      const toAdd = input.servicios.filter((n) => !currentNames.includes(n));
-      const toRemove = currentNames.filter((n) => !input.servicios.includes(n));
 
       const actualizado = await prisma.proyecto.update({
         where: { id: input.id },
@@ -206,12 +187,8 @@ export const proyectosRouter = router({
           dominio: input.dominio,
           repositorioUrl: input.repositorioUrl,
           rama: input.rama,
-          servicios: {
-            create: toAdd.map((nombre) => ({ nombre })),
-            deleteMany: { nombre: { in: toRemove } },
-          },
         },
-        include: { servicios: true, cliente: true },
+        include: { cliente: true },
       });
 
       if (actualizado.dominio) {
@@ -249,7 +226,6 @@ export const proyectosRouter = router({
         code: "CONFLICT",
         message: "No se puede eliminar un proyecto en ejecución",
       });
-    await prisma.servicio.deleteMany({ where: { proyectoId: input.id } });
     await prisma.proyecto.delete({ where: { id: input.id } });
     if (proyecto.dominio) {
       await eliminarConfigTraefik(proyecto.nombre);
@@ -303,7 +279,6 @@ export const proyectosRouter = router({
       rama: proyecto.rama,
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
-      servicios: proyecto.servicios.map((s) => s.nombre),
       variables,
     });
 
@@ -401,7 +376,6 @@ export const proyectosRouter = router({
         sha: deploy.sha,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
-        servicios: proyecto.servicios.map((s) => s.nombre),
         variables,
       });
 
@@ -435,7 +409,6 @@ export const proyectosRouter = router({
     const clientes = await prisma.cliente.findMany({
       include: {
         proyectos: {
-          include: { servicios: true },
           orderBy: { nombre: "asc" },
         },
       },
@@ -455,10 +428,6 @@ export const proyectosRouter = router({
         repositorioUrl: p.repositorioUrl,
         rama: p.rama,
         autoDeployHabilitado: p.autoDeployHabilitado,
-        servicios: p.servicios.map((s) => ({
-          nombre: s.nombre,
-          estado: s.estado,
-        })),
         ultimoDeploy:
           p.ultimoDeployEn && p.ultimoDeployRama
             ? { hace: formatHace(p.ultimoDeployEn), rama: p.ultimoDeployRama }

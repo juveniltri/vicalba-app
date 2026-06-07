@@ -30,31 +30,23 @@ model Cliente {
 }
 
 model Proyecto {
-  id                   String         @id @default(cuid())
+  id                   String            @id @default(cuid())
   nombre               String
-  cliente              Cliente        @relation(fields: [clienteId], references: [id])
+  cliente              Cliente           @relation(fields: [clienteId], references: [id])
   clienteId            String
-  estado               EstadoServicio @default(stopped)
+  estado               EstadoServicio    @default(stopped)
   dominio              String?
   repositorioUrl       String?
-  rama                 String         @default("main")
-  autoDeployHabilitado Boolean        @default(false)
+  rama                 String            @default("main")
+  autoDeployHabilitado Boolean           @default(false)
   ultimoDeployEn       DateTime?
   ultimoDeployRama     String?
-  servicios            Servicio[]
   variables            VariableEntorno[]
   deploys              Deploy[]
-  creadoEn             DateTime       @default(now())
-  actualizadoEn        DateTime       @updatedAt
-}
+  creadoEn             DateTime          @default(now())
+  actualizadoEn        DateTime          @updatedAt
 
-model Servicio {
-  id         String         @id @default(cuid())
-  nombre     String
-  estado     EstadoServicio @default(stopped)
-  proyecto   Proyecto       @relation(fields: [proyectoId], references: [id])
-  proyectoId String
-  creadoEn   DateTime       @default(now())
+  @@unique([clienteId, nombre])
 }
 
 model VariableEntorno {

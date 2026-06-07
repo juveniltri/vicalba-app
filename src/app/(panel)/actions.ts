@@ -71,7 +71,6 @@ export async function crearProyectoAction(
   clienteId: string,
   nombre: string,
   dominio: string | undefined,
-  servicios: string[],
   repositorioUrl?: string,
   rama?: string,
 ) {
@@ -81,7 +80,6 @@ export async function crearProyectoAction(
       clienteId,
       nombre,
       dominio,
-      servicios,
       repositorioUrl,
       rama,
     });
@@ -96,7 +94,6 @@ export async function editarProyectoAction(
   id: string,
   nombre: string,
   dominio: string | undefined,
-  servicios: string[],
   repositorioUrl?: string,
   rama?: string,
 ) {
@@ -106,7 +103,6 @@ export async function editarProyectoAction(
       id,
       nombre,
       dominio,
-      servicios,
       repositorioUrl,
       rama,
     });
