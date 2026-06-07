@@ -11,9 +11,11 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
+    "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
+    "dev:local": "docker compose -f docker-compose.dev.yml up -d --wait && prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next dev",
     "prepare": "husky"
   },
   "dependencies": {
