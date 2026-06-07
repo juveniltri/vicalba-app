@@ -17,15 +17,32 @@ function handleDockerError(err: unknown): never {
   throw new DockerError("UNKNOWN", String(err));
 }
 
-export async function detenerProyecto(
+const projectSlug = (clienteSlug: string, nombre: string) =>
+  `${clienteSlug}-${nombre}`;
+
+async function listProjectContainers(
+  slug: string,
+  all = false,
+): Promise<
+  Array<{ Id: string; Names: string[]; Labels: Record<string, string> }>
+> {
+  return docker.listContainers({
+    all,
+    filters: { label: [`com.docker.compose.project=${slug}`] },
+  }) as Promise<
+    Array<{ Id: string; Names: string[]; Labels: Record<string, string> }>
+  >;
+}
+
+export async function iniciarProyecto(
   clienteSlug: string,
   proyectoNombre: string,
-  servicios: string[],
 ): Promise<void> {
-  for (const servicio of servicios) {
-    const name = `${clienteSlug}-${proyectoNombre}-${servicio}`;
+  const slug = projectSlug(clienteSlug, proyectoNombre);
+  const containers = await listProjectContainers(slug, true);
+  for (const c of containers) {
     try {
-      await docker.getContainer(name).stop();
+      await docker.getContainer(c.Id).start();
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode === 304) continue;
       handleDockerError(err);
@@ -33,18 +50,41 @@ export async function detenerProyecto(
   }
 }
 
-export async function iniciarProyecto(
+export async function detenerProyecto(
   clienteSlug: string,
   proyectoNombre: string,
-  servicios: string[],
 ): Promise<void> {
-  for (const servicio of servicios) {
-    const name = `${clienteSlug}-${proyectoNombre}-${servicio}`;
+  const slug = projectSlug(clienteSlug, proyectoNombre);
+  const containers = await listProjectContainers(slug, false);
+  for (const c of containers) {
     try {
-      await docker.getContainer(name).start();
+      await docker.getContainer(c.Id).stop();
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode === 304) continue;
       handleDockerError(err);
+    }
+  }
+}
+
+export async function restartProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+): Promise<void> {
+  const slug = projectSlug(clienteSlug, proyectoNombre);
+  const containers = await listProjectContainers(slug, true);
+  for (const c of containers) {
+    const container = docker.getContainer(c.Id);
+    try {
+      await container.stop();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 304)
+        handleDockerError(err);
+    }
+    try {
+      await container.start();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 304)
+        handleDockerError(err);
     }
   }
 }
@@ -52,26 +92,27 @@ export async function iniciarProyecto(
 export async function streamProyectoLogs(
   clienteSlug: string,
   proyectoNombre: string,
-  servicios: string[],
   onLine: (servicio: string, line: string) => void,
   signal: AbortSignal,
 ): Promise<void> {
+  const slug = projectSlug(clienteSlug, proyectoNombre);
+  const containers = await listProjectContainers(slug, false);
   await Promise.all(
-    servicios.map((servicio) =>
-      streamServicioLogs(clienteSlug, proyectoNombre, servicio, onLine, signal),
-    ),
+    containers.map((c) => {
+      const serviceName =
+        c.Labels["com.docker.compose.service"] ?? c.Names[0] ?? c.Id;
+      return streamContainerLogs(c.Id, serviceName, onLine, signal);
+    }),
   );
 }
 
-async function streamServicioLogs(
-  clienteSlug: string,
-  proyectoNombre: string,
-  servicio: string,
+async function streamContainerLogs(
+  containerId: string,
+  serviceName: string,
   onLine: (servicio: string, line: string) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const name = `${clienteSlug}-${proyectoNombre}-${servicio}`;
-  const container = docker.getContainer(name);
+  const container = docker.getContainer(containerId);
 
   let logStream: NodeJS.ReadableStream;
   try {
@@ -96,7 +137,7 @@ async function streamServicioLogs(
         .toString()
         .split("\n")
         .filter(Boolean)
-        .forEach((line) => onLine(servicio, line));
+        .forEach((line) => onLine(serviceName, line));
     };
 
     stdout.on("data", handleData);
@@ -122,27 +163,4 @@ async function streamServicioLogs(
       reject(err);
     });
   });
-}
-
-export async function restartProyecto(
-  clienteSlug: string,
-  proyectoNombre: string,
-  servicios: string[],
-): Promise<void> {
-  for (const servicio of servicios) {
-    const name = `${clienteSlug}-${proyectoNombre}-${servicio}`;
-    const container = docker.getContainer(name);
-    try {
-      await container.stop();
-    } catch (err) {
-      if ((err as { statusCode?: number }).statusCode !== 304)
-        handleDockerError(err);
-    }
-    try {
-      await container.start();
-    } catch (err) {
-      if ((err as { statusCode?: number }).statusCode !== 304)
-        handleDockerError(err);
-    }
-  }
 }

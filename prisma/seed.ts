@@ -1,12 +1,14 @@
+import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+loadEnv({ path: ".env.local", override: false });
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  await prisma.servicio.deleteMany();
   await prisma.proyecto.deleteMany();
   await prisma.cliente.deleteMany();
   await prisma.user.deleteMany();
@@ -28,12 +30,6 @@ async function main() {
       dominio: "app.cliente-uno.com",
       ultimoDeployEn: new Date(Date.now() - 2 * 60 * 60 * 1000),
       ultimoDeployRama: "main",
-      servicios: {
-        create: [
-          { nombre: "nginx", estado: "running" },
-          { nombre: "node", estado: "running" },
-        ],
-      },
     },
   });
 
@@ -45,7 +41,6 @@ async function main() {
       dominio: "api.cliente-uno.com",
       ultimoDeployEn: new Date(Date.now() - 5 * 60 * 60 * 1000),
       ultimoDeployRama: "main",
-      servicios: { create: [{ nombre: "fastapi", estado: "stopped" }] },
     },
   });
 
@@ -61,7 +56,6 @@ async function main() {
       dominio: "landing.cliente-dos.com",
       ultimoDeployEn: new Date(Date.now() - 24 * 60 * 60 * 1000),
       ultimoDeployRama: "main",
-      servicios: { create: [{ nombre: "nginx", estado: "error" }] },
     },
   });
 
@@ -73,7 +67,6 @@ async function main() {
       dominio: null,
       ultimoDeployEn: new Date(Date.now() - 10 * 60 * 1000),
       ultimoDeployRama: "develop",
-      servicios: { create: [{ nombre: "celery", estado: "deploying" }] },
     },
   });
 

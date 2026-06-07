@@ -30,7 +30,6 @@ const mockProyecto: ProyectoResumen = {
   repositorioUrl: "https://github.com/org/web-app",
   rama: "develop",
   autoDeployHabilitado: false,
-  servicios: [{ nombre: "nginx", estado: "stopped" }],
   ultimoDeploy: null,
 };
 
@@ -41,19 +40,13 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     vi.mocked(editarProyectoAction).mockResolvedValue(undefined);
   });
 
-  it("can add a second servicio field", () => {
+  it("renders nombre, dominio, repositorioUrl and rama fields without servicios", () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
-    fireEvent.click(screen.getByRole("button", { name: /añadir servicio/i }));
-    expect(screen.getByLabelText("Servicio 2")).toBeInTheDocument();
-  });
-
-  it("can remove a servicio field when multiple exist", () => {
-    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
-    fireEvent.click(screen.getByRole("button", { name: /añadir servicio/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /eliminar servicio 1/i }),
-    );
-    expect(screen.queryByLabelText("Servicio 2")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/dominio/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/repositorio/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
+    expect(screen.queryByText(/servicio/i)).not.toBeInTheDocument();
   });
 
   it("passes dominio to the action when filled", async () => {
@@ -64,9 +57,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     fireEvent.change(screen.getByLabelText(/dominio/i), {
       target: { value: "app.example.com" },
     });
-    fireEvent.change(screen.getByLabelText("Servicio 1"), {
-      target: { value: "nginx" },
-    });
     fireEvent.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => {
@@ -74,29 +64,16 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         CLIENT_ID,
         "proyecto",
         "app.example.com",
-        ["nginx"],
         undefined,
         "main",
       );
     });
   });
 
-  it("renders nombre, dominio, repositorioUrl, rama and one servicio field", () => {
-    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
-    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/dominio/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/repositorio/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Servicio 1")).toBeInTheDocument();
-  });
-
   it("calls crearProyectoAction with filled data on submit", async () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "mi-proyecto" },
-    });
-    fireEvent.change(screen.getByLabelText("Servicio 1"), {
-      target: { value: "nginx" },
     });
     fireEvent.click(screen.getByRole("button", { name: /crear/i }));
 
@@ -105,7 +82,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         CLIENT_ID,
         "mi-proyecto",
         undefined,
-        ["nginx"],
         undefined,
         "main",
       );
@@ -116,9 +92,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "proyecto" },
-    });
-    fireEvent.change(screen.getByLabelText("Servicio 1"), {
-      target: { value: "nginx" },
     });
     fireEvent.change(screen.getByLabelText(/repositorio/i), {
       target: { value: "https://github.com/org/repo" },
@@ -133,7 +106,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         CLIENT_ID,
         "proyecto",
         undefined,
-        ["nginx"],
         "https://github.com/org/repo",
         "develop",
       );
@@ -149,9 +121,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "proyecto" },
     });
-    fireEvent.change(screen.getByLabelText("Servicio 1"), {
-      target: { value: "nginx" },
-    });
     fireEvent.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => {
@@ -164,9 +133,6 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "proyecto" },
     });
-    fireEvent.change(screen.getByLabelText("Servicio 1"), {
-      target: { value: "nginx" },
-    });
     fireEvent.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => {
@@ -174,7 +140,7 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     });
   });
 
-  it("shows error when no servicio filled in", async () => {
+  it("does not show servicios validation error (servicios removed)", async () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "proyecto" },
@@ -182,9 +148,11 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     fireEvent.click(screen.getByRole("button", { name: /crear/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(onClose).toHaveBeenCalled();
     });
-    expect(crearProyectoAction).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/añade al menos un servicio/i),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -195,7 +163,7 @@ describe("ProyectoFormModal — editar proyecto", () => {
     vi.mocked(editarProyectoAction).mockResolvedValue(undefined);
   });
 
-  it("populates fields from existing proyecto", () => {
+  it("populates fields from existing proyecto without servicios", () => {
     render(
       <ProyectoFormModal
         clienteId={CLIENT_ID}
@@ -205,11 +173,11 @@ describe("ProyectoFormModal — editar proyecto", () => {
     );
     expect(screen.getByDisplayValue("web-app")).toBeInTheDocument();
     expect(screen.getByDisplayValue("app.example.com")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("nginx")).toBeInTheDocument();
     expect(
       screen.getByDisplayValue("https://github.com/org/web-app"),
     ).toBeInTheDocument();
     expect(screen.getByDisplayValue("develop")).toBeInTheDocument();
+    expect(screen.queryByText(/servicio/i)).not.toBeInTheDocument();
   });
 
   it("calls editarProyectoAction with updated data on submit", async () => {
@@ -230,7 +198,6 @@ describe("ProyectoFormModal — editar proyecto", () => {
         "p1",
         "web-app-v2",
         "app.example.com",
-        ["nginx"],
         "https://github.com/org/web-app",
         "develop",
       );

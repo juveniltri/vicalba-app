@@ -11,7 +11,6 @@ vi.mock("@/lib/prisma", () => ({
       delete: vi.fn(),
       count: vi.fn(),
     },
-    servicio: { deleteMany: vi.fn() },
     variableEntorno: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -127,15 +126,6 @@ const mockDbData = [
         ultimoDeployRama: "main",
         creadoEn: new Date(),
         actualizadoEn: new Date(),
-        servicios: [
-          {
-            id: "s1",
-            nombre: "nginx",
-            estado: "running" as const,
-            proyectoId: "p1",
-            creadoEn: new Date(),
-          },
-        ],
       },
     ],
   },
@@ -158,7 +148,17 @@ describe("proyectos.listar", () => {
     expect(result[0].slug).toBe("cliente-uno");
     expect(result[0].proyectos[0].estado).toBe("running");
     expect(result[0].proyectos[0].dominio).toBe("app.cliente-uno.com");
-    expect(result[0].proyectos[0].servicios[0].nombre).toBe("nginx");
+  });
+
+  it("listar does not include servicios in returned projects", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+
+    const ctx = await createContext();
+    const caller = createCaller(ctx);
+    const result = await caller.proyectos.listar();
+
+    expect(result[0].proyectos[0]).not.toHaveProperty("servicios");
   });
 
   it("maps ultimoDeployEn + rama to ultimoDeploy object", async () => {
@@ -196,7 +196,7 @@ describe("proyectos.listar", () => {
     expect(result[0].proyectos[0].ultimoDeploy).toBeNull();
   });
 
-  it("calls prisma with correct query options", async () => {
+  it("calls prisma without servicios include", async () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
 
@@ -204,15 +204,12 @@ describe("proyectos.listar", () => {
     const caller = createCaller(ctx);
     await caller.proyectos.listar();
 
-    expect(prisma.cliente.findMany).toHaveBeenCalledWith({
-      include: {
-        proyectos: {
-          include: { servicios: true },
-          orderBy: { nombre: "asc" },
-        },
-      },
-      orderBy: { nombre: "asc" },
-    });
+    const callArg = vi.mocked(prisma.cliente.findMany).mock
+      .calls[0][0] as Record<string, unknown>;
+    const proyectosInclude = (
+      callArg?.include as { proyectos?: { include?: unknown } }
+    )?.proyectos;
+    expect(proyectosInclude).not.toHaveProperty("include");
   });
 
   it("throws UNAUTHORIZED when not authenticated", async () => {
@@ -246,22 +243,6 @@ const mockProyecto = {
     nombre: "Cliente Uno",
     creadoEn: new Date(),
   },
-  servicios: [
-    {
-      id: "s1",
-      nombre: "nginx",
-      estado: "stopped" as const,
-      proyectoId: "p1",
-      creadoEn: new Date(),
-    },
-    {
-      id: "s2",
-      nombre: "node",
-      estado: "stopped" as const,
-      proyectoId: "p1",
-      creadoEn: new Date(),
-    },
-  ],
 };
 
 describe("proyectos.iniciar", () => {
@@ -270,7 +251,7 @@ describe("proyectos.iniciar", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("calls iniciarProyecto and updates estado to running", async () => {
+  it("calls iniciarProyecto without servicios and updates estado to running", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyecto as never,
     );
@@ -283,10 +264,8 @@ describe("proyectos.iniciar", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.iniciar({ id: "p1" });
 
-    expect(iniciarProyecto).toHaveBeenCalledWith("cliente-uno", "web-app", [
-      "nginx",
-      "node",
-    ]);
+    expect(iniciarProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(iniciarProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
       data: { estado: "running" },
@@ -346,7 +325,7 @@ describe("proyectos.detener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("calls detenerProyecto and updates estado to stopped", async () => {
+  it("calls detenerProyecto without servicios and updates estado to stopped", async () => {
     const runningProyecto = { ...mockProyecto, estado: "running" as const };
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       runningProyecto as never,
@@ -360,10 +339,8 @@ describe("proyectos.detener", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.detener({ id: "p1" });
 
-    expect(detenerProyecto).toHaveBeenCalledWith("cliente-uno", "web-app", [
-      "nginx",
-      "node",
-    ]);
+    expect(detenerProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(detenerProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
       data: { estado: "stopped" },
@@ -425,7 +402,7 @@ describe("proyectos.restart", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("calls restartProyecto and updates estado to running", async () => {
+  it("calls restartProyecto without servicios and updates estado to running", async () => {
     const runningProyecto = { ...mockProyecto, estado: "running" as const };
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       runningProyecto as never,
@@ -439,10 +416,8 @@ describe("proyectos.restart", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.restart({ id: "p1" });
 
-    expect(restartProyecto).toHaveBeenCalledWith("cliente-uno", "web-app", [
-      "nginx",
-      "node",
-    ]);
+    expect(restartProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(restartProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
       data: { estado: "running" },
@@ -510,7 +485,7 @@ describe("proyectos.crear", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("creates proyecto with servicios and returns it", async () => {
+  it("creates proyecto without servicios and returns it", async () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
       mockClienteRow as never,
     );
@@ -518,15 +493,6 @@ describe("proyectos.crear", () => {
       ...mockProyecto,
       nombre: "nuevo-proyecto",
       dominio: "nuevo.example.com",
-      servicios: [
-        {
-          id: "s3",
-          nombre: "nginx",
-          estado: "stopped" as const,
-          proyectoId: "p1",
-          creadoEn: new Date(),
-        },
-      ],
       cliente: mockClienteRow,
     };
     vi.mocked(prisma.proyecto.create).mockResolvedValue(created as never);
@@ -536,7 +502,6 @@ describe("proyectos.crear", () => {
       clienteId: "c1",
       nombre: "nuevo-proyecto",
       dominio: "nuevo.example.com",
-      servicios: ["nginx"],
     });
 
     expect(result.nombre).toBe("nuevo-proyecto");
@@ -548,6 +513,9 @@ describe("proyectos.crear", () => {
         }),
       }),
     );
+    const createData = vi.mocked(prisma.proyecto.create).mock.calls[0][0]
+      .data as Record<string, unknown>;
+    expect(createData).not.toHaveProperty("servicios");
   });
 
   it("throws NOT_FOUND when cliente does not exist", async () => {
@@ -558,7 +526,6 @@ describe("proyectos.crear", () => {
       createCaller(ctx).proyectos.crear({
         clienteId: "nope",
         nombre: "x",
-        servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
@@ -569,7 +536,6 @@ describe("proyectos.crear", () => {
       createCaller(ctx).proyectos.crear({
         clienteId: "c1",
         nombre: "../../etc",
-        servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
@@ -580,7 +546,6 @@ describe("proyectos.crear", () => {
       createCaller(ctx).proyectos.crear({
         clienteId: "c1",
         nombre: "MyProject",
-        servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
@@ -599,7 +564,6 @@ describe("proyectos.crear", () => {
     await createCaller(ctx).proyectos.crear({
       clienteId: "c1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(asegurarRedCliente).toHaveBeenCalledWith("cliente-uno");
@@ -612,7 +576,7 @@ describe("proyectos.editar", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("updates proyecto and reconciles servicios", async () => {
+  it("updates proyecto and returns it", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyecto as never,
     );
@@ -620,6 +584,7 @@ describe("proyectos.editar", () => {
       ...mockProyecto,
       nombre: "web-app-v2",
       dominio: "v2.example.com",
+      cliente: mockClienteRow,
     } as never);
 
     const ctx = await createContext();
@@ -627,13 +592,15 @@ describe("proyectos.editar", () => {
       id: "p1",
       nombre: "web-app-v2",
       dominio: "v2.example.com",
-      servicios: ["nginx", "redis"],
     });
 
     expect(result.nombre).toBe("web-app-v2");
     expect(prisma.proyecto.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "p1" } }),
     );
+    const updateData = vi.mocked(prisma.proyecto.update).mock.calls[0][0]
+      .data as Record<string, unknown>;
+    expect(updateData).not.toHaveProperty("servicios");
   });
 
   it("throws NOT_FOUND when proyecto does not exist", async () => {
@@ -644,14 +611,14 @@ describe("proyectos.editar", () => {
       createCaller(ctx).proyectos.editar({
         id: "nope",
         nombre: "x",
-        servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("throws CONFLICT when proyecto is running", async () => {
+  it("throws CONFLICT only when nombre changes AND proyecto is running", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
+      nombre: "web-app",
       estado: "running",
     } as never);
 
@@ -659,8 +626,46 @@ describe("proyectos.editar", () => {
     await expect(
       createCaller(ctx).proyectos.editar({
         id: "p1",
-        nombre: "x",
-        servicios: ["nginx"],
+        nombre: "new-name",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("allows editar without name change even when running", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      nombre: "web-app",
+      estado: "running",
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      nombre: "web-app",
+      dominio: "new.example.com",
+      cliente: mockClienteRow,
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      dominio: "new.example.com",
+    });
+
+    expect(result.dominio).toBe("new.example.com");
+  });
+
+  it("throws CONFLICT when nombre changes AND proyecto is deploying", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      nombre: "web-app",
+      estado: "deploying",
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.editar({
+        id: "p1",
+        nombre: "different-name",
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
@@ -671,7 +676,6 @@ describe("proyectos.editar", () => {
       createCaller(ctx).proyectos.editar({
         id: "p1",
         nombre: "../../etc",
-        servicios: ["nginx"],
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
@@ -681,14 +685,11 @@ describe("proyectos.eliminar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
-      count: 1,
-    } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
     vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
   });
 
-  it("deletes proyecto and its servicios when stopped", async () => {
+  it("deletes proyecto directly without deleteMany servicios", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyecto as never,
     );
@@ -697,9 +698,6 @@ describe("proyectos.eliminar", () => {
     const result = await createCaller(ctx).proyectos.eliminar({ id: "p1" });
 
     expect(result).toBeUndefined();
-    expect(prisma.servicio.deleteMany).toHaveBeenCalledWith({
-      where: { proyectoId: "p1" },
-    });
     expect(prisma.proyecto.delete).toHaveBeenCalledWith({
       where: { id: "p1" },
     });
@@ -774,7 +772,6 @@ describe("proyectos — integración Traefik", () => {
       clienteId: "c1",
       nombre: "web-app",
       dominio: "app.cliente-uno.com",
-      servicios: ["nginx"],
     });
 
     expect(generarConfigTraefik).toHaveBeenCalledWith({
@@ -802,7 +799,6 @@ describe("proyectos — integración Traefik", () => {
     await createCaller(ctx).proyectos.crear({
       clienteId: "c1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(escribirConfigTraefik).not.toHaveBeenCalled();
@@ -823,7 +819,6 @@ describe("proyectos — integración Traefik", () => {
       id: "p1",
       nombre: "web-app",
       dominio: "nuevo.example.com",
-      servicios: ["nginx"],
     });
 
     expect(escribirConfigTraefik).toHaveBeenCalledWith(
@@ -846,7 +841,6 @@ describe("proyectos — integración Traefik", () => {
     await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(eliminarConfigTraefik).toHaveBeenCalledWith("web-app");
@@ -857,9 +851,6 @@ describe("proyectos — integración Traefik", () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyecto as never,
     );
-    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
-      count: 1,
-    } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
 
     const ctx = await createContext();
@@ -872,9 +863,6 @@ describe("proyectos — integración Traefik", () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
       dominio: null,
-    } as never);
-    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
-      count: 1,
     } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
 
@@ -895,7 +883,7 @@ describe("proyectos.deploy", () => {
     });
   });
 
-  it("llama a ejecutarDeploy con proyectoId y actualiza estado a running en éxito", async () => {
+  it("llama a ejecutarDeploy sin servicios y actualiza estado a running en éxito", async () => {
     const proyecto = {
       ...mockProyecto,
       repositorioUrl: "https://github.com/org/repo",
@@ -917,9 +905,11 @@ describe("proyectos.deploy", () => {
         rama: "main",
         clienteSlug: "cliente-uno",
         proyectoNombre: "web-app",
-        servicios: ["nginx", "node"],
       }),
     );
+    const deployCall = vi.mocked(ejecutarDeploy).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(deployCall).not.toHaveProperty("servicios");
     expect(prisma.proyecto.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "p1" },
@@ -1049,7 +1039,7 @@ describe("proyectos.toggleAutoDeploy", () => {
 });
 
 describe("proyectos.obtener", () => {
-  const mockProyecto = {
+  const mockProyectoConCliente = {
     id: "p1",
     nombre: "web-app",
     clienteId: "c1",
@@ -1068,15 +1058,6 @@ describe("proyectos.obtener", () => {
       nombre: "Cliente Uno",
       creadoEn: new Date(),
     },
-    servicios: [
-      {
-        id: "s1",
-        nombre: "nginx",
-        estado: "running" as const,
-        proyectoId: "p1",
-        creadoEn: new Date(),
-      },
-    ],
   };
 
   beforeEach(() => {
@@ -1084,21 +1065,21 @@ describe("proyectos.obtener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("devuelve el proyecto con cliente y servicios", async () => {
+  it("devuelve el proyecto con cliente sin servicios", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
-      mockProyecto as never,
+      mockProyectoConCliente as never,
     );
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.obtener({ id: "p1" });
     expect(result.nombre).toBe("web-app");
     expect(result.clienteNombre).toBe("Cliente Uno");
     expect(result.clienteSlug).toBe("cliente-uno");
-    expect(result.servicios[0].nombre).toBe("nginx");
+    expect(result).not.toHaveProperty("servicios");
   });
 
   it("mapea ultimoDeployEn a objeto ultimoDeploy", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
-      mockProyecto as never,
+      mockProyectoConCliente as never,
     );
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.obtener({ id: "p1" });
@@ -1135,15 +1116,6 @@ describe("proyectos.deploy — con variables de entorno", () => {
       nombre: "Cliente Uno",
       creadoEn: new Date(),
     },
-    servicios: [
-      {
-        id: "s1",
-        nombre: "app",
-        estado: "stopped" as const,
-        proyectoId: "p1",
-        creadoEn: new Date(),
-      },
-    ],
   };
 
   beforeEach(() => {
@@ -1275,7 +1247,7 @@ describe("proyectos.rollback", () => {
     vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
   });
 
-  it("llama a ejecutarDeploy con sha, proyectoId y rama del deploy anterior", async () => {
+  it("llama a ejecutarDeploy sin servicios con sha, proyectoId y rama del deploy anterior", async () => {
     const ctx = await createContext();
     await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
 
@@ -1288,6 +1260,9 @@ describe("proyectos.rollback", () => {
         proyectoNombre: "web-app",
       }),
     );
+    const rollbackCall = vi.mocked(ejecutarDeploy).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(rollbackCall).not.toHaveProperty("servicios");
   });
 
   it("actualiza estado a running cuando ejecutarDeploy retorna exito", async () => {
@@ -1401,7 +1376,6 @@ describe("proyectos — integración Traefik redes", () => {
       clienteId: "c1",
       nombre: "web-app",
       dominio: "app.ejemplo.com",
-      servicios: ["nginx"],
     });
 
     expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
@@ -1421,7 +1395,6 @@ describe("proyectos — integración Traefik redes", () => {
     await createCaller(ctx).proyectos.crear({
       clienteId: "c1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(conectarTraefikARed).not.toHaveBeenCalled();
@@ -1443,7 +1416,6 @@ describe("proyectos — integración Traefik redes", () => {
       id: "p1",
       nombre: "web-app",
       dominio: "nuevo.ejemplo.com",
-      servicios: ["nginx"],
     });
 
     expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
@@ -1465,7 +1437,6 @@ describe("proyectos — integración Traefik redes", () => {
     await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(desconectarTraefikDeRed).toHaveBeenCalledWith("cliente-uno");
@@ -1487,7 +1458,6 @@ describe("proyectos — integración Traefik redes", () => {
     await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app",
-      servicios: ["nginx"],
     });
 
     expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
@@ -1497,9 +1467,6 @@ describe("proyectos — integración Traefik redes", () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
       dominio: "app.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
-      count: 1,
     } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
     vi.mocked(prisma.proyecto.count)
@@ -1516,9 +1483,6 @@ describe("proyectos — integración Traefik redes", () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
       dominio: "app.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.servicio.deleteMany).mockResolvedValue({
-      count: 1,
     } as never);
     vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
     vi.mocked(prisma.proyecto.count)
@@ -1580,15 +1544,6 @@ describe("proyectos.deploy — notificaciones", () => {
       nombre: "Cliente Uno",
       creadoEn: new Date(),
     },
-    servicios: [
-      {
-        id: "s1",
-        nombre: "nginx",
-        estado: "stopped" as const,
-        proyectoId: "p1",
-        creadoEn: new Date(),
-      },
-    ],
   };
 
   beforeEach(() => {
@@ -1683,15 +1638,6 @@ describe("proyectos.rollback — notificaciones", () => {
       nombre: "Cliente Uno",
       creadoEn: new Date(),
     },
-    servicios: [
-      {
-        id: "s1",
-        nombre: "nginx",
-        estado: "running" as const,
-        proyectoId: "p1",
-        creadoEn: new Date(),
-      },
-    ],
   };
 
   beforeEach(() => {
@@ -1754,7 +1700,7 @@ describe("proyectos.rollback — notificaciones", () => {
     ).resolves.toBeDefined();
   });
 
-  it("pasa sha null cuando el deploy no tiene sha", async () => {
+  it("pasa sha null cuando el deploy no tiene sha → lanza BAD_REQUEST", async () => {
     vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
       ...mockDeploy,
       sha: null,

@@ -268,7 +268,8 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fase 6: Redes Docker por cliente (cliente-[slug]-network, compose override, asegurar/eliminar en crear/eliminar proyecto), health check real (DB + Docker daemon, 503 si degraded)
   - Rollback: campo sha en Deploy, deployProyecto retorna sha, procedure rollback, botón Rollback en historial
   - Gestión de dominios: conectarTraefikARed/desconectarTraefikDeRed auto en crear/editar/eliminar, leerEstadoSSL desde acme.json (Zod), SSLBadge en detalle de proyecto (328 tests, en master)
-  - Notificaciones de deploy: ConfiguracionNotificacion en BD, adaptadores webhook/email/nodemailer/Telegram, orquestador Promise.allSettled fire-and-forget, configuracionRouter obtener/guardar (SMTP cifrado), UI en /configuracion (367 tests, PR #1 pendiente de merge)
+  - Notificaciones de deploy: ConfiguracionNotificacion en BD, adaptadores webhook/email/nodemailer/Telegram, orquestador Promise.allSettled fire-and-forget, configuracionRouter obtener/guardar (SMTP cifrado), UI en /configuracion (367 tests, en master)
+  - Refactor deploy sin servicios: eliminado modelo Servicio de BD/router/UI; deploy real vía `docker compose -p ${clienteSlug}-${proyectoNombre}`; start/stop/restart/logs por label `com.docker.compose.project`; edición de dominio/repositorioUrl/rama sin restricción de estado (patrón Coolify); entorno dev resiliente (Docker calls no bloquean sin daemon)
 - **En construcción:** —
-- **Bloqueado / pendiente:** PR #1 feature/notificaciones pendiente de merge a master
+- **Bloqueado / pendiente:** —
 - **Próximo hito:** —
