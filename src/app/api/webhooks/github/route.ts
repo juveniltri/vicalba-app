@@ -3,6 +3,7 @@ import { verificarFirmaGitHub } from "@/lib/github/webhook";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
+import { enviarNotificacion } from "@/lib/notificaciones";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = await req.text();
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     data: { estado: "deploying" },
   });
 
-  const { resultado } = await ejecutarDeploy({
+  const { resultado, output } = await ejecutarDeploy({
     proyectoId: proyecto.id,
     repoUrl: proyecto.repositorioUrl!,
     rama: proyecto.rama,
@@ -63,6 +64,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         : {}),
     },
   });
+
+  enviarNotificacion({
+    proyectoNombre: proyecto.nombre,
+    clienteSlug: proyecto.cliente.slug,
+    rama: proyecto.rama,
+    sha: null,
+    resultado,
+    output,
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true, deployed: proyecto.id });
 }

@@ -206,14 +206,10 @@ npm run dev
 
 ### Nota — redes de clientes y Traefik
 
-Cuando el panel crea la red `cliente-[slug]-network` para un proyecto, Traefik debe
-conectarse a ella para poder enrutar tráfico a los contenedores del cliente. Esto
-requiere conectar el contenedor `traefik` manualmente o via script hasta que se
-automatice:
-
-```bash
-docker network connect cliente-<slug>-network traefik
-```
+La conexión de Traefik a las redes de cliente es **automática** desde la feature Gestión de Dominios.
+Al crear/editar/eliminar un proyecto con dominio, el panel llama a `conectarTraefikARed` /
+`desconectarTraefikDeRed` via dockerode. Variable de entorno relevante: `TRAEFIK_CONTAINER_NAME`
+(default: `traefik`). Solo hace falta intervención manual en instalaciones con un nombre distinto.
 
 ---
 
@@ -270,7 +266,9 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fase 4: CRUD (clientes router, proyectos.crear/editar/eliminar, formularios modales, dashboard interactivo)
   - Fase 5: Deploy (HMAC webhook GitHub, Traefik config dinámica, deployProyecto lib, auto-deploy toggle, security review aplicado)
   - Fase 6: Redes Docker por cliente (cliente-[slug]-network, compose override, asegurar/eliminar en crear/eliminar proyecto), health check real (DB + Docker daemon, 503 si degraded)
-  - Rollback: campo sha en Deploy, deployProyecto retorna sha, procedure rollback, botón Rollback en historial (303 tests)
+  - Rollback: campo sha en Deploy, deployProyecto retorna sha, procedure rollback, botón Rollback en historial
+  - Gestión de dominios: conectarTraefikARed/desconectarTraefikDeRed auto en crear/editar/eliminar, leerEstadoSSL desde acme.json (Zod), SSLBadge en detalle de proyecto (328 tests, en master)
+  - Notificaciones de deploy: ConfiguracionNotificacion en BD, adaptadores webhook/email/nodemailer/Telegram, orquestador Promise.allSettled fire-and-forget, configuracionRouter obtener/guardar (SMTP cifrado), UI en /configuracion (367 tests, PR #1 pendiente de merge)
 - **En construcción:** —
-- **Bloqueado / pendiente:** —
-- **Próximo hito:** Gestión de dominios + Notificaciones de deploy
+- **Bloqueado / pendiente:** PR #1 feature/notificaciones pendiente de merge a master
+- **Próximo hito:** —

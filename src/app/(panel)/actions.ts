@@ -212,3 +212,57 @@ export async function rollbackAction(deployId: string) {
     };
   }
 }
+
+export async function guardarWebhookAction(
+  habilitado: boolean,
+  url: string | undefined,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.configuracion.guardar({ webhook: { habilitado, url } });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al guardar webhook",
+    };
+  }
+}
+
+export async function guardarEmailAction(
+  habilitado: boolean,
+  config?: {
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpUser?: string;
+    smtpPass?: string;
+    remitente?: string;
+    destinatario?: string;
+  },
+) {
+  try {
+    const api = await createServerCaller();
+    await api.configuracion.guardar({
+      email: { habilitado, ...config },
+    });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al guardar email",
+    };
+  }
+}
+
+export async function guardarTelegramAction(
+  habilitado: boolean,
+  botToken: string | undefined,
+  chatId: string | undefined,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.configuracion.guardar({
+      telegram: { habilitado, botToken, chatId },
+    });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al guardar Telegram",
+    };
+  }
+}
