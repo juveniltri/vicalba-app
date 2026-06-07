@@ -1,4 +1,6 @@
 import { notFound, redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -55,6 +57,7 @@ export default async function DetalleProyectoPage({
         <div className="flex flex-wrap gap-2">
           <form
             action={async () => {
+              "use server";
               await iniciarAction(id);
             }}
           >
@@ -68,6 +71,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await detenerAction(id);
             }}
           >
@@ -81,6 +85,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await restartAction(id);
             }}
           >
@@ -94,6 +99,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await deployProyectoAction(id);
             }}
           >
@@ -107,6 +113,7 @@ export default async function DetalleProyectoPage({
           </form>
           <form
             action={async () => {
+              "use server";
               await toggleAutoDeployAction(id);
             }}
           >
@@ -182,7 +189,10 @@ export default async function DetalleProyectoPage({
         <HistorialDeploys
           deploys={deploys}
           isDeploying={isDeploying}
-          onRollback={rollbackAction}
+          onRollback={async (id) => {
+            "use server";
+            await rollbackAction(id);
+          }}
         />
       </Section>
     </div>

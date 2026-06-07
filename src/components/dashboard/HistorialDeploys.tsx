@@ -17,7 +17,7 @@ export function HistorialDeploys({
 }: {
   deploys: Deploy[];
   isDeploying: boolean;
-  onRollback: (deployId: string) => Promise<unknown>;
+  onRollback: (deployId: string) => Promise<void>;
 }) {
   if (deploys.length === 0) {
     return (
@@ -64,11 +64,7 @@ export function HistorialDeploys({
                 {duracion}
               </span>
               {d.resultado === "exito" && d.sha && (
-                <form
-                  action={async () => {
-                    await onRollback(d.id);
-                  }}
-                >
+                <form action={onRollback.bind(null, d.id)}>
                   <button
                     type="submit"
                     disabled={isDeploying}

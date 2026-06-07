@@ -29,12 +29,19 @@ export async function escribirConfigTraefik(
   proyectoSlug: string,
   yaml: string,
 ): Promise<void> {
-  await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
-  await writeFile(
-    `${env.TRAEFIK_DYNAMIC_DIR}/${proyectoSlug}.yml`,
-    yaml,
-    "utf-8",
-  );
+  try {
+    await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
+    await writeFile(
+      `${env.TRAEFIK_DYNAMIC_DIR}/${proyectoSlug}.yml`,
+      yaml,
+      "utf-8",
+    );
+  } catch (err) {
+    if (env.NODE_ENV === "production") throw err;
+    console.warn(
+      `[traefik] Skipping config write in dev (${(err as NodeJS.ErrnoException).code}): ${env.TRAEFIK_DYNAMIC_DIR}`,
+    );
+  }
 }
 
 export async function eliminarConfigTraefik(

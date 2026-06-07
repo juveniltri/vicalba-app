@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { ClientSection } from "@/components/dashboard/ClientSection";
