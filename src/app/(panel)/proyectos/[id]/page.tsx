@@ -1,4 +1,6 @@
 import { notFound, redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -182,7 +184,9 @@ export default async function DetalleProyectoPage({
         <HistorialDeploys
           deploys={deploys}
           isDeploying={isDeploying}
-          onRollback={rollbackAction}
+          onRollback={async (id) => {
+            await rollbackAction(id);
+          }}
         />
       </Section>
     </div>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { EstadoServicio } from "@/lib/schemas/dashboard";
@@ -66,12 +68,17 @@ export default async function DashboardPage() {
                 </span>
                 <div className="flex items-center gap-4">
                   <ResumenEstado proyectos={c.proyectos} />
-                  <Link
-                    href="/proyectos"
-                    className="font-body text-xs text-text-muted hover:text-primary-300 transition-colors duration-[var(--duration-fast)]"
-                  >
-                    Ver proyectos →
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    {c.proyectos.map((p) => (
+                      <Link
+                        key={p.id}
+                        href={`/proyectos/${p.id}`}
+                        className="font-body text-xs text-text-muted hover:text-primary-300 transition-colors duration-[var(--duration-fast)]"
+                      >
+                        {p.nombre} →
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               </div>
             ))}
