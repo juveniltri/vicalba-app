@@ -209,6 +209,47 @@ export async function rollbackAction(deployId: string) {
   }
 }
 
+export async function crearCredencialAction(
+  nombre: string,
+  clavePublica: string,
+  clavePrivada: string,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.credenciales.crear({ nombre, clavePublica, clavePrivada });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al crear credencial",
+    };
+  }
+}
+
+export async function eliminarCredencialAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.credenciales.eliminar({ id });
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error ? err.message : "Error al eliminar credencial",
+    };
+  }
+}
+
+export async function asignarCredencialAction(
+  proyectoId: string,
+  credencialId: string | null,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.asignarCredencial({ id: proyectoId, credencialId });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Error al asignar credencial",
+    };
+  }
+}
+
 export async function guardarWebhookAction(
   habilitado: boolean,
   url: string | undefined,

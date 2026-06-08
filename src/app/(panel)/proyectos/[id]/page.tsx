@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
+import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import {
   deployProyectoAction,
   detenerAction,
@@ -35,8 +36,11 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const variables = await api.variables.listar({ proyectoId: id });
-  const deploys = await api.proyectos.listarDeploys({ proyectoId: id });
+  const [variables, deploys, credenciales] = await Promise.all([
+    api.variables.listar({ proyectoId: id }),
+    api.proyectos.listarDeploys({ proyectoId: id }),
+    api.credenciales.listar(),
+  ]);
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
@@ -170,6 +174,15 @@ export default async function DetalleProyectoPage({
             />
           )}
         </div>
+      </Section>
+
+      {/* Credencial SSH */}
+      <Section titulo="Credencial SSH">
+        <CredencialSelector
+          proyectoId={id}
+          credencialActualId={proyecto.credencialId}
+          credenciales={credenciales}
+        />
       </Section>
 
       {/* Variables de entorno */}

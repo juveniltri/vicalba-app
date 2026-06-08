@@ -67,6 +67,7 @@ export const proyectosRouter = router({
       repositorioUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
       autoDeployHabilitado: proyecto.autoDeployHabilitado,
+      credencialId: proyecto.credencialId ?? null,
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
           ? {

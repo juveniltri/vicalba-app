@@ -907,8 +907,10 @@ describe("proyectos.deploy", () => {
         proyectoNombre: "web-app",
       }),
     );
-    const deployCall = vi.mocked(ejecutarDeploy).mock
-      .calls[0][0] as Record<string, unknown>;
+    const deployCall = vi.mocked(ejecutarDeploy).mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     expect(deployCall).not.toHaveProperty("servicios");
     expect(prisma.proyecto.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1052,12 +1054,14 @@ describe("proyectos.obtener", () => {
     ultimoDeployRama: "main",
     creadoEn: new Date(),
     actualizadoEn: new Date(),
+    credencialId: null,
     cliente: {
       id: "c1",
       slug: "cliente-uno",
       nombre: "Cliente Uno",
       creadoEn: new Date(),
     },
+    credencial: null,
   };
 
   beforeEach(() => {
@@ -1065,7 +1069,7 @@ describe("proyectos.obtener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("devuelve el proyecto con cliente sin servicios", async () => {
+  it("devuelve el proyecto con cliente sin servicios y con credencialId", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyectoConCliente as never,
     );
@@ -1074,6 +1078,7 @@ describe("proyectos.obtener", () => {
     expect(result.nombre).toBe("web-app");
     expect(result.clienteNombre).toBe("Cliente Uno");
     expect(result.clienteSlug).toBe("cliente-uno");
+    expect(result.credencialId).toBeNull();
     expect(result).not.toHaveProperty("servicios");
   });
 
@@ -1260,8 +1265,10 @@ describe("proyectos.rollback", () => {
         proyectoNombre: "web-app",
       }),
     );
-    const rollbackCall = vi.mocked(ejecutarDeploy).mock
-      .calls[0][0] as Record<string, unknown>;
+    const rollbackCall = vi.mocked(ejecutarDeploy).mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     expect(rollbackCall).not.toHaveProperty("servicios");
   });
 
