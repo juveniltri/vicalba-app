@@ -9,6 +9,7 @@ export async function ejecutarDeploy(params: {
   clienteSlug: string;
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
+  credencial?: { clavePrivada: string };
 }): Promise<{ resultado: "exito" | "error"; output: string }> {
   const { proyectoId, ...deployParams } = params;
 

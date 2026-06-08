@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { descifrar } from "@/lib/crypto";
+import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
   detenerProyecto,
@@ -43,7 +44,7 @@ const idInput = z.object({ id: z.string() });
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
-    include: { cliente: true },
+    include: { cliente: true, credencial: true },
   });
   if (!proyecto)
     throw new TRPCError({
@@ -273,6 +274,10 @@ export const proyectosRouter = router({
       valor: descifrar(v.valorCifrado, v.iv, v.authTag),
     }));
 
+    const credencial = proyecto.credencialId
+      ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+      : undefined;
+
     const { resultado, output } = await ejecutarDeploy({
       proyectoId: input.id,
       repoUrl: proyecto.repositorioUrl,
@@ -280,6 +285,7 @@ export const proyectosRouter = router({
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
       variables,
+      credencial,
     });
 
     enviarNotificacion({
@@ -301,6 +307,16 @@ export const proyectosRouter = router({
       },
     });
   }),
+
+  asignarCredencial: protectedProcedure
+    .input(z.object({ id: z.string(), credencialId: z.string().nullable() }))
+    .mutation(async ({ input }) => {
+      await findProyectoOrThrow(input.id);
+      return prisma.proyecto.update({
+        where: { id: input.id },
+        data: { credencialId: input.credencialId },
+      });
+    }),
 
   toggleAutoDeploy: protectedProcedure
     .input(idInput)
@@ -369,6 +385,10 @@ export const proyectosRouter = router({
         valor: descifrar(v.valorCifrado, v.iv, v.authTag),
       }));
 
+      const credencial = proyecto.credencialId
+        ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+        : undefined;
+
       const { resultado, output } = await ejecutarDeploy({
         proyectoId: deploy.proyectoId,
         repoUrl: proyecto.repositorioUrl!,
@@ -377,6 +397,7 @@ export const proyectosRouter = router({
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         variables,
+        credencial,
       });
 
       enviarNotificacion({

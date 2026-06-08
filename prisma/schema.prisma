@@ -29,6 +29,18 @@ model Cliente {
   creadoEn  DateTime   @default(now())
 }
 
+model Credencial {
+  id                  String     @id @default(cuid())
+  nombre              String     @unique
+  clavePublica        String
+  clavePrivadaCifrada String
+  iv                  String
+  authTag             String
+  proyectos           Proyecto[]
+  creadoEn            DateTime   @default(now())
+  actualizadoEn       DateTime   @updatedAt
+}
+
 model Proyecto {
   id                   String            @id @default(cuid())
   nombre               String
@@ -41,6 +53,8 @@ model Proyecto {
   autoDeployHabilitado Boolean           @default(false)
   ultimoDeployEn       DateTime?
   ultimoDeployRama     String?
+  credencialId         String?
+  credencial           Credencial?       @relation(fields: [credencialId], references: [id], onDelete: SetNull)
   variables            VariableEntorno[]
   deploys              Deploy[]
   creadoEn             DateTime          @default(now())

@@ -4,6 +4,7 @@ import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
 import { descifrar } from "@/lib/crypto";
+import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import { enviarNotificacion } from "@/lib/notificaciones";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -19,23 +20,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  let payload: { ref?: string; repository?: { clone_url?: string } };
+  let payload: {
+    ref?: string;
+    repository?: { clone_url?: string; ssh_url?: string };
+  };
   try {
     payload = JSON.parse(body) as typeof payload;
   } catch {
     return NextResponse.json({ error: "Payload inválido" }, { status: 400 });
   }
 
-  const repoUrl = payload.repository?.clone_url;
+  const cloneUrl = payload.repository?.clone_url;
+  const sshUrl = payload.repository?.ssh_url;
   const rama = payload.ref?.replace("refs/heads/", "");
 
-  if (!repoUrl || !rama) {
+  if ((!cloneUrl && !sshUrl) || !rama) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
+  const repoUrlCandidates = [cloneUrl, sshUrl].filter(Boolean) as string[];
+
   const proyecto = await prisma.proyecto.findFirst({
-    where: { repositorioUrl: repoUrl, rama, autoDeployHabilitado: true },
-    include: { cliente: true, variables: true },
+    where: {
+      repositorioUrl: { in: repoUrlCandidates },
+      rama,
+      autoDeployHabilitado: true,
+    },
+    include: { cliente: true, variables: true, credencial: true },
   });
 
   if (!proyecto) {
@@ -59,6 +70,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     valor: descifrar(v.valorCifrado, v.iv, v.authTag),
   }));
 
+  const credencial = proyecto.credencialId
+    ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+    : undefined;
+
   const { resultado, output } = await ejecutarDeploy({
     proyectoId: proyecto.id,
     repoUrl: proyecto.repositorioUrl!,
@@ -66,6 +81,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     clienteSlug: proyecto.cliente.slug,
     proyectoNombre: proyecto.nombre,
     variables,
+    credencial,
   });
 
   await prisma.proyecto.update({

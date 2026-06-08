@@ -334,3 +334,73 @@ describe("deployProyecto — captura de SHA y path con sha", () => {
     expect(result.sha).toBe("cafebabe");
   });
 });
+
+describe("deployProyecto con credencial SSH", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  const keyFilePath = "/var/vicalba/repos/acme/web-app/.deploy_key";
+
+  it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "-----BEGIN RSA PRIVATE KEY-----" },
+    });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      keyFilePath,
+      "-----BEGIN RSA PRIVATE KEY-----",
+      { mode: 0o600 },
+    );
+  });
+
+  it("elimina .deploy_key en el bloque finally tras deploy exitoso", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "key" },
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith(keyFilePath);
+  });
+
+  it("elimina .deploy_key aunque el deploy falle", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[0] === "compose") return cb(new Error("docker error"), "", "");
+        return cb(null, "", "");
+      },
+    );
+
+    await expect(
+      deployProyecto({ ...baseParams, credencial: { clavePrivada: "key" } }),
+    ).rejects.toThrow();
+
+    expect(mockUnlink).toHaveBeenCalledWith(keyFilePath);
+  });
+
+  it("no escribe .deploy_key cuando no hay credencial", async () => {
+    await deployProyecto(baseParams);
+
+    const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
+    const keyCall = writeFileCalls.find((c) =>
+      String(c[0]).endsWith(".deploy_key"),
+    );
+    expect(keyCall).toBeUndefined();
+  });
+});
