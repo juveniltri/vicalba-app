@@ -24,7 +24,7 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await streamProyectoLogs(
+        const { sinContenedores } = await streamProyectoLogs(
           proyecto.cliente.slug,
           proyecto.nombre,
           (servicio, line) => {
@@ -34,6 +34,13 @@ export async function GET(
           },
           abortController.signal,
         );
+        if (sinContenedores) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ tipo: "sin_contenedores" })}\n\n`,
+            ),
+          );
+        }
       } catch {
         // stream ended or aborted
       }

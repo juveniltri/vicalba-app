@@ -12,9 +12,9 @@ const {
   const execFileMock = vi.fn();
   // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
   const customSymbol = Symbol.for("nodejs.util.promisify.custom");
-  (
-    execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>
-  )[customSymbol] = (
+  (execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>)[
+    customSymbol
+  ] = (
     cmd: unknown,
     args: unknown,
   ): Promise<{ stdout: string; stderr: string }> =>
@@ -22,11 +22,7 @@ const {
       execFileMock(
         cmd,
         args,
-        (
-          err: Error | null,
-          stdout: string,
-          stderr: string,
-        ) => {
+        (err: Error | null, stdout: string, stderr: string) => {
           if (err) reject(err);
           else resolve({ stdout, stderr });
         },
@@ -132,9 +128,7 @@ describe("deployProyecto", () => {
 
   it("ignora silenciosamente el error 'already exists' al conectar a la red", async () => {
     mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/web"] }]);
-    mockConnect.mockRejectedValueOnce(
-      new Error("already exists in network"),
-    );
+    mockConnect.mockRejectedValueOnce(new Error("already exists in network"));
 
     await expect(deployProyecto(baseParams)).resolves.toBeDefined();
   });
@@ -169,7 +163,7 @@ describe("deployProyecto con variables de entorno", () => {
     const envFilePath = "/var/vicalba/repos/acme/web-app/.env.panel";
     expect(mockWriteFile).toHaveBeenCalledWith(
       envFilePath,
-      "DATABASE_URL=postgres://localhost/db\nJWT_SECRET=supersecret",
+      'DATABASE_URL="postgres://localhost/db"\nJWT_SECRET="supersecret"',
       "utf-8",
     );
 
@@ -209,6 +203,22 @@ describe("deployProyecto con variables de entorno", () => {
     ).rejects.toThrow();
     expect(mockUnlink).toHaveBeenCalledWith(
       "/var/vicalba/repos/acme/web-app/.env.panel",
+    );
+  });
+
+  it("escapa comillas dobles y barras invertidas en los valores", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [
+        { clave: "PASSWORD", valor: 'p@ss#word"with"quotes' },
+        { clave: "PATH_VAR", valor: "C:\\Users\\name" },
+      ],
+    });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/web-app/.env.panel",
+      'PASSWORD="p@ss#word\\"with\\"quotes"\nPATH_VAR="C:\\\\Users\\\\name"',
+      "utf-8",
     );
   });
 

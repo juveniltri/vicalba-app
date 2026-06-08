@@ -57,8 +57,7 @@ export async function deployProyecto(params: {
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
 }): Promise<{ output: string; sha: string }> {
-  const { repoUrl, rama, sha, clienteSlug, proyectoNombre, variables } =
-    params;
+  const { repoUrl, rama, sha, clienteSlug, proyectoNombre, variables } = params;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const envFilePath = `${repoDir}/.env.panel`;
   const projectSlug = `${clienteSlug}-${proyectoNombre}`;
@@ -85,7 +84,10 @@ export async function deployProyecto(params: {
 
   if (hasVars) {
     const envContent = variables
-      .map(({ clave, valor }) => `${clave}=${valor}`)
+      .map(({ clave, valor }) => {
+        const escaped = valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        return `${clave}="${escaped}"`;
+      })
       .join("\n");
     await writeFile(envFilePath, envContent, "utf-8");
   }
