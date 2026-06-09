@@ -293,11 +293,6 @@ export const proyectosRouter = router({
         message: "El proyecto no tiene repositorio configurado",
       });
 
-    await prisma.proyecto.update({
-      where: { id: input.id },
-      data: { estado: "deploying" },
-    });
-
     const variablesDB = await prisma.variableEntorno.findMany({
       where: { proyectoId: input.id },
     });
@@ -310,7 +305,14 @@ export const proyectosRouter = router({
       ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
       : undefined;
 
-    const { resultado, output } = await ejecutarDeploy({
+    const proyectoDeploying = await prisma.proyecto.update({
+      where: { id: input.id },
+      data: { estado: "deploying" },
+    });
+
+    // HACK: fire-and-forget — Next.js corre en Node.js persistente (no serverless),
+    // el event loop mantiene viva la promesa hasta que el deploy termina.
+    void ejecutarDeploy({
       proyectoId: input.id,
       tipo: proyecto.tipo,
       repoUrl: proyecto.repositorioUrl,
@@ -324,26 +326,34 @@ export const proyectosRouter = router({
       buildCommand: proyecto.buildCommand,
       startCommand: proyecto.startCommand,
       puerto: proyecto.puerto,
-    });
+    })
+      .then(async ({ resultado, output }) => {
+        await prisma.proyecto.update({
+          where: { id: input.id },
+          data: {
+            estado: resultado === "exito" ? "running" : "error",
+            ...(resultado === "exito"
+              ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
+              : {}),
+          },
+        });
+        void enviarNotificacion({
+          proyectoNombre: proyecto.nombre,
+          clienteSlug: proyecto.cliente.slug,
+          rama: proyecto.rama,
+          sha: null,
+          resultado,
+          output,
+        });
+      })
+      .catch(async () => {
+        await prisma.proyecto.update({
+          where: { id: input.id },
+          data: { estado: "error" },
+        });
+      });
 
-    enviarNotificacion({
-      proyectoNombre: proyecto.nombre,
-      clienteSlug: proyecto.cliente.slug,
-      rama: proyecto.rama,
-      sha: null,
-      resultado,
-      output,
-    }).catch(() => {});
-
-    return prisma.proyecto.update({
-      where: { id: input.id },
-      data: {
-        estado: resultado === "exito" ? "running" : "error",
-        ...(resultado === "exito"
-          ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
-          : {}),
-      },
-    });
+    return proyectoDeploying;
   }),
 
   asignarCredencial: protectedProcedure
@@ -410,11 +420,6 @@ export const proyectosRouter = router({
           message: "El proyecto ya está en proceso de deploy",
         });
 
-      await prisma.proyecto.update({
-        where: { id: deploy.proyectoId },
-        data: { estado: "deploying" },
-      });
-
       const variablesDB = await prisma.variableEntorno.findMany({
         where: { proyectoId: deploy.proyectoId },
       });
@@ -427,7 +432,12 @@ export const proyectosRouter = router({
         ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
         : undefined;
 
-      const { resultado, output } = await ejecutarDeploy({
+      const proyectoDeploying = await prisma.proyecto.update({
+        where: { id: deploy.proyectoId },
+        data: { estado: "deploying" },
+      });
+
+      void ejecutarDeploy({
         proyectoId: deploy.proyectoId,
         tipo: proyecto.tipo,
         repoUrl: proyecto.repositorioUrl,
@@ -442,26 +452,34 @@ export const proyectosRouter = router({
         buildCommand: proyecto.buildCommand,
         startCommand: proyecto.startCommand,
         puerto: proyecto.puerto,
-      });
+      })
+        .then(async ({ resultado, output }) => {
+          await prisma.proyecto.update({
+            where: { id: deploy.proyectoId },
+            data: {
+              estado: resultado === "exito" ? "running" : "error",
+              ...(resultado === "exito"
+                ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
+                : {}),
+            },
+          });
+          void enviarNotificacion({
+            proyectoNombre: proyecto.nombre,
+            clienteSlug: proyecto.cliente.slug,
+            rama: deploy.rama,
+            sha: deploy.sha ?? null,
+            resultado,
+            output,
+          });
+        })
+        .catch(async () => {
+          await prisma.proyecto.update({
+            where: { id: deploy.proyectoId },
+            data: { estado: "error" },
+          });
+        });
 
-      enviarNotificacion({
-        proyectoNombre: proyecto.nombre,
-        clienteSlug: proyecto.cliente.slug,
-        rama: deploy.rama,
-        sha: deploy.sha ?? null,
-        resultado,
-        output,
-      }).catch(() => {});
-
-      return prisma.proyecto.update({
-        where: { id: deploy.proyectoId },
-        data: {
-          estado: resultado === "exito" ? "running" : "error",
-          ...(resultado === "exito"
-            ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
-            : {}),
-        },
-      });
+      return proyectoDeploying;
     }),
 
   estadoSSL: protectedProcedure

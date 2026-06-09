@@ -888,21 +888,21 @@ describe("proyectos.deploy", () => {
     });
   });
 
-  it("llama a ejecutarDeploy sin servicios y actualiza estado a running en éxito", async () => {
+  it("llama a ejecutarDeploy sin servicios y retorna estado deploying inmediatamente", async () => {
     const proyecto = {
       ...mockProyecto,
       repositorioUrl: "https://github.com/org/repo",
       rama: "main",
     };
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(proyecto as never);
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...proyecto,
-      estado: "running",
-    } as never);
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce({ ...proyecto, estado: "deploying" } as never)
+      .mockResolvedValueOnce({ ...proyecto, estado: "running" } as never);
 
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.deploy({ id: "p1" });
 
+    expect(result.estado).toBe("deploying");
     expect(ejecutarDeploy).toHaveBeenCalledWith(
       expect.objectContaining({
         proyectoId: "p1",
@@ -917,16 +917,19 @@ describe("proyectos.deploy", () => {
       unknown
     >;
     expect(deployCall).not.toHaveProperty("servicios");
-    expect(prisma.proyecto.update).toHaveBeenCalledWith(
+
+    await vi.waitFor(() => {
+      expect(prisma.proyecto.update).toHaveBeenCalledTimes(2);
+    });
+    expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: { id: "p1" },
         data: expect.objectContaining({ estado: "running" }),
       }),
     );
-    expect(result.estado).toBe("running");
   });
 
-  it("actualiza estado a error cuando ejecutarDeploy retorna error", async () => {
+  it("actualiza estado a error en background cuando ejecutarDeploy retorna error", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
       repositorioUrl: "https://github.com/org/repo",
@@ -935,20 +938,22 @@ describe("proyectos.deploy", () => {
       resultado: "error",
       output: "build failed",
     });
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      estado: "error",
-    } as never);
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "deploying" } as never)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "error" } as never);
 
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.deploy({ id: "p1" });
 
-    expect(prisma.proyecto.update).toHaveBeenCalledWith(
+    expect(result.estado).toBe("deploying");
+    await vi.waitFor(() => {
+      expect(prisma.proyecto.update).toHaveBeenCalledTimes(2);
+    });
+    expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ estado: "error" }),
       }),
     );
-    expect(result.estado).toBe("error");
   });
 
   it("lanza CONFLICT si el proyecto está en estado deploying", async () => {
@@ -1281,10 +1286,20 @@ describe("proyectos.rollback", () => {
     expect(rollbackCall).not.toHaveProperty("servicios");
   });
 
-  it("actualiza estado a running cuando ejecutarDeploy retorna exito", async () => {
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+  it("retorna deploying inmediatamente y actualiza a running en background", async () => {
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "deploying" } as never)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "running" } as never);
 
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.rollback({
+      deployId: "d1",
+    });
+
+    expect(result.estado).toBe("deploying");
+    await vi.waitFor(() => {
+      expect(prisma.proyecto.update).toHaveBeenCalledTimes(2);
+    });
     expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: { id: "p1" },
@@ -1293,19 +1308,21 @@ describe("proyectos.rollback", () => {
     );
   });
 
-  it("actualiza estado a error cuando ejecutarDeploy retorna error", async () => {
+  it("actualiza estado a error en background cuando ejecutarDeploy retorna error", async () => {
     vi.mocked(ejecutarDeploy).mockResolvedValue({
       resultado: "error",
       output: "fallo",
     });
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      estado: "error",
-    } as never);
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "deploying" } as never)
+      .mockResolvedValueOnce({ ...mockProyecto, estado: "error" } as never);
 
     const ctx = await createContext();
     await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
 
+    await vi.waitFor(() => {
+      expect(prisma.proyecto.update).toHaveBeenCalledTimes(2);
+    });
     expect(prisma.proyecto.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ estado: "error" }),

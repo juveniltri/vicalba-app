@@ -17,6 +17,7 @@ import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import { EditarProyectoButton } from "@/components/dashboard/ProyectoForm";
+import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import {
   deployProyectoAction,
   detenerAction,
@@ -55,6 +56,7 @@ export default async function DetalleProyectoPage({
 
   return (
     <div className="max-w-3xl flex flex-col gap-8">
+      <DeployPoller isDeploying={isDeploying} />
       {/* Cabecera */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3 flex-wrap">
