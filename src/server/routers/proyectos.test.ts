@@ -124,6 +124,8 @@ const mockDbData = [
         autoDeployHabilitado: false,
         ultimoDeployEn: new Date(Date.now() - 2 * 60 * 60 * 1000),
         ultimoDeployRama: "main",
+        tipo: "compose" as const,
+        puerto: null,
         creadoEn: new Date(),
         actualizadoEn: new Date(),
       },
@@ -235,6 +237,9 @@ const mockProyecto = {
   autoDeployHabilitado: false,
   ultimoDeployEn: null,
   ultimoDeployRama: null,
+  tipo: "compose" as const,
+  puerto: null,
+  credencialId: null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
   cliente: {
@@ -1052,6 +1057,8 @@ describe("proyectos.obtener", () => {
     autoDeployHabilitado: false,
     ultimoDeployEn: new Date(Date.now() - 2 * 60 * 60 * 1000),
     ultimoDeployRama: "main",
+    tipo: "compose" as const,
+    puerto: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     credencialId: null,
@@ -1079,6 +1086,8 @@ describe("proyectos.obtener", () => {
     expect(result.clienteNombre).toBe("Cliente Uno");
     expect(result.clienteSlug).toBe("cliente-uno");
     expect(result.credencialId).toBeNull();
+    expect(result.tipo).toBe("compose");
+    expect(result.puerto).toBeNull();
     expect(result).not.toHaveProperty("servicios");
   });
 

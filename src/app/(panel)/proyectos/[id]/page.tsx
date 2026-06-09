@@ -2,6 +2,13 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 export const dynamic = "force-dynamic";
+
+const LABEL_TIPO: Record<string, string> = {
+  compose: "Docker Compose",
+  dockerfile: "Dockerfile",
+  image: "Docker Image",
+  nodejs: "Node.js",
+};
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -9,6 +16,7 @@ import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
+import { EditarProyectoButton } from "@/components/dashboard/ProyectoForm";
 import {
   deployProyectoAction,
   detenerAction,
@@ -142,8 +150,29 @@ export default async function DetalleProyectoPage({
       </div>
 
       {/* Información */}
-      <Section titulo="Información">
+      <Section
+        titulo="Información"
+        accion={
+          <EditarProyectoButton
+            proyecto={{
+              id: proyecto.id,
+              nombre: proyecto.nombre,
+              dominio: proyecto.dominio,
+              repositorioUrl: proyecto.repositorioUrl,
+              rama: proyecto.rama,
+              tipo: proyecto.tipo,
+              puerto: proyecto.puerto,
+              imagenUrl: proyecto.imagenUrl,
+              dockerfilePath: proyecto.dockerfilePath,
+              buildCommand: proyecto.buildCommand,
+              startCommand: proyecto.startCommand,
+            }}
+          />
+        }
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Campo label="Tipo" valor={LABEL_TIPO[proyecto.tipo]} />
+
           <div className="flex flex-col gap-1">
             <span className="font-body text-xs text-text-muted">Dominio</span>
             {proyecto.dominio ? (
@@ -161,12 +190,47 @@ export default async function DetalleProyectoPage({
               <span className="font-body text-sm text-text-primary">—</span>
             )}
           </div>
-          <Campo
-            label="Repositorio"
-            valor={proyecto.repositorioUrl ?? "—"}
-            mono={!!proyecto.repositorioUrl}
-          />
-          <Campo label="Rama de deploy" valor={proyecto.rama} mono />
+
+          {proyecto.tipo === "image" && (
+            <Campo
+              label="Imagen Docker"
+              valor={proyecto.imagenUrl ?? "—"}
+              mono={!!proyecto.imagenUrl}
+            />
+          )}
+
+          {proyecto.tipo !== "image" && (
+            <Campo
+              label="Repositorio"
+              valor={proyecto.repositorioUrl ?? "—"}
+              mono={!!proyecto.repositorioUrl}
+            />
+          )}
+
+          {proyecto.tipo !== "image" && (
+            <Campo label="Rama de deploy" valor={proyecto.rama} mono />
+          )}
+
+          {proyecto.tipo === "dockerfile" && (
+            <Campo
+              label="Ruta Dockerfile"
+              valor={proyecto.dockerfilePath ?? "Dockerfile"}
+              mono
+            />
+          )}
+
+          {proyecto.tipo === "nodejs" && proyecto.buildCommand && (
+            <Campo label="Build command" valor={proyecto.buildCommand} mono />
+          )}
+
+          {proyecto.tipo === "nodejs" && proyecto.startCommand && (
+            <Campo label="Start command" valor={proyecto.startCommand} mono />
+          )}
+
+          {proyecto.puerto && (
+            <Campo label="Puerto" valor={String(proyecto.puerto)} mono />
+          )}
+
           {proyecto.ultimoDeploy && (
             <Campo
               label="Último deploy"
@@ -207,16 +271,21 @@ export default async function DetalleProyectoPage({
 
 function Section({
   titulo,
+  accion,
   children,
 }: {
   titulo: string;
+  accion?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section>
-      <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest mb-4">
-        {titulo}
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest">
+          {titulo}
+        </h2>
+        {accion}
+      </div>
       {children}
     </section>
   );

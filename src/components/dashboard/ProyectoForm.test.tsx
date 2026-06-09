@@ -30,6 +30,12 @@ const mockProyecto: ProyectoResumen = {
   repositorioUrl: "https://github.com/org/web-app",
   rama: "develop",
   autoDeployHabilitado: false,
+  tipo: "compose",
+  puerto: null,
+  imagenUrl: null,
+  dockerfilePath: null,
+  buildCommand: null,
+  startCommand: null,
   ultimoDeploy: null,
 };
 
@@ -40,10 +46,12 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     vi.mocked(editarProyectoAction).mockResolvedValue(undefined);
   });
 
-  it("renders nombre, dominio, repositorioUrl and rama fields without servicios", () => {
+  it("renders nombre, tipo, dominio, puerto, repositorioUrl and rama fields without servicios", () => {
     render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/tipo/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/dominio/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/puerto/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/repositorio/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
     expect(screen.queryByText(/servicio/i)).not.toBeInTheDocument();
@@ -66,6 +74,12 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         "app.example.com",
         undefined,
         "main",
+        "compose",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
   });
@@ -84,6 +98,12 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         undefined,
         undefined,
         "main",
+        "compose",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
   });
@@ -108,6 +128,12 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
         undefined,
         "https://github.com/org/repo",
         "develop",
+        "compose",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
   });
@@ -200,6 +226,12 @@ describe("ProyectoFormModal — editar proyecto", () => {
         "app.example.com",
         "https://github.com/org/web-app",
         "develop",
+        "compose",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
   });

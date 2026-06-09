@@ -64,6 +64,7 @@ vi.mock("dockerode", () => ({
 import { deployProyecto } from "./deploy";
 
 const baseParams = {
+  tipo: "compose",
   repoUrl: "https://github.com/org/repo",
   rama: "main",
   clienteSlug: "acme",
@@ -160,7 +161,7 @@ describe("deployProyecto con variables de entorno", () => {
       ],
     });
 
-    const envFilePath = "/var/vicalba/repos/acme/web-app/.env.panel";
+    const envFilePath = "/var/vicalba/repos/acme/.panel/web-app.env";
     expect(mockWriteFile).toHaveBeenCalledWith(
       envFilePath,
       'DATABASE_URL="postgres://localhost/db"\nJWT_SECRET="supersecret"',
@@ -180,7 +181,7 @@ describe("deployProyecto con variables de entorno", () => {
       variables: [{ clave: "X", valor: "y" }],
     });
     expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env.panel",
+      "/var/vicalba/repos/acme/.panel/web-app.env",
     );
   });
 
@@ -202,7 +203,7 @@ describe("deployProyecto con variables de entorno", () => {
       }),
     ).rejects.toThrow();
     expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env.panel",
+      "/var/vicalba/repos/acme/.panel/web-app.env",
     );
   });
 
@@ -216,7 +217,7 @@ describe("deployProyecto con variables de entorno", () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env.panel",
+      "/var/vicalba/repos/acme/.panel/web-app.env",
       'PASSWORD="p@ss#word\\"with\\"quotes"\nPATH_VAR="C:\\\\Users\\\\name"',
       "utf-8",
     );
@@ -225,8 +226,8 @@ describe("deployProyecto con variables de entorno", () => {
   it("no escribe .env.panel cuando no hay variables", async () => {
     await deployProyecto(baseParams);
     const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
-    const envFileCall = writeFileCalls.find((c) =>
-      String(c[0]).endsWith(".env.panel"),
+    const envFileCall = writeFileCalls.find(
+      (c) => String(c[0]).includes("/.panel/") && String(c[0]).endsWith(".env"),
     );
     expect(envFileCall).toBeUndefined();
     expect(mockUnlink).not.toHaveBeenCalled();
@@ -351,7 +352,7 @@ describe("deployProyecto con credencial SSH", () => {
     );
   });
 
-  const keyFilePath = "/var/vicalba/repos/acme/web-app/.deploy_key";
+  const keyFilePath = "/var/vicalba/repos/acme/.panel/web-app.deploy_key";
 
   it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
     await deployProyecto({

@@ -76,12 +76,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { resultado, output } = await ejecutarDeploy({
     proyectoId: proyecto.id,
-    repoUrl: proyecto.repositorioUrl!,
+    tipo: proyecto.tipo,
+    repoUrl: proyecto.repositorioUrl,
     rama: proyecto.rama,
     clienteSlug: proyecto.cliente.slug,
     proyectoNombre: proyecto.nombre,
     variables,
     credencial,
+    imagenUrl: proyecto.imagenUrl,
+    dockerfilePath: proyecto.dockerfilePath,
+    buildCommand: proyecto.buildCommand,
+    startCommand: proyecto.startCommand,
+    puerto: proyecto.puerto,
   });
 
   await prisma.proyecto.update({

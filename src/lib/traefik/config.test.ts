@@ -53,6 +53,28 @@ describe("generarConfigTraefik", () => {
 
     expect(yaml).toContain("cliente-uno-web-app");
   });
+
+  it("usa puerto 80 por defecto en la URL del servidor", () => {
+    const yaml = generarConfigTraefik({
+      dominio: "app.example.com",
+      proyectoSlug: "web-app",
+      clienteSlug: "cliente-uno",
+    });
+
+    expect(yaml).toContain(":80");
+  });
+
+  it("usa el puerto especificado en la URL del servidor", () => {
+    const yaml = generarConfigTraefik({
+      dominio: "app.example.com",
+      proyectoSlug: "web-app",
+      clienteSlug: "cliente-uno",
+      puerto: 3000,
+    });
+
+    expect(yaml).toContain(":3000");
+    expect(yaml).not.toContain(":80");
+  });
 });
 
 describe("escribirConfigTraefik", () => {

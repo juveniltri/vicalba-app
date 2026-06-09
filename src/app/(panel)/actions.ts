@@ -3,6 +3,23 @@
 import { signOut } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 
+function parseTRPCError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(err.message);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length > 0 &&
+      typeof (parsed[0] as Record<string, unknown>).message === "string"
+    ) {
+      return (parsed[0] as Record<string, unknown>).message as string;
+    }
+  } catch {
+    // not JSON
+  }
+  return err.message;
+}
+
 export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
@@ -12,7 +29,7 @@ export async function iniciarAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.iniciar({ id });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error al iniciar" };
+    return { error: parseTRPCError(err, "Error al iniciar") };
   }
 }
 
@@ -21,7 +38,7 @@ export async function detenerAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.detener({ id });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error al detener" };
+    return { error: parseTRPCError(err, "Error al detener") };
   }
 }
 
@@ -30,7 +47,7 @@ export async function restartAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.restart({ id });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error al reiniciar" };
+    return { error: parseTRPCError(err, "Error al reiniciar") };
   }
 }
 
@@ -39,9 +56,7 @@ export async function crearClienteAction(slug: string, nombre: string) {
     const api = await createServerCaller();
     await api.clientes.crear({ slug, nombre });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al crear cliente",
-    };
+    return { error: parseTRPCError(err, "Error al crear cliente") };
   }
 }
 
@@ -50,9 +65,7 @@ export async function editarClienteAction(id: string, nombre: string) {
     const api = await createServerCaller();
     await api.clientes.editar({ id, nombre });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al editar cliente",
-    };
+    return { error: parseTRPCError(err, "Error al editar cliente") };
   }
 }
 
@@ -61,9 +74,7 @@ export async function eliminarClienteAction(id: string) {
     const api = await createServerCaller();
     await api.clientes.eliminar({ id });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al eliminar cliente",
-    };
+    return { error: parseTRPCError(err, "Error al eliminar cliente") };
   }
 }
 
@@ -73,6 +84,12 @@ export async function crearProyectoAction(
   dominio: string | undefined,
   repositorioUrl?: string,
   rama?: string,
+  tipo?: string,
+  puerto?: number,
+  imagenUrl?: string,
+  dockerfilePath?: string,
+  buildCommand?: string,
+  startCommand?: string,
 ) {
   try {
     const api = await createServerCaller();
@@ -82,11 +99,15 @@ export async function crearProyectoAction(
       dominio,
       repositorioUrl,
       rama,
+      tipo: tipo as "compose" | "dockerfile" | "image" | "nodejs" | undefined,
+      puerto,
+      imagenUrl,
+      dockerfilePath,
+      buildCommand,
+      startCommand,
     });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al crear proyecto",
-    };
+    return { error: parseTRPCError(err, "Error al crear proyecto") };
   }
 }
 
@@ -96,6 +117,12 @@ export async function editarProyectoAction(
   dominio: string | undefined,
   repositorioUrl?: string,
   rama?: string,
+  tipo?: string,
+  puerto?: number,
+  imagenUrl?: string,
+  dockerfilePath?: string,
+  buildCommand?: string,
+  startCommand?: string,
 ) {
   try {
     const api = await createServerCaller();
@@ -105,11 +132,15 @@ export async function editarProyectoAction(
       dominio,
       repositorioUrl,
       rama,
+      tipo: tipo as "compose" | "dockerfile" | "image" | "nodejs" | undefined,
+      puerto,
+      imagenUrl,
+      dockerfilePath,
+      buildCommand,
+      startCommand,
     });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al editar proyecto",
-    };
+    return { error: parseTRPCError(err, "Error al editar proyecto") };
   }
 }
 
@@ -118,9 +149,7 @@ export async function deployProyectoAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.deploy({ id });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al hacer deploy",
-    };
+    return { error: parseTRPCError(err, "Error al hacer deploy") };
   }
 }
 
@@ -129,10 +158,7 @@ export async function toggleAutoDeployAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.toggleAutoDeploy({ id });
   } catch (err) {
-    return {
-      error:
-        err instanceof Error ? err.message : "Error al cambiar auto-deploy",
-    };
+    return { error: parseTRPCError(err, "Error al cambiar auto-deploy") };
   }
 }
 
@@ -141,9 +167,7 @@ export async function eliminarProyectoAction(id: string) {
     const api = await createServerCaller();
     await api.proyectos.eliminar({ id });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al eliminar proyecto",
-    };
+    return { error: parseTRPCError(err, "Error al eliminar proyecto") };
   }
 }
 
@@ -156,9 +180,7 @@ export async function crearVariableAction(
     const api = await createServerCaller();
     await api.variables.crear({ proyectoId, clave, valor });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al crear variable",
-    };
+    return { error: parseTRPCError(err, "Error al crear variable") };
   }
 }
 
@@ -167,10 +189,7 @@ export async function actualizarVariableAction(id: string, valor: string) {
     const api = await createServerCaller();
     await api.variables.actualizar({ id, valor });
   } catch (err) {
-    return {
-      error:
-        err instanceof Error ? err.message : "Error al actualizar variable",
-    };
+    return { error: parseTRPCError(err, "Error al actualizar variable") };
   }
 }
 
@@ -179,9 +198,7 @@ export async function eliminarVariableAction(id: string) {
     const api = await createServerCaller();
     await api.variables.eliminar({ id });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al eliminar variable",
-    };
+    return { error: parseTRPCError(err, "Error al eliminar variable") };
   }
 }
 
@@ -192,9 +209,7 @@ export async function revelarVariableAction(
     const api = await createServerCaller();
     return await api.variables.revelar({ id });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al revelar variable",
-    };
+    return { error: parseTRPCError(err, "Error al revelar variable") };
   }
 }
 
@@ -203,9 +218,7 @@ export async function rollbackAction(deployId: string) {
     const api = await createServerCaller();
     await api.proyectos.rollback({ deployId });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al hacer rollback",
-    };
+    return { error: parseTRPCError(err, "Error al hacer rollback") };
   }
 }
 
@@ -218,9 +231,7 @@ export async function crearCredencialAction(
     const api = await createServerCaller();
     await api.credenciales.crear({ nombre, clavePublica, clavePrivada });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al crear credencial",
-    };
+    return { error: parseTRPCError(err, "Error al crear credencial") };
   }
 }
 
@@ -229,10 +240,7 @@ export async function eliminarCredencialAction(id: string) {
     const api = await createServerCaller();
     await api.credenciales.eliminar({ id });
   } catch (err) {
-    return {
-      error:
-        err instanceof Error ? err.message : "Error al eliminar credencial",
-    };
+    return { error: parseTRPCError(err, "Error al eliminar credencial") };
   }
 }
 
@@ -244,9 +252,7 @@ export async function asignarCredencialAction(
     const api = await createServerCaller();
     await api.proyectos.asignarCredencial({ id: proyectoId, credencialId });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al asignar credencial",
-    };
+    return { error: parseTRPCError(err, "Error al asignar credencial") };
   }
 }
 
@@ -258,9 +264,7 @@ export async function guardarWebhookAction(
     const api = await createServerCaller();
     await api.configuracion.guardar({ webhook: { habilitado, url } });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al guardar webhook",
-    };
+    return { error: parseTRPCError(err, "Error al guardar webhook") };
   }
 }
 
@@ -281,9 +285,7 @@ export async function guardarEmailAction(
       email: { habilitado, ...config },
     });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al guardar email",
-    };
+    return { error: parseTRPCError(err, "Error al guardar email") };
   }
 }
 
@@ -298,8 +300,6 @@ export async function guardarTelegramAction(
       telegram: { habilitado, botToken, chatId },
     });
   } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Error al guardar Telegram",
-    };
+    return { error: parseTRPCError(err, "Error al guardar Telegram") };
   }
 }

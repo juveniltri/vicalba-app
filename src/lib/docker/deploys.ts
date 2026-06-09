@@ -3,13 +3,19 @@ import { deployProyecto } from "./deploy";
 
 export async function ejecutarDeploy(params: {
   proyectoId: string;
-  repoUrl: string;
+  tipo: string;
+  repoUrl?: string | null;
   rama: string;
   sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };
+  imagenUrl?: string | null;
+  dockerfilePath?: string | null;
+  buildCommand?: string | null;
+  startCommand?: string | null;
+  puerto?: number | null;
 }): Promise<{ resultado: "exito" | "error"; output: string }> {
   const { proyectoId, ...deployParams } = params;
 
