@@ -62,6 +62,8 @@ async function resolverComando(
     const raw = await readFile(`${repoDir}/package.json`, "utf-8");
     const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
     if (pkg.scripts?.[campo]) return `npm run ${campo}`;
+    // Vite / SvelteKit usan "preview" en lugar de "start"
+    if (campo === "start" && pkg.scripts?.preview) return "npm run preview";
   } catch {
     // no package.json o error de parseo
   }
