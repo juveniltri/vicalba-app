@@ -51,7 +51,15 @@ const clientSchema = z.object({
   // Sin variables públicas por ahora — panel 100% interno
 });
 
-const serverResult = serverSchema.safeParse(process.env);
+// Durante el build de Docker no hay variables de entorno reales disponibles.
+// SKIP_ENV_VALIDATION=1 desactiva la validación para que el build complete.
+// En runtime (contenedor arrancado) la validación se ejecuta siempre.
+const skip = process.env.SKIP_ENV_VALIDATION === "1";
+
+const serverResult = skip
+  ? serverSchema.safeParse({ NODE_ENV: "production" })
+  : serverSchema.safeParse(process.env);
+
 if (!serverResult.success) {
   console.error("❌ Variables de entorno del servidor inválidas:");
   console.error(serverResult.error.flatten().fieldErrors);

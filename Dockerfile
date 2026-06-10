@@ -10,7 +10,10 @@ RUN npm ci
 
 COPY . .
 RUN npx prisma generate
+# Las variables reales no existen en build time — se validan en runtime al arrancar
+ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
+ENV SKIP_ENV_VALIDATION=
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
