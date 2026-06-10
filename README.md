@@ -37,7 +37,7 @@ Panel de control de infraestructura al estilo Coolify, diseñado para uso intern
 
 ## Estructura del proyecto
 
-```
+```text
 src/
   app/                  ← Next.js App Router (páginas y layouts)
     (panel)/            ← Rutas protegidas del panel
@@ -163,7 +163,7 @@ Todos los procedures requieren sesión activa. Accesibles en `/api/trpc`.
 
 ## Arquitectura Docker en producción
 
-```
+```text
 VPS
 ├── traefik          ← Puerto 80/443, proxy inverso + SSL
 ├── vicalba-db       ← PostgreSQL
@@ -196,7 +196,7 @@ npm run type-check       # TypeScript estricto
 
 ## Workflow de ramas
 
-```
+```text
 master        ← producción
 develop       ← integración (PRs desde feature/*)
 feature/XXX   ← funcionalidad nueva
