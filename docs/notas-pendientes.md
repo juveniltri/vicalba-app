@@ -21,9 +21,12 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ## Decisiones pendientes
 
-- **Tipos de proyecto** (feature diseñada, pendiente de implementar): añadir campo `tipo` a `Proyecto` con valores `compose | dockerfile | nodejs | image`. Cada tipo tiene su propia estrategia de deploy:
-  - `compose` — comportamiento actual (docker compose up)
-  - `dockerfile` — panel hace `docker build` + run con compose mínimo generado
-  - `nodejs` — panel corre `npm install && npm build` + Dockerfile propio o generado
-  - `image` — solo `docker pull` + config Traefik, sin repo ni build
-  - Requiere diseño previo con `/grill-me` antes de tocar código (cambia modelo de datos y UI de creación de proyectos).
+- ~~**Tipos de proyecto**~~: resuelto. Implementado enum `TipoProyecto` (`compose | dockerfile | nodejs | image`) con deploy multi-tipo, formulario dinámico y campos por tipo.
+
+- **Documentación OpenAPI**: exponer un spec OpenAPI (Swagger) para todos los endpoints REST del panel:
+  - `GET /api/health`
+  - `GET /api/projects/[id]/logs` (SSE)
+  - `GET /api/system/metrics`
+  - `POST /api/webhooks/github`
+  - Opciones a evaluar: [`@scalar/nextjs-api-reference`](https://github.com/scalar/scalar) + generación de spec manual con Zod-to-OpenAPI, o `trpc-openapi` para exponer también los procedures tRPC como REST documentado.
+  - Pendiente de diseño previo — decide si se documenta solo el REST público o también tRPC.
