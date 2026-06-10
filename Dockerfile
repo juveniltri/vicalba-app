@@ -34,4 +34,6 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 
-CMD ["npm", "start"]
+# Ejecuta migraciones pendientes antes de arrancar el servidor.
+# prisma migrate deploy no necesita prisma.config.ts — lee DATABASE_URL del entorno.
+CMD ["/bin/sh", "-c", "npx prisma migrate deploy && npm start"]
