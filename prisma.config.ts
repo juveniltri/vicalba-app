@@ -6,11 +6,9 @@ import { config as loadEnv } from "dotenv";
 // Load it explicitly for local dev; in CI/production DATABASE_URL is a real env var.
 loadEnv({ path: ".env.local", override: false });
 
-// Solo sobreescribir datasource.url si DATABASE_URL está definida.
-// Si no está, Prisma lee env("DATABASE_URL") del schema.prisma directamente.
+// No sobreescribir datasource aquí — schema.prisma ya tiene url = env("DATABASE_URL").
+// loadEnv() de arriba pone DATABASE_URL en process.env para dev local;
+// en Docker lo inyecta docker-compose directamente.
 export default defineConfig({
   schema: path.join("prisma", "schema.prisma"),
-  ...(process.env.DATABASE_URL && {
-    datasource: { url: process.env.DATABASE_URL },
-  }),
 });
