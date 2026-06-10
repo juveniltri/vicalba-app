@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { descifrar } from "@/lib/crypto";
+import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
   detenerProyecto,
@@ -36,6 +37,12 @@ const proyectoInput = z.object({
   dominio: z.string().optional(),
   repositorioUrl: z.string().url().optional(),
   rama: z.string().optional(),
+  tipo: z.enum(["compose", "dockerfile", "image", "nodejs"]).optional(),
+  puerto: z.number().int().min(1).max(65535).optional(),
+  imagenUrl: z.string().optional(),
+  dockerfilePath: z.string().optional(),
+  buildCommand: z.string().optional(),
+  startCommand: z.string().optional(),
 });
 
 const idInput = z.object({ id: z.string() });
@@ -43,7 +50,7 @@ const idInput = z.object({ id: z.string() });
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
-    include: { cliente: true },
+    include: { cliente: true, credencial: true },
   });
   if (!proyecto)
     throw new TRPCError({
@@ -66,6 +73,13 @@ export const proyectosRouter = router({
       repositorioUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
       autoDeployHabilitado: proyecto.autoDeployHabilitado,
+      credencialId: proyecto.credencialId ?? null,
+      tipo: proyecto.tipo,
+      puerto: proyecto.puerto,
+      imagenUrl: proyecto.imagenUrl,
+      dockerfilePath: proyecto.dockerfilePath,
+      buildCommand: proyecto.buildCommand,
+      startCommand: proyecto.startCommand,
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
           ? {
@@ -148,6 +162,12 @@ export const proyectosRouter = router({
           dominio: input.dominio,
           repositorioUrl: input.repositorioUrl,
           rama: input.rama ?? "main",
+          tipo: input.tipo ?? "compose",
+          puerto: input.puerto,
+          imagenUrl: input.imagenUrl,
+          dockerfilePath: input.dockerfilePath,
+          buildCommand: input.buildCommand,
+          startCommand: input.startCommand,
         },
         include: { cliente: true },
       });
@@ -159,6 +179,7 @@ export const proyectosRouter = router({
           dominio: creado.dominio,
           proyectoSlug: creado.nombre,
           clienteSlug: creado.cliente.slug,
+          ...(creado.puerto != null && { puerto: creado.puerto }),
         });
         await escribirConfigTraefik(creado.nombre, yaml);
         await conectarTraefikARed(creado.cliente.slug);
@@ -187,6 +208,12 @@ export const proyectosRouter = router({
           dominio: input.dominio,
           repositorioUrl: input.repositorioUrl,
           rama: input.rama,
+          tipo: input.tipo,
+          puerto: input.puerto,
+          imagenUrl: input.imagenUrl,
+          dockerfilePath: input.dockerfilePath,
+          buildCommand: input.buildCommand,
+          startCommand: input.startCommand,
         },
         include: { cliente: true },
       });
@@ -196,6 +223,7 @@ export const proyectosRouter = router({
           dominio: actualizado.dominio,
           proyectoSlug: actualizado.nombre,
           clienteSlug: actualizado.cliente.slug,
+          ...(actualizado.puerto != null && { puerto: actualizado.puerto }),
         });
         await escribirConfigTraefik(actualizado.nombre, yaml);
       } else {
@@ -254,16 +282,16 @@ export const proyectosRouter = router({
         code: "CONFLICT",
         message: "El proyecto ya está en proceso de deploy",
       });
-    if (!proyecto.repositorioUrl)
+    if (proyecto.tipo === "image" && !proyecto.imagenUrl)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "El proyecto no tiene imagen configurada",
+      });
+    if (proyecto.tipo !== "image" && !proyecto.repositorioUrl)
       throw new TRPCError({
         code: "CONFLICT",
         message: "El proyecto no tiene repositorio configurado",
       });
-
-    await prisma.proyecto.update({
-      where: { id: input.id },
-      data: { estado: "deploying" },
-    });
 
     const variablesDB = await prisma.variableEntorno.findMany({
       where: { proyectoId: input.id },
@@ -273,34 +301,70 @@ export const proyectosRouter = router({
       valor: descifrar(v.valorCifrado, v.iv, v.authTag),
     }));
 
-    const { resultado, output } = await ejecutarDeploy({
+    const credencial = proyecto.credencialId
+      ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+      : undefined;
+
+    const proyectoDeploying = await prisma.proyecto.update({
+      where: { id: input.id },
+      data: { estado: "deploying" },
+    });
+
+    // HACK: fire-and-forget — Next.js corre en Node.js persistente (no serverless),
+    // el event loop mantiene viva la promesa hasta que el deploy termina.
+    void ejecutarDeploy({
       proyectoId: input.id,
+      tipo: proyecto.tipo,
       repoUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
       variables,
-    });
+      credencial,
+      imagenUrl: proyecto.imagenUrl,
+      dockerfilePath: proyecto.dockerfilePath,
+      buildCommand: proyecto.buildCommand,
+      startCommand: proyecto.startCommand,
+      puerto: proyecto.puerto,
+    })
+      .then(async ({ resultado, output }) => {
+        await prisma.proyecto.update({
+          where: { id: input.id },
+          data: {
+            estado: resultado === "exito" ? "running" : "error",
+            ...(resultado === "exito"
+              ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
+              : {}),
+          },
+        });
+        void enviarNotificacion({
+          proyectoNombre: proyecto.nombre,
+          clienteSlug: proyecto.cliente.slug,
+          rama: proyecto.rama,
+          sha: null,
+          resultado,
+          output,
+        });
+      })
+      .catch(async () => {
+        await prisma.proyecto.update({
+          where: { id: input.id },
+          data: { estado: "error" },
+        });
+      });
 
-    enviarNotificacion({
-      proyectoNombre: proyecto.nombre,
-      clienteSlug: proyecto.cliente.slug,
-      rama: proyecto.rama,
-      sha: null,
-      resultado,
-      output,
-    }).catch(() => {});
-
-    return prisma.proyecto.update({
-      where: { id: input.id },
-      data: {
-        estado: resultado === "exito" ? "running" : "error",
-        ...(resultado === "exito"
-          ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
-          : {}),
-      },
-    });
+    return proyectoDeploying;
   }),
+
+  asignarCredencial: protectedProcedure
+    .input(z.object({ id: z.string(), credencialId: z.string().nullable() }))
+    .mutation(async ({ input }) => {
+      await findProyectoOrThrow(input.id);
+      return prisma.proyecto.update({
+        where: { id: input.id },
+        data: { credencialId: input.credencialId },
+      });
+    }),
 
   toggleAutoDeploy: protectedProcedure
     .input(idInput)
@@ -356,11 +420,6 @@ export const proyectosRouter = router({
           message: "El proyecto ya está en proceso de deploy",
         });
 
-      await prisma.proyecto.update({
-        where: { id: deploy.proyectoId },
-        data: { estado: "deploying" },
-      });
-
       const variablesDB = await prisma.variableEntorno.findMany({
         where: { proyectoId: deploy.proyectoId },
       });
@@ -369,34 +428,58 @@ export const proyectosRouter = router({
         valor: descifrar(v.valorCifrado, v.iv, v.authTag),
       }));
 
-      const { resultado, output } = await ejecutarDeploy({
+      const credencial = proyecto.credencialId
+        ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+        : undefined;
+
+      const proyectoDeploying = await prisma.proyecto.update({
+        where: { id: deploy.proyectoId },
+        data: { estado: "deploying" },
+      });
+
+      void ejecutarDeploy({
         proyectoId: deploy.proyectoId,
-        repoUrl: proyecto.repositorioUrl!,
+        tipo: proyecto.tipo,
+        repoUrl: proyecto.repositorioUrl,
         rama: deploy.rama,
-        sha: deploy.sha,
+        sha: deploy.sha ?? undefined,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         variables,
-      });
+        credencial,
+        imagenUrl: proyecto.imagenUrl,
+        dockerfilePath: proyecto.dockerfilePath,
+        buildCommand: proyecto.buildCommand,
+        startCommand: proyecto.startCommand,
+        puerto: proyecto.puerto,
+      })
+        .then(async ({ resultado, output }) => {
+          await prisma.proyecto.update({
+            where: { id: deploy.proyectoId },
+            data: {
+              estado: resultado === "exito" ? "running" : "error",
+              ...(resultado === "exito"
+                ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
+                : {}),
+            },
+          });
+          void enviarNotificacion({
+            proyectoNombre: proyecto.nombre,
+            clienteSlug: proyecto.cliente.slug,
+            rama: deploy.rama,
+            sha: deploy.sha ?? null,
+            resultado,
+            output,
+          });
+        })
+        .catch(async () => {
+          await prisma.proyecto.update({
+            where: { id: deploy.proyectoId },
+            data: { estado: "error" },
+          });
+        });
 
-      enviarNotificacion({
-        proyectoNombre: proyecto.nombre,
-        clienteSlug: proyecto.cliente.slug,
-        rama: deploy.rama,
-        sha: deploy.sha ?? null,
-        resultado,
-        output,
-      }).catch(() => {});
-
-      return prisma.proyecto.update({
-        where: { id: deploy.proyectoId },
-        data: {
-          estado: resultado === "exito" ? "running" : "error",
-          ...(resultado === "exito"
-            ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
-            : {}),
-        },
-      });
+      return proyectoDeploying;
     }),
 
   estadoSSL: protectedProcedure
@@ -428,6 +511,12 @@ export const proyectosRouter = router({
         repositorioUrl: p.repositorioUrl,
         rama: p.rama,
         autoDeployHabilitado: p.autoDeployHabilitado,
+        tipo: p.tipo,
+        puerto: p.puerto,
+        imagenUrl: p.imagenUrl,
+        dockerfilePath: p.dockerfilePath,
+        buildCommand: p.buildCommand,
+        startCommand: p.startCommand,
         ultimoDeploy:
           p.ultimoDeployEn && p.ultimoDeployRama
             ? { hace: formatHace(p.ultimoDeployEn), rama: p.ultimoDeployRama }

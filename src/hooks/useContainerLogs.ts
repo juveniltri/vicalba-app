@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 export type LogLine = { servicio: string; line: string };
+type SseEvent = { tipo: "sin_contenedores" } | LogLine;
 
 export function useContainerLogs(proyectoId: string | null) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sinContenedores, setSinContenedores] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -19,7 +21,13 @@ export function useContainerLogs(proyectoId: string | null) {
     es.onopen = () => setConnected(true);
 
     es.onmessage = (event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as LogLine;
+      const data = JSON.parse(event.data) as SseEvent;
+      if ("tipo" in data) {
+        setSinContenedores(true);
+        setConnected(false);
+        es.close();
+        return;
+      }
       setLines((prev) => [...prev, data]);
     };
 
@@ -38,5 +46,5 @@ export function useContainerLogs(proyectoId: string | null) {
 
   const clear = () => setLines([]);
 
-  return { lines, connected, error, clear };
+  return { lines, connected, error, sinContenedores, clear };
 }

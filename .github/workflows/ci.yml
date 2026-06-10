@@ -2,12 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, master]
   pull_request:
-    branches: [develop, main]
+    branches: [develop, master]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
 
 jobs:
   # ─── 1. Calidad de código ───────────────────────────────────────
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - run: npm ci
 
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - run: npm ci
 
@@ -49,6 +49,11 @@ jobs:
         run: npm run test:unit -- --coverage
         env:
           NODE_ENV: test
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicalba_ci"
+          NEXTAUTH_SECRET: "ci-nextauth-secret-only-for-build-validation"
+          NEXTAUTH_URL: "http://localhost:3000"
+          GITHUB_WEBHOOK_SECRET: "ci-webhook-secret-key"
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -68,7 +73,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - run: npm ci
 
@@ -76,6 +81,12 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicalba_ci"
+          NEXTAUTH_SECRET: "ci-nextauth-secret-only-for-build-validation"
+          NEXTAUTH_URL: "http://localhost:3000"
+          GITHUB_WEBHOOK_SECRET: "ci-webhook-secret-key"
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          PANEL_DOMAIN: "localhost"
 
   # ─── 4. Seguridad ───────────────────────────────────────────────
   security:
@@ -87,7 +98,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - run: npm ci
 

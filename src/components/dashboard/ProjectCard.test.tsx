@@ -21,6 +21,7 @@ vi.mock("@/hooks/useContainerLogs", () => ({
     lines: [],
     connected: false,
     error: null,
+    sinContenedores: false,
     clear: vi.fn(),
   }),
 }));
@@ -47,7 +48,6 @@ const base: ProyectoResumen = {
   nombre: "web-app",
   clienteSlug: "cliente-uno",
   estado: "running",
-  servicios: [],
   dominio: "app.cliente-uno.com",
   repositorioUrl: "https://github.com/org/web-app",
   rama: "main",
@@ -230,14 +230,12 @@ describe("ProjectCard — editar y eliminar proyecto", () => {
     ).toBeInTheDocument();
   });
 
-  it("running: no muestra botones Editar ni Eliminar", () => {
+  it("running: muestra botones Editar y Eliminar (patrón Coolify)", () => {
     render(<ProjectCard proyecto={{ ...base, estado: "running" }} />);
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /editar/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /eliminar/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: /eliminar/i }),
+    ).toBeInTheDocument();
   });
 
   it("click en Editar abre el modal de edición", () => {

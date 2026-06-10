@@ -94,9 +94,10 @@ export async function streamProyectoLogs(
   proyectoNombre: string,
   onLine: (servicio: string, line: string) => void,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<{ sinContenedores: boolean }> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
   const containers = await listProjectContainers(slug, false);
+  if (containers.length === 0) return { sinContenedores: true };
   await Promise.all(
     containers.map((c) => {
       const serviceName =
@@ -104,6 +105,7 @@ export async function streamProyectoLogs(
       return streamContainerLogs(c.Id, serviceName, onLine, signal);
     }),
   );
+  return { sinContenedores: false };
 }
 
 async function streamContainerLogs(
