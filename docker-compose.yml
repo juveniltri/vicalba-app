@@ -54,7 +54,7 @@ services:
     networks:
       - vicalba-net
     environment:
-      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -68,7 +68,7 @@ services:
     networks:
       - vicalba-net
     environment:
-      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
+      DATABASE_URL: ${DATABASE_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: https://${PANEL_DOMAIN}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
