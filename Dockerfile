@@ -9,7 +9,8 @@ COPY prisma ./prisma
 RUN npm ci
 
 COPY . .
-RUN npx prisma generate
+# --schema bypasea prisma.config.ts (que necesita DATABASE_URL, no disponible en build)
+RUN npx prisma generate --schema=./prisma/schema.prisma
 # Las variables reales no existen en build time — se validan en runtime al arrancar
 ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
