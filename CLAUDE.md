@@ -270,6 +270,9 @@ Ver `CONTEXT.md` para el glosario completo.
   - Gestión de dominios: conectarTraefikARed/desconectarTraefikDeRed auto en crear/editar/eliminar, leerEstadoSSL desde acme.json (Zod), SSLBadge en detalle de proyecto (328 tests, en master)
   - Notificaciones de deploy: ConfiguracionNotificacion en BD, adaptadores webhook/email/nodemailer/Telegram, orquestador Promise.allSettled fire-and-forget, configuracionRouter obtener/guardar (SMTP cifrado), UI en /configuracion (367 tests, en master)
   - Refactor deploy sin servicios: eliminado modelo Servicio de BD/router/UI; deploy real vía `docker compose -p ${clienteSlug}-${proyectoNombre}`; start/stop/restart/logs por label `com.docker.compose.project`; edición de dominio/repositorioUrl/rama sin restricción de estado (patrón Coolify); entorno dev resiliente (Docker calls no bloquean sin daemon)
+  - CI/CD pipeline: GitHub Actions (lint + type-check + test:unit); variables de entorno inyectadas en deploy; SSE de logs sin contenedores intermedios (en master, branch feature/ci-deploy-variables-sse)
+  - Credenciales SSH: modelo CredencialSSH cifrado en BD (clavePublica + clavePrivada AES-256-GCM), router CRUD, GIT_SSH_COMMAND en deploy, UI gestión + asignación por proyecto
+  - Tipos de proyecto multi-tipo: enum TipoProyecto (compose/dockerfile/nodejs/image), campos puerto/imagenUrl/dockerfilePath/buildCommand/startCommand; deploy genera Dockerfile+compose dinámico según tipo; buildCommand/startCommand con fallback a package.json; form dinámico con campos condicionales; botón Editar en detalle de proyecto; parseTRPCError para UX de validación (412 tests, branch feature/ci-deploy-variables-sse)
 - **En construcción:** —
 - **Bloqueado / pendiente:** —
-- **Próximo hito:** —
+- **Próximo hito:** PR `feature/ci-deploy-variables-sse` → `develop` → `master`
