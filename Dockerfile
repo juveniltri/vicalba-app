@@ -9,10 +9,9 @@ COPY prisma ./prisma
 RUN npm ci
 
 COPY . .
-# En build time no hay variables reales — SKIP_ENV_VALIDATION=1 desactiva
-# la validación en prisma.config.ts y en src/env.ts
-ENV SKIP_ENV_VALIDATION=1
 RUN npx prisma generate
+# SKIP_ENV_VALIDATION=1 evita que src/env.ts valide vars inexistentes en build time
+ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
 ENV SKIP_ENV_VALIDATION=
 
