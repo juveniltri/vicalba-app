@@ -13,7 +13,7 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 - **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
 
-- **Variables de entorno en deploy**: el `docker compose` ejecutado en deploy no inyecta automáticamente las variables de entorno cifradas en BD. Pendiente decidir estrategia (archivo `.env` temporal, `--env-file`, o variables de entorno del proceso).
+- ~~**Variables de entorno en deploy**~~: resuelto. El webhook route ahora descifra las `VariableEntorno` del proyecto y las pasa a `ejecutarDeploy`, que escribe un `.env.panel` temporal, lo pasa con `--env-file` a `docker compose`, y lo borra en el bloque `finally`. Mismo patrón que tRPC `deploy` y `rollback`.
 
 - **Entorno dev sin Docker daemon**: las llamadas a dockerode se silencian en desarrollo con un `console.warn`. Valorar un mock de dockerode para tests de integración más realistas.
 
@@ -21,4 +21,9 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ## Decisiones pendientes
 
-- **Próxima feature**: sin hito definido. Candidatos: monitorización de recursos (CPU/RAM por proyecto), soporte multi-VPS, o interfaz de logs persistente.
+- **Tipos de proyecto** (feature diseñada, pendiente de implementar): añadir campo `tipo` a `Proyecto` con valores `compose | dockerfile | nodejs | image`. Cada tipo tiene su propia estrategia de deploy:
+  - `compose` — comportamiento actual (docker compose up)
+  - `dockerfile` — panel hace `docker build` + run con compose mínimo generado
+  - `nodejs` — panel corre `npm install && npm build` + Dockerfile propio o generado
+  - `image` — solo `docker pull` + config Traefik, sin repo ni build
+  - Requiere diseño previo con `/grill-me` antes de tocar código (cambia modelo de datos y UI de creación de proyectos).

@@ -21,12 +21,31 @@ enum ResultadoDeploy {
   error
 }
 
+enum TipoProyecto {
+  compose
+  dockerfile
+  image
+  nodejs
+}
+
 model Cliente {
   id        String     @id @default(cuid())
   slug      String     @unique
   nombre    String
   proyectos Proyecto[]
   creadoEn  DateTime   @default(now())
+}
+
+model Credencial {
+  id                  String     @id @default(cuid())
+  nombre              String     @unique
+  clavePublica        String
+  clavePrivadaCifrada String
+  iv                  String
+  authTag             String
+  proyectos           Proyecto[]
+  creadoEn            DateTime   @default(now())
+  actualizadoEn       DateTime   @updatedAt
 }
 
 model Proyecto {
@@ -41,6 +60,14 @@ model Proyecto {
   autoDeployHabilitado Boolean           @default(false)
   ultimoDeployEn       DateTime?
   ultimoDeployRama     String?
+  credencialId         String?
+  credencial           Credencial?       @relation(fields: [credencialId], references: [id], onDelete: SetNull)
+  tipo                 TipoProyecto      @default(compose)
+  puerto               Int?
+  imagenUrl            String?
+  dockerfilePath       String?
+  buildCommand         String?
+  startCommand         String?
   variables            VariableEntorno[]
   deploys              Deploy[]
   creadoEn             DateTime          @default(now())

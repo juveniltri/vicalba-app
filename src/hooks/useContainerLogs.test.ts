@@ -21,7 +21,7 @@ class FakeEventSource {
 
   constructor(url: string) {
     constructedWith.push(url);
-     
+
     mockEs = this as unknown as MockES;
   }
 }
@@ -91,6 +91,36 @@ describe("useContainerLogs", () => {
     const { unmount } = renderHook(() => useContainerLogs("p1"));
     unmount();
     expect(mockEs.close).toHaveBeenCalled();
+  });
+
+  it("starts with sinContenedores false", () => {
+    const { result } = renderHook(() => useContainerLogs("p1"));
+    expect(result.current.sinContenedores).toBe(false);
+  });
+
+  it("evento sin_contenedores: pone sinContenedores true, desconecta y cierra ES", () => {
+    const { result } = renderHook(() => useContainerLogs("p1"));
+    act(() => {
+      mockEs.onopen?.();
+    });
+    act(() => {
+      mockEs.onmessage?.({
+        data: JSON.stringify({ tipo: "sin_contenedores" }),
+      });
+    });
+    expect(result.current.sinContenedores).toBe(true);
+    expect(result.current.connected).toBe(false);
+    expect(mockEs.close).toHaveBeenCalled();
+  });
+
+  it("evento sin_contenedores: no añade líneas al log", () => {
+    const { result } = renderHook(() => useContainerLogs("p1"));
+    act(() => {
+      mockEs.onmessage?.({
+        data: JSON.stringify({ tipo: "sin_contenedores" }),
+      });
+    });
+    expect(result.current.lines).toHaveLength(0);
   });
 
   it("does not open EventSource when proyectoId is null", () => {

@@ -370,7 +370,7 @@ describe("streamProyectoLogs", () => {
 
     await expect(
       streamProyectoLogs("cliente-uno", "web-app", onLine, controller.signal),
-    ).resolves.toBeUndefined();
+    ).resolves.toStrictEqual({ sinContenedores: false });
 
     expect(onLine).not.toHaveBeenCalled();
   });
@@ -427,12 +427,12 @@ describe("streamProyectoLogs", () => {
     expect(destroySpy).toHaveBeenCalled();
   });
 
-  it("resolves immediately when no containers found", async () => {
+  it("resuelve con sinContenedores:true cuando no hay contenedores activos", async () => {
     mockListContainers.mockResolvedValue([]);
     const controller = new AbortController();
 
     await expect(
       streamProyectoLogs("cliente-uno", "web-app", vi.fn(), controller.signal),
-    ).resolves.toBeUndefined();
+    ).resolves.toStrictEqual({ sinContenedores: true });
   });
 });

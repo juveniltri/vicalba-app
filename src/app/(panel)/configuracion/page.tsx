@@ -3,13 +3,17 @@ import { auth } from "@/lib/auth";
 import { env } from "@/env";
 import { createServerCaller } from "@/server/caller";
 import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
+import { GestionCredenciales } from "@/components/dashboard/GestionCredenciales";
 
 export default async function ConfiguracionPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
   const api = await createServerCaller();
-  const config = await api.configuracion.obtener();
+  const [config, credenciales] = await Promise.all([
+    api.configuracion.obtener(),
+    api.credenciales.listar(),
+  ]);
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
 
@@ -36,6 +40,14 @@ export default async function ConfiguracionPage() {
             label="Secret"
             valor="Ver variable GITHUB_WEBHOOK_SECRET en el servidor"
           />
+        </Section>
+
+        <Section titulo="Credenciales SSH">
+          <p className="font-body text-xs text-text-muted mb-3">
+            Claves SSH para clonar repositorios privados. La clave privada se
+            cifra antes de almacenarse.
+          </p>
+          <GestionCredenciales credencialesIniciales={credenciales} />
         </Section>
 
         <Section titulo="Notificaciones">

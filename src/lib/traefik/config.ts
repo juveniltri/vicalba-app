@@ -5,8 +5,9 @@ export function generarConfigTraefik(params: {
   dominio: string;
   proyectoSlug: string;
   clienteSlug: string;
+  puerto?: number;
 }): string {
-  const { dominio, proyectoSlug, clienteSlug } = params;
+  const { dominio, proyectoSlug, clienteSlug, puerto = 80 } = params;
   const nombre = `${clienteSlug}-${proyectoSlug}`;
 
   return [
@@ -21,7 +22,7 @@ export function generarConfigTraefik(params: {
     `    ${nombre}:`,
     "      loadBalancer:",
     "        servers:",
-    `          - url: "http://${nombre}:80"`,
+    `          - url: "http://${nombre}:${puerto}"`,
   ].join("\n");
 }
 

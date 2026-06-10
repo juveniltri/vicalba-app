@@ -12,9 +12,9 @@ const {
   const execFileMock = vi.fn();
   // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
   const customSymbol = Symbol.for("nodejs.util.promisify.custom");
-  (
-    execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>
-  )[customSymbol] = (
+  (execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>)[
+    customSymbol
+  ] = (
     cmd: unknown,
     args: unknown,
   ): Promise<{ stdout: string; stderr: string }> =>
@@ -22,11 +22,7 @@ const {
       execFileMock(
         cmd,
         args,
-        (
-          err: Error | null,
-          stdout: string,
-          stderr: string,
-        ) => {
+        (err: Error | null, stdout: string, stderr: string) => {
           if (err) reject(err);
           else resolve({ stdout, stderr });
         },
@@ -68,6 +64,7 @@ vi.mock("dockerode", () => ({
 import { deployProyecto } from "./deploy";
 
 const baseParams = {
+  tipo: "compose",
   repoUrl: "https://github.com/org/repo",
   rama: "main",
   clienteSlug: "acme",
@@ -132,9 +129,7 @@ describe("deployProyecto", () => {
 
   it("ignora silenciosamente el error 'already exists' al conectar a la red", async () => {
     mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/web"] }]);
-    mockConnect.mockRejectedValueOnce(
-      new Error("already exists in network"),
-    );
+    mockConnect.mockRejectedValueOnce(new Error("already exists in network"));
 
     await expect(deployProyecto(baseParams)).resolves.toBeDefined();
   });
@@ -166,10 +161,10 @@ describe("deployProyecto con variables de entorno", () => {
       ],
     });
 
-    const envFilePath = "/var/vicalba/repos/acme/web-app/.env.panel";
+    const envFilePath = "/var/vicalba/repos/acme/.panel/web-app.env";
     expect(mockWriteFile).toHaveBeenCalledWith(
       envFilePath,
-      "DATABASE_URL=postgres://localhost/db\nJWT_SECRET=supersecret",
+      'DATABASE_URL="postgres://localhost/db"\nJWT_SECRET="supersecret"',
       "utf-8",
     );
 
@@ -186,7 +181,7 @@ describe("deployProyecto con variables de entorno", () => {
       variables: [{ clave: "X", valor: "y" }],
     });
     expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env.panel",
+      "/var/vicalba/repos/acme/.panel/web-app.env",
     );
   });
 
@@ -208,15 +203,31 @@ describe("deployProyecto con variables de entorno", () => {
       }),
     ).rejects.toThrow();
     expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env.panel",
+      "/var/vicalba/repos/acme/.panel/web-app.env",
+    );
+  });
+
+  it("escapa comillas dobles y barras invertidas en los valores", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [
+        { clave: "PASSWORD", valor: 'p@ss#word"with"quotes' },
+        { clave: "PATH_VAR", valor: "C:\\Users\\name" },
+      ],
+    });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/.panel/web-app.env",
+      'PASSWORD="p@ss#word\\"with\\"quotes"\nPATH_VAR="C:\\\\Users\\\\name"',
+      "utf-8",
     );
   });
 
   it("no escribe .env.panel cuando no hay variables", async () => {
     await deployProyecto(baseParams);
     const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
-    const envFileCall = writeFileCalls.find((c) =>
-      String(c[0]).endsWith(".env.panel"),
+    const envFileCall = writeFileCalls.find(
+      (c) => String(c[0]).includes("/.panel/") && String(c[0]).endsWith(".env"),
     );
     expect(envFileCall).toBeUndefined();
     expect(mockUnlink).not.toHaveBeenCalled();
@@ -322,5 +333,75 @@ describe("deployProyecto — captura de SHA y path con sha", () => {
 
     const result = await deployProyecto(baseParams);
     expect(result.sha).toBe("cafebabe");
+  });
+});
+
+describe("deployProyecto con credencial SSH", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  const keyFilePath = "/var/vicalba/repos/acme/.panel/web-app.deploy_key";
+
+  it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "-----BEGIN RSA PRIVATE KEY-----" },
+    });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      keyFilePath,
+      "-----BEGIN RSA PRIVATE KEY-----",
+      { mode: 0o600 },
+    );
+  });
+
+  it("elimina .deploy_key en el bloque finally tras deploy exitoso", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "key" },
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith(keyFilePath);
+  });
+
+  it("elimina .deploy_key aunque el deploy falle", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[0] === "compose") return cb(new Error("docker error"), "", "");
+        return cb(null, "", "");
+      },
+    );
+
+    await expect(
+      deployProyecto({ ...baseParams, credencial: { clavePrivada: "key" } }),
+    ).rejects.toThrow();
+
+    expect(mockUnlink).toHaveBeenCalledWith(keyFilePath);
+  });
+
+  it("no escribe .deploy_key cuando no hay credencial", async () => {
+    await deployProyecto(baseParams);
+
+    const writeFileCalls = vi.mocked(mockWriteFile).mock.calls;
+    const keyCall = writeFileCalls.find((c) =>
+      String(c[0]).endsWith(".deploy_key"),
+    );
+    expect(keyCall).toBeUndefined();
   });
 });
