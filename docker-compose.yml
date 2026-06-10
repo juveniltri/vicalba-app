@@ -50,7 +50,7 @@ services:
   migrate:
     build: .
     container_name: vicalba-migrate
-    command: ["/bin/sh", "-c", "npx prisma migrate deploy --url $$DATABASE_URL"]
+    command: ["npx", "prisma", "migrate", "deploy"]
     networks:
       - vicalba-net
     environment:
