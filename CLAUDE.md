@@ -179,8 +179,9 @@ Ver `production.md` para el proceso completo paso a paso.
 # Directorios persistentes
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
 
-# El panel corre como UID 1001 — repos deben ser suyos
+# El panel corre como UID 1001 — debe poder escribir en ambos directorios
 chown -R 1001:1001 /var/vicalba/repos
+chown -R 1001:1001 /var/vicalba/traefik/dynamic
 
 # DNS: registro wildcard A antes de arrancar
 # *.tudominio.com → IP de la VPS  (cubre panel + subdominios de clientes)
