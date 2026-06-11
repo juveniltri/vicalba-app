@@ -10,10 +10,8 @@ RUN npm ci
 
 COPY . .
 RUN npx prisma generate
-# SKIP_ENV_VALIDATION=1 evita que src/env.ts valide vars inexistentes en build time
 ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
-ENV SKIP_ENV_VALIDATION=
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
@@ -34,6 +32,4 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 
-# Ejecuta migraciones pendientes antes de arrancar el servidor.
-# prisma migrate deploy no necesita prisma.config.ts — lee DATABASE_URL del entorno.
 CMD ["/bin/sh", "-c", "npx prisma migrate deploy && npm start"]
