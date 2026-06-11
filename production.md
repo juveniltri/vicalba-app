@@ -139,8 +139,8 @@ docker compose exec db psql -U vicalba -d vicalba
 ```
 
 ```sql
-INSERT INTO "Usuario" (id, email, "passwordHash", nombre, "creadoEn")
-VALUES (gen_random_uuid(), 'tu@email.com', '<hash-del-paso-1>', 'Admin', now());
+INSERT INTO "User" (id, email, "passwordHash", nombre, "creadoEn")
+VALUES (gen_random_uuid()::text, 'tu@email.com', '<hash-del-paso-1>', 'Admin', now());
 \q
 ```
 
