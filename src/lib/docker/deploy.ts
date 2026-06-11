@@ -37,7 +37,10 @@ async function conectarContenedoresARedCliente(
     await Promise.all(
       containers.map(async (c) => {
         try {
-          await docker.getNetwork(redNombre).connect({ Container: c.Id });
+          await docker.getNetwork(redNombre).connect({
+            Container: c.Id,
+            EndpointConfig: { Aliases: [projectSlug] },
+          });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
           // NOTE: "already exists" means the container is already on the network — safe to ignore
