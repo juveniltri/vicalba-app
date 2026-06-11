@@ -101,6 +101,20 @@ describe("credenciales.crear", () => {
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
+
+  it("relanza errores que no son P2002", async () => {
+    vi.mocked(prisma.credencial.create).mockRejectedValue(
+      new Error("Connection refused"),
+    );
+
+    await expect(
+      caller.crear({
+        nombre: "GitHub personal",
+        clavePublica: "ssh-rsa AAAA...",
+        clavePrivada: "key",
+      }),
+    ).rejects.toThrow("Connection refused");
+  });
 });
 
 describe("credenciales.eliminar", () => {

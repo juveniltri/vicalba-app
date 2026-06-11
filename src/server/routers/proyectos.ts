@@ -447,7 +447,7 @@ export const proyectosRouter = router({
         tipo: proyecto.tipo,
         repoUrl: proyecto.repositorioUrl,
         rama: deploy.rama,
-        sha: deploy.sha ?? undefined,
+        sha: deploy.sha,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         variables,
@@ -472,7 +472,7 @@ export const proyectosRouter = router({
             proyectoNombre: proyecto.nombre,
             clienteSlug: proyecto.cliente.slug,
             rama: deploy.rama,
-            sha: deploy.sha ?? null,
+            sha: deploy.sha,
             resultado,
             output,
           });

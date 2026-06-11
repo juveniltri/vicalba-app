@@ -166,6 +166,20 @@ describe("variables.crear", () => {
       }),
     ).rejects.toThrow("ya existe");
   });
+
+  it("relanza errores que no son P2002", async () => {
+    vi.mocked(prisma.variableEntorno.create).mockRejectedValue(
+      new Error("Connection refused"),
+    );
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).variables.crear({
+        proyectoId: "p1",
+        clave: "MY_VAR",
+        valor: "x",
+      }),
+    ).rejects.toThrow("Connection refused");
+  });
 });
 
 describe("variables.actualizar", () => {
