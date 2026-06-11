@@ -5,10 +5,12 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci
 
 COPY . .
 RUN npx prisma generate
+ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
@@ -30,4 +32,4 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 
-CMD ["npm", "start"]
+CMD ["/bin/sh", "-c", "npx prisma migrate deploy && npm start"]

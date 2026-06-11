@@ -51,7 +51,28 @@ const clientSchema = z.object({
   // Sin variables públicas por ahora — panel 100% interno
 });
 
-const serverResult = serverSchema.safeParse(process.env);
+// Durante el build de Docker no hay variables reales. SKIP_ENV_VALIDATION=1
+// inyecta valores dummy que pasan la validación de Zod para que el build
+// complete. En runtime (sin el flag) se validan las variables reales.
+const buildTimeDummy = {
+  NODE_ENV: "production" as const,
+  DATABASE_URL: "postgresql://build:build@localhost/build",
+  NEXTAUTH_SECRET: "build-time-placeholder-do-not-use-in-production",
+  NEXTAUTH_URL: "https://localhost",
+  GITHUB_WEBHOOK_SECRET: "build-time-placeholder",
+  ENCRYPTION_KEY: "0".repeat(64),
+  DOCKER_SOCKET_PATH: "/var/run/docker.sock",
+  TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
+  REPOS_DIR: "/var/vicalba/repos",
+  TRAEFIK_CONTAINER_NAME: "traefik",
+  ACME_JSON_PATH: "/var/vicalba/traefik/acme.json",
+  LOG_LEVEL: "info" as const,
+};
+
+const serverResult = serverSchema.safeParse(
+  process.env.SKIP_ENV_VALIDATION === "1" ? buildTimeDummy : process.env,
+);
+
 if (!serverResult.success) {
   console.error("❌ Variables de entorno del servidor inválidas:");
   console.error(serverResult.error.flatten().fieldErrors);

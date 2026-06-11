@@ -80,7 +80,9 @@ const configBD = {
   emailRemitente: null,
   emailDestinatario: null,
   telegramHabilitado: false,
-  telegramBotToken: null,
+  telegramBotTokenCifrado: null,
+  telegramBotTokenIv: null,
+  telegramBotTokenTag: null,
   telegramChatId: null,
 };
 
@@ -234,9 +236,14 @@ describe("configuracion.guardar — telegram", () => {
     vi.clearAllMocks();
     vi.mocked(auth).mockResolvedValue(mockSession as never);
     mockUpsert.mockResolvedValue(configBD);
+    mockCifrar.mockReturnValue({
+      valorCifrado: "enc-token",
+      iv: "iv-tok",
+      authTag: "tag-tok",
+    });
   });
 
-  it("hace upsert con los campos telegram correctos", async () => {
+  it("cifra el botToken antes de guardarlo", async () => {
     const ctx = await createContext();
     await createCaller(ctx).configuracion.guardar({
       telegram: {
@@ -246,18 +253,21 @@ describe("configuracion.guardar — telegram", () => {
       },
     });
 
+    expect(mockCifrar).toHaveBeenCalledWith("bot-token-xyz");
     expect(mockUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
           telegramHabilitado: true,
-          telegramBotToken: "bot-token-xyz",
+          telegramBotTokenCifrado: "enc-token",
+          telegramBotTokenIv: "iv-tok",
+          telegramBotTokenTag: "tag-tok",
           telegramChatId: "chat-123",
         }),
       }),
     );
   });
 
-  it("guarda null cuando botToken y chatId no vienen", async () => {
+  it("no toca el token cifrado cuando botToken no viene", async () => {
     const ctx = await createContext();
     await createCaller(ctx).configuracion.guardar({
       telegram: { habilitado: false },
@@ -266,7 +276,10 @@ describe("configuracion.guardar — telegram", () => {
     const updateArg = mockUpsert.mock.calls[0][0] as {
       update: Record<string, unknown>;
     };
-    expect(updateArg.update.telegramBotToken).toBeNull();
+    expect(mockCifrar).not.toHaveBeenCalled();
+    expect(Object.keys(updateArg.update)).not.toContain(
+      "telegramBotTokenCifrado",
+    );
     expect(updateArg.update.telegramChatId).toBeNull();
   });
 });

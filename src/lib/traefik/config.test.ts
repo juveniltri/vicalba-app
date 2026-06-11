@@ -13,9 +13,10 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 vi.mock("@/env", () => ({
-  env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic" },
+  env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic", NODE_ENV: "test" },
 }));
 
+import { env } from "@/env";
 import {
   generarConfigTraefik,
   escribirConfigTraefik,
@@ -75,6 +76,19 @@ describe("generarConfigTraefik", () => {
     expect(yaml).toContain(":3000");
     expect(yaml).not.toContain(":80");
   });
+
+  it("elimina backticks y saltos de línea del dominio antes de generar el YAML", () => {
+    const yaml = generarConfigTraefik({
+      dominio: "app.example.com`\nmalicioso",
+      proyectoSlug: "web-app",
+      clienteSlug: "cliente-uno",
+    });
+
+    // El dominio inyectado queda limpio; la regla Traefik sí usa backticks como delimitadores
+    expect(yaml).toContain("app.example.commalicioso");
+    expect(yaml).not.toContain("app.example.com`");
+    expect(yaml).not.toContain("\nmalicioso");
+  });
 });
 
 describe("escribirConfigTraefik", () => {
@@ -99,6 +113,36 @@ describe("escribirConfigTraefik", () => {
     expect(mockMkdir).toHaveBeenCalledWith("/etc/traefik/dynamic", {
       recursive: true,
     });
+  });
+
+  it("muestra console.warn en dev cuando writeFile falla y no relanza el error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+
+    await expect(
+      escribirConfigTraefik("web-app", "yaml"),
+    ).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[traefik]"));
+    warnSpy.mockRestore();
+  });
+
+  it("relanza el error en producción cuando writeFile falla", async () => {
+    (env as Record<string, unknown>).NODE_ENV = "production";
+    const err = Object.assign(new Error("Permission denied"), {
+      code: "EACCES",
+    });
+    mockWriteFile.mockRejectedValue(err);
+
+    try {
+      await expect(escribirConfigTraefik("web-app", "yaml")).rejects.toThrow(
+        "Permission denied",
+      );
+    } finally {
+      (env as Record<string, unknown>).NODE_ENV = "test";
+    }
   });
 });
 

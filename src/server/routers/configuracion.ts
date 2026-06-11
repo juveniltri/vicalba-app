@@ -48,7 +48,7 @@ export const configuracionRouter = router({
       emailRemitente: config.emailRemitente,
       emailDestinatario: config.emailDestinatario,
       telegramHabilitado: config.telegramHabilitado,
-      telegramBotToken: config.telegramBotToken,
+      telegramBotTokenConfigurado: config.telegramBotTokenCifrado !== null,
       telegramChatId: config.telegramChatId,
     };
   }),
@@ -80,7 +80,12 @@ export const configuracionRouter = router({
 
       if (input.telegram !== undefined) {
         data.telegramHabilitado = input.telegram.habilitado;
-        data.telegramBotToken = input.telegram.botToken ?? null;
+        if (input.telegram.botToken) {
+          const { valorCifrado, iv, authTag } = cifrar(input.telegram.botToken);
+          data.telegramBotTokenCifrado = valorCifrado;
+          data.telegramBotTokenIv = iv;
+          data.telegramBotTokenTag = authTag;
+        }
         data.telegramChatId = input.telegram.chatId ?? null;
       }
 
