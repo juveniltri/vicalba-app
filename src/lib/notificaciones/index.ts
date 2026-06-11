@@ -61,12 +61,17 @@ export async function enviarNotificacion(
 
     if (
       config.telegramHabilitado &&
-      config.telegramBotToken &&
+      config.telegramBotTokenCifrado &&
+      config.telegramBotTokenIv &&
+      config.telegramBotTokenTag &&
       config.telegramChatId
     ) {
-      promesas.push(
-        enviarTelegram(config.telegramBotToken, config.telegramChatId, payload),
+      const botToken = descifrar(
+        config.telegramBotTokenCifrado,
+        config.telegramBotTokenIv,
+        config.telegramBotTokenTag,
       );
+      promesas.push(enviarTelegram(botToken, config.telegramChatId, payload));
     }
 
     await Promise.allSettled(promesas);

@@ -35,6 +35,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // ssh2 usa módulos nativos (.node) que Turbopack no puede empaquetar en ESM.
+  // Externalizarlos hace que Node.js los resuelva en runtime desde node_modules.
+  serverExternalPackages: ["ssh2", "dockerode", "docker-modem"],
+
   async headers() {
     if (process.env.NODE_ENV !== "production") return [];
     return [{ source: "/(.*)", headers: securityHeaders }];

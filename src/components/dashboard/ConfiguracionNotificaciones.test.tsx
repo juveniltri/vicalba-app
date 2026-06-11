@@ -2,6 +2,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import {
+  guardarEmailAction,
+  guardarTelegramAction,
+  guardarWebhookAction,
+} from "@/app/(panel)/actions";
 import { ConfiguracionNotificaciones } from "./ConfiguracionNotificaciones";
 
 vi.mock("@/app/(panel)/actions", () => ({
@@ -53,5 +58,61 @@ describe("ConfiguracionNotificaciones", () => {
 
     expect(screen.getByLabelText(/bot token/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/chat id/i)).toBeInTheDocument();
+  });
+
+  it("el botón Guardar de webhook llama a guardarWebhookAction", async () => {
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    const botones = screen.getAllByRole("button", { name: /guardar/i });
+    await userEvent.click(botones[0]);
+
+    expect(guardarWebhookAction).toHaveBeenCalledWith(false, undefined);
+  });
+
+  it("el botón Guardar de email llama a guardarEmailAction", async () => {
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    const botones = screen.getAllByRole("button", { name: /guardar/i });
+    await userEvent.click(botones[1]);
+
+    expect(guardarEmailAction).toHaveBeenCalledWith(
+      false,
+      expect.objectContaining({ smtpPort: 587 }),
+    );
+  });
+
+  it("el botón Guardar de telegram llama a guardarTelegramAction", async () => {
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    const botones = screen.getAllByRole("button", { name: /guardar/i });
+    await userEvent.click(botones[2]);
+
+    expect(guardarTelegramAction).toHaveBeenCalledWith(
+      false,
+      undefined,
+      undefined,
+    );
+  });
+
+  it("muestra indicador 'configurado' cuando telegramBotTokenConfigurado es true", () => {
+    render(
+      <ConfiguracionNotificaciones
+        config={{
+          webhookHabilitado: false,
+          webhookUrl: null,
+          emailHabilitado: false,
+          emailSmtpHost: null,
+          emailSmtpPort: null,
+          emailSmtpUser: null,
+          emailRemitente: null,
+          emailDestinatario: null,
+          telegramHabilitado: true,
+          telegramBotTokenConfigurado: true,
+          telegramChatId: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("configurado")).toBeInTheDocument();
   });
 });

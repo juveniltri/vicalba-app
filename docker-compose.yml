@@ -46,20 +46,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Migraciones — se ejecuta una vez y termina ───────────────────────────────
-  migrate:
-    build: .
-    container_name: vicalba-migrate
-    command: ["npx", "prisma", "migrate", "deploy"]
-    networks:
-      - vicalba-net
-    environment:
-      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: on-failure
-
   # ── Panel vicalba-app ────────────────────────────────────────────────────────
   panel:
     build: .
@@ -68,7 +54,7 @@ services:
     networks:
       - vicalba-net
     environment:
-      DATABASE_URL: postgresql://vicalba:${DB_PASSWORD}@db:5432/vicalba
+      DATABASE_URL: ${DATABASE_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: https://${PANEL_DOMAIN}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
@@ -88,8 +74,8 @@ services:
       - /proc:/host/proc:ro
       - /:/hostroot:ro,rslave
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.panel.rule=Host(`${PANEL_DOMAIN}`)"
