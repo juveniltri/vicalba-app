@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 import { docker } from "./client";
+import { asegurarRedCliente } from "./networks";
 
 const execFileAsync = promisify(execFile);
 
@@ -274,6 +275,7 @@ export async function deployProyecto(params: {
     }
 
     if (tipo !== "image") {
+      await asegurarRedCliente(clienteSlug);
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
