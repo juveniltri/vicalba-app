@@ -19,7 +19,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs -G nodejs
+RUN apk add --no-cache git openssh-client && \
+    addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs -G nodejs
 
 COPY --from=builder --chown=nextjs:nodejs /app/package*.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
