@@ -40,7 +40,9 @@ const configBase = {
   emailRemitente: null,
   emailDestinatario: null,
   telegramHabilitado: false,
-  telegramBotToken: null,
+  telegramBotTokenCifrado: null,
+  telegramBotTokenIv: null,
+  telegramBotTokenTag: null,
   telegramChatId: null,
 };
 
@@ -93,15 +95,39 @@ describe("enviarNotificacion", () => {
       webhookHabilitado: true,
       webhookUrl: "https://hooks.ejemplo.com/notify",
       telegramHabilitado: true,
-      telegramBotToken: "token",
+      telegramBotTokenCifrado: "enc-tok",
+      telegramBotTokenIv: "iv-tok",
+      telegramBotTokenTag: "tag-tok",
       telegramChatId: "chat",
     });
+    mockDescifrar.mockReturnValue("plain-token");
     mockEnviarWebhook.mockRejectedValue(new Error("webhook falló"));
 
     await enviarNotificacion(payload);
 
     expect(mockEnviarWebhook).toHaveBeenCalledOnce();
     expect(mockEnviarTelegram).toHaveBeenCalledOnce();
+  });
+
+  it("descifra el token de Telegram antes de llamar a enviarTelegram", async () => {
+    mockFindUnique.mockResolvedValue({
+      ...configBase,
+      telegramHabilitado: true,
+      telegramBotTokenCifrado: "enc-tok",
+      telegramBotTokenIv: "iv-tok",
+      telegramBotTokenTag: "tag-tok",
+      telegramChatId: "chat-123",
+    });
+    mockDescifrar.mockReturnValue("plain-token");
+
+    await enviarNotificacion(payload);
+
+    expect(mockDescifrar).toHaveBeenCalledWith("enc-tok", "iv-tok", "tag-tok");
+    expect(mockEnviarTelegram).toHaveBeenCalledWith(
+      "plain-token",
+      "chat-123",
+      payload,
+    );
   });
 
   it("nunca lanza aunque todos los canales fallen", async () => {

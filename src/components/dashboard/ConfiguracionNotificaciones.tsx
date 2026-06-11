@@ -17,7 +17,7 @@ type ConfigData = {
   emailRemitente: string | null;
   emailDestinatario: string | null;
   telegramHabilitado: boolean;
-  telegramBotToken: string | null;
+  telegramBotTokenConfigurado: boolean;
   telegramChatId: string | null;
 } | null;
 
@@ -48,7 +48,7 @@ export function ConfiguracionNotificaciones({
   const [telegramHabilitado, setTelegramHabilitado] = useState(
     config?.telegramHabilitado ?? false,
   );
-  const [botToken, setBotToken] = useState(config?.telegramBotToken ?? "");
+  const [botToken, setBotToken] = useState("");
   const [chatId, setChatId] = useState(config?.telegramChatId ?? "");
 
   const [isPending, startTransition] = useTransition();
@@ -261,13 +261,20 @@ export function ConfiguracionNotificaciones({
                 className="font-body text-xs text-text-muted"
               >
                 Bot Token
+                {config?.telegramBotTokenConfigurado && (
+                  <span className="ml-2 text-state-running">configurado</span>
+                )}
               </label>
               <input
                 id="telegram-token"
-                type="text"
+                type="password"
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
-                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                placeholder={
+                  config?.telegramBotTokenConfigurado
+                    ? "dejar vacío para mantener el actual"
+                    : "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                }
                 className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
               />
             </div>

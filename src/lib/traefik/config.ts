@@ -7,7 +7,8 @@ export function generarConfigTraefik(params: {
   clienteSlug: string;
   puerto?: number;
 }): string {
-  const { dominio, proyectoSlug, clienteSlug, puerto = 80 } = params;
+  const { proyectoSlug, clienteSlug, puerto = 80 } = params;
+  const dominio = params.dominio.replace(/[`\n\r]/g, "");
   const nombre = `${clienteSlug}-${proyectoSlug}`;
 
   return [

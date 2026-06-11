@@ -34,7 +34,12 @@ const proyectoInput = z.object({
       message:
         "El nombre solo puede contener letras minúsculas, números y guiones",
     }),
-  dominio: z.string().optional(),
+  dominio: z
+    .string()
+    .regex(/^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/, {
+      message: "El dominio debe ser un hostname válido (ej: panel.ejemplo.com)",
+    })
+    .optional(),
   repositorioUrl: z.string().url().optional(),
   rama: z.string().optional(),
   tipo: z.enum(["compose", "dockerfile", "image", "nodejs"]).optional(),

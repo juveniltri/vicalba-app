@@ -128,7 +128,9 @@ model ConfiguracionNotificacion {
   emailRemitente     String?
   emailDestinatario  String?
 
-  telegramHabilitado Boolean @default(false)
-  telegramBotToken   String?
-  telegramChatId     String?
+  telegramHabilitado       Boolean @default(false)
+  telegramBotTokenCifrado  String?
+  telegramBotTokenIv       String?
+  telegramBotTokenTag      String?
+  telegramChatId           String?
 }
