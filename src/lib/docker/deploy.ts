@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 import { docker } from "./client";
+import { asegurarRedCliente } from "./networks";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,7 +37,10 @@ async function conectarContenedoresARedCliente(
     await Promise.all(
       containers.map(async (c) => {
         try {
-          await docker.getNetwork(redNombre).connect({ Container: c.Id });
+          await docker.getNetwork(redNombre).connect({
+            Container: c.Id,
+            EndpointConfig: { Aliases: [projectSlug] },
+          });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
           // NOTE: "already exists" means the container is already on the network — safe to ignore
@@ -165,13 +169,22 @@ export async function deployProyecto(params: {
       }
     : { ...process.env };
 
+  // SSH keys only work with SSH URLs — convert HTTPS GitHub URLs automatically
+  const effectiveRepoUrl =
+    credencial && repoUrl
+      ? repoUrl.replace(
+          /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,
+          "git@github.com:$1.git",
+        )
+      : repoUrl;
+
   const opts = { env: gitEnv };
   let capturedSha = "";
 
   try {
     // Operaciones git — solo para tipos que usan repo
-    if (tipo !== "image" && repoUrl) {
-      await ensureRepo(repoUrl, repoDir, gitEnv);
+    if (tipo !== "image" && effectiveRepoUrl) {
+      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv);
 
       if (sha) {
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
@@ -274,6 +287,7 @@ export async function deployProyecto(params: {
     }
 
     if (tipo !== "image") {
+      await asegurarRedCliente(clienteSlug);
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 

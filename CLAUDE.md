@@ -168,21 +168,43 @@ npm run db:reset         # reset + migrate + seed
 
 ## Despliegue en producción (VPS)
 
+Ver `production.md` para el proceso completo paso a paso.
+
 ### Requisitos previos en la VPS
 
 ```bash
-# Crear directorios persistentes
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
-touch /var/vicalba/traefik/acme.json
-chmod 600 /var/vicalba/traefik/acme.json
+# Firewall: abrir puertos 22 (SSH), 80 (HTTP), 443 (HTTPS)
+# En Hetzner: Dashboard → Firewalls → Inbound rules
 
-# Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
+# Directorios persistentes
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+
+# El panel corre como UID 1001 — debe poder escribir en ambos directorios
+chown -R 1001:1001 /var/vicalba/repos
+chown -R 1001:1001 /var/vicalba/traefik/dynamic
+
+# DNS: registro wildcard A antes de arrancar
+# *.tudominio.com → IP de la VPS  (cubre panel + subdominios de clientes)
 ```
+
+### Variables de entorno obligatorias
+
+| Variable                | Cómo generarla                                                             |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `DB_PASSWORD`           | cadena aleatoria segura                                                    |
+| `DATABASE_URL`          | `postgresql://vicalba:<DB_PASSWORD>@db:5432/vicalba`                       |
+| `NEXTAUTH_SECRET`       | `openssl rand -base64 32`                                                  |
+| `NEXTAUTH_URL`          | `https://<PANEL_DOMAIN>`                                                   |
+| `PANEL_DOMAIN`          | dominio del panel sin https://                                             |
+| `ACME_EMAIL`            | email real para Let's Encrypt                                              |
+| `GITHUB_WEBHOOK_SECRET` | `openssl rand -hex 32`                                                     |
+| `ENCRYPTION_KEY`        | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `DOCKER_GID`            | `getent group docker \| cut -d: -f3`                                       |
 
 ### Primera vez
 
 ```bash
-git clone <repo> vicalba-app && cd vicalba-app
+git clone <repo> /opt/vicalba-app && cd /opt/vicalba-app
 cp .env.production.example .env
 # Editar .env con los valores reales
 docker compose up -d --build
@@ -204,12 +226,12 @@ npm run db:migrate && npm run db:seed
 npm run dev
 ```
 
-### Nota — redes de clientes y Traefik
+### Notas de arquitectura Docker
 
-La conexión de Traefik a las redes de cliente es **automática** desde la feature Gestión de Dominios.
-Al crear/editar/eliminar un proyecto con dominio, el panel llama a `conectarTraefikARed` /
-`desconectarTraefikDeRed` via dockerode. Variable de entorno relevante: `TRAEFIK_CONTAINER_NAME`
-(default: `traefik`). Solo hace falta intervención manual en instalaciones con un nombre distinto.
+- **SSL**: Traefik usa `tlsChallenge` (solo puerto 443). El email de Let's Encrypt se pasa como argumento CLI en `docker-compose.yml` — Traefik no interpola variables de entorno en `traefik.yml`.
+- **Redes de cliente**: `cliente-[slug]-network` se crea al crear el proyecto y también al inicio de cada deploy (idempotente). Traefik se conecta automáticamente al asignar dominio.
+- **Socket Docker**: el panel corre como UID 1001, accede al socket vía `group_add: ${DOCKER_GID}` en `docker-compose.yml`.
+- **Binarios en el runner**: `git`, `openssh-client`, `docker-cli`, `docker-cli-compose`, `libc6-compat` (para extensiones nativas de ssh2).
 
 ---
 
@@ -273,6 +295,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - CI/CD pipeline: GitHub Actions (lint + type-check + test:unit); variables de entorno inyectadas en deploy; SSE de logs sin contenedores intermedios (en master, branch feature/ci-deploy-variables-sse)
   - Credenciales SSH: modelo CredencialSSH cifrado en BD (clavePublica + clavePrivada AES-256-GCM), router CRUD, GIT_SSH_COMMAND en deploy, UI gestión + asignación por proyecto
   - Tipos de proyecto multi-tipo: enum TipoProyecto (compose/dockerfile/nodejs/image), campos puerto/imagenUrl/dockerfilePath/buildCommand/startCommand; deploy genera Dockerfile+compose dinámico según tipo; buildCommand/startCommand con fallback a package.json; form dinámico con campos condicionales; botón Editar en detalle de proyecto; parseTRPCError para UX de validación (412 tests, branch feature/ci-deploy-variables-sse)
+  - Hotfix producción (branch `hotfix/traefik-ssl-prisma-config`, en master): prisma.config.ts copiado al runner Docker; tlsChallenge en Traefik; ACME_EMAIL via CLI arg; ENCRYPTION_KEY y DOCKER_GID en docker-compose; trustHost en NextAuth; asegurarRedCliente idempotente en deploy; UIDs explícitos (1001) en Dockerfile; git+openssh+docker-cli instalados en runner
 - **En construcción:** —
 - **Bloqueado / pendiente:** —
-- **Próximo hito:** PR `feature/ci-deploy-variables-sse` → `develop` → `master`
+- **Próximo hito:** Merge `hotfix/traefik-ssl-prisma-config` → `master` (PR abierto)
