@@ -159,7 +159,10 @@ export async function deployProyecto(params: {
   await mkdir(panelDir, { recursive: true });
 
   if (credencial) {
-    await writeFile(keyFilePath, credencial.clavePrivada, { mode: 0o600 });
+    // SSH requires Unix line endings and a trailing newline — normalize before writing
+    const normalizedKey =
+      credencial.clavePrivada.replace(/\r\n/g, "\n").trimEnd() + "\n";
+    await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
   }
 
   const gitEnv: NodeJS.ProcessEnv = credencial
