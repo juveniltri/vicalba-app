@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { env } from "@/env";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
+import { conectarTraefikARed } from "./traefik";
 
 const execFileAsync = promisify(execFile);
 
@@ -335,6 +336,7 @@ export async function deployProyecto(params: {
 
     if (tipo !== "image") {
       await asegurarRedCliente(clienteSlug);
+      await conectarTraefikARed(clienteSlug);
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
