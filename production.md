@@ -39,8 +39,10 @@ Si usas Hetzner Cloud Firewall (o cualquier firewall externo), añade estas regl
 
 ```bash
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+touch /var/vicalba/traefik/acme.json
+chmod 600 /var/vicalba/traefik/acme.json
 
-# El panel corre como UID 1001 — debe poder escribir en ambos directorios
+# El panel corre como UID 1001 — debe poder escribir en repos y traefik/dynamic
 chown -R 1001:1001 /var/vicalba/repos
 chown -R 1001:1001 /var/vicalba/traefik/dynamic
 ```
@@ -64,11 +66,11 @@ cd /opt/vicalba-app
 
 ## 6. Configurar DNS antes de arrancar
 
-Añade un registro **wildcard A** en tu registrador de dominios:
+En tu registrador de dominios, crea **dos registros A**:
 
 ```
-*.<tudominio>.com  →  A  →  <IP_DE_TU_VPS>
-@.<tudominio>.com  →  A  →  <IP_DE_TU_VPS>
+panel.tudominio.com   →  A  →  <IP_DE_TU_VPS>
+*.tudominio.com       →  A  →  <IP_DE_TU_VPS>   ← cubre subdominios de clientes
 ```
 
 El wildcard cubre automáticamente `panel.`, y cualquier subdominio de cliente futuro sin tocar el DNS de nuevo.
@@ -101,7 +103,7 @@ openssl rand -hex 32
 # ENCRYPTION_KEY — exactamente 64 caracteres hex (32 bytes)
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-# DOCKER_GID — GID del grupo docker en el host
+# DOCKER_GID — GID del grupo docker en la VPS
 getent group docker | cut -d: -f3
 ```
 

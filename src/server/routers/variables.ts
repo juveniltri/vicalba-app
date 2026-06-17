@@ -30,7 +30,7 @@ export const variablesRouter = router({
     .query(async ({ input }) => {
       return prisma.variableEntorno.findMany({
         where: { proyectoId: input.proyectoId },
-        select: { id: true, clave: true, creadoEn: true },
+        select: { id: true, clave: true, enBuildTime: true, creadoEn: true },
         orderBy: { clave: "asc" },
       });
     }),
@@ -41,6 +41,7 @@ export const variablesRouter = router({
         proyectoId: z.string(),
         clave: claveSchema,
         valor: z.string(),
+        enBuildTime: z.boolean().default(false),
       }),
     )
     .mutation(async ({ input }) => {
@@ -53,8 +54,9 @@ export const variablesRouter = router({
             valorCifrado,
             iv,
             authTag,
+            enBuildTime: input.enBuildTime,
           },
-          select: { id: true, clave: true, creadoEn: true },
+          select: { id: true, clave: true, enBuildTime: true, creadoEn: true },
         });
       } catch (err) {
         if ((err as { code?: string }).code === "P2002")
@@ -74,7 +76,18 @@ export const variablesRouter = router({
       return prisma.variableEntorno.update({
         where: { id: input.id },
         data: { valorCifrado, iv, authTag },
-        select: { id: true, clave: true, creadoEn: true },
+        select: { id: true, clave: true, enBuildTime: true, creadoEn: true },
+      });
+    }),
+
+  toggleBuildTime: protectedProcedure
+    .input(z.object({ id: z.string(), enBuildTime: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await findVariableOrThrow(input.id);
+      return prisma.variableEntorno.update({
+        where: { id: input.id },
+        data: { enBuildTime: input.enBuildTime },
+        select: { id: true, clave: true, enBuildTime: true, creadoEn: true },
       });
     }),
 

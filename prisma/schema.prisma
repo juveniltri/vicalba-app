@@ -84,6 +84,7 @@ model VariableEntorno {
   valorCifrado  String
   iv            String
   authTag       String
+  enBuildTime   Boolean  @default(false)
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 

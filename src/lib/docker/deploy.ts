@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { env } from "@/env";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
+import { conectarTraefikARed } from "./traefik";
 
 const execFileAsync = promisify(execFile);
 
@@ -78,7 +79,28 @@ function generarDockerfileNodejs(
   buildCmd: string,
   startCmd: string,
   puerto: number,
+  hasBuildVars?: boolean,
 ): string {
+  if (hasBuildVars) {
+    // Multi-stage: build vars go into builder via .env.local (auto-loaded by Next.js/dotenv).
+    // Runner copies the final state of /app after the build + rm, so .env.local is not in
+    // the deployed image. Builder intermediate layers still have it but are not deployed.
+    return [
+      "FROM node:20-alpine AS builder",
+      "WORKDIR /app",
+      "COPY . .",
+      "RUN npm ci",
+      `RUN ${buildCmd} && rm -f .env.local`,
+      "",
+      "FROM node:20-alpine AS runner",
+      "WORKDIR /app",
+      "ENV NODE_ENV=production",
+      "COPY --from=builder /app .",
+      `EXPOSE ${puerto}`,
+      `CMD ["sh", "-c", "${startCmd}"]`,
+    ].join("\n");
+  }
+
   return [
     "FROM node:20-alpine",
     "WORKDIR /app",
@@ -127,6 +149,7 @@ export async function deployProyecto(params: {
   clienteSlug: string;
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
+  variablesBuildTime?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };
   imagenUrl?: string | null;
   dockerfilePath?: string | null;
@@ -142,6 +165,7 @@ export async function deployProyecto(params: {
     clienteSlug,
     proyectoNombre,
     variables,
+    variablesBuildTime,
     credencial,
     imagenUrl,
     dockerfilePath,
@@ -153,13 +177,17 @@ export async function deployProyecto(params: {
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const panelDir = `${env.REPOS_DIR}/${clienteSlug}/.panel`;
   const envFilePath = `${panelDir}/${proyectoNombre}.env`;
+  const buildEnvFilePath = `${panelDir}/${proyectoNombre}.build.env`;
   const keyFilePath = `${panelDir}/${proyectoNombre}.deploy_key`;
   const projectSlug = `${clienteSlug}-${proyectoNombre}`;
 
   await mkdir(panelDir, { recursive: true });
 
   if (credencial) {
-    await writeFile(keyFilePath, credencial.clavePrivada, { mode: 0o600 });
+    // SSH requires Unix line endings and a trailing newline — normalize before writing
+    const normalizedKey =
+      credencial.clavePrivada.replace(/\r\n/g, "\n").trimEnd() + "\n";
+    await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
   }
 
   const gitEnv: NodeJS.ProcessEnv = credencial
@@ -228,9 +256,24 @@ export async function deployProyecto(params: {
       const startCmd = await resolverComando(repoDir, "start", startCommand);
       const dfGenerado = `${panelDir}/${proyectoNombre}.Dockerfile`;
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
+
+      const hasBuildVars = variablesBuildTime && variablesBuildTime.length > 0;
+      if (hasBuildVars) {
+        // Write to .env.local in the repo so COPY . . picks it up during build.
+        // The multi-stage Dockerfile deletes it before the runner stage copies,
+        // so the deployed image stays clean.
+        const buildEnvContent = variablesBuildTime
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(`${repoDir}/.env.local`, buildEnvContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+      }
+
       await writeFile(
         dfGenerado,
-        generarDockerfileNodejs(buildCmd, startCmd, puerto),
+        generarDockerfileNodejs(buildCmd, startCmd, puerto, hasBuildVars),
       );
       await writeFile(
         composePath,
@@ -278,16 +321,22 @@ export async function deployProyecto(params: {
 
     let output = "";
     try {
-      const { stdout, stderr } = await execFileAsync("docker", composeArgs);
+      const { stdout, stderr } = await execFileAsync("docker", composeArgs, {
+        env: { ...process.env, DOCKER_BUILDKIT: "1" },
+      });
       output = stdout + "\n" + stderr;
     } finally {
       if (hasVars) {
         await unlink(envFilePath).catch(() => {});
       }
+      if (variablesBuildTime && variablesBuildTime.length > 0) {
+        await unlink(`${repoDir}/.env.local`).catch(() => {});
+      }
     }
 
     if (tipo !== "image") {
       await asegurarRedCliente(clienteSlug);
+      await conectarTraefikARed(clienteSlug);
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
