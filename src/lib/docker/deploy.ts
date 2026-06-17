@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 import { docker } from "./client";
+import { asegurarRedCliente } from "./networks";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,7 +37,10 @@ async function conectarContenedoresARedCliente(
     await Promise.all(
       containers.map(async (c) => {
         try {
-          await docker.getNetwork(redNombre).connect({ Container: c.Id });
+          await docker.getNetwork(redNombre).connect({
+            Container: c.Id,
+            EndpointConfig: { Aliases: [projectSlug] },
+          });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
           // NOTE: "already exists" means the container is already on the network — safe to ignore
@@ -274,6 +278,7 @@ export async function deployProyecto(params: {
     }
 
     if (tipo !== "image") {
+      await asegurarRedCliente(clienteSlug);
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
