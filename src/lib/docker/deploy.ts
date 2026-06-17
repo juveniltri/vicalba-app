@@ -78,19 +78,34 @@ function generarDockerfileNodejs(
   buildCmd: string,
   startCmd: string,
   puerto: number,
-  buildEnvFilePath?: string,
+  hasBuildVars?: boolean,
 ): string {
-  const runBuild = buildEnvFilePath
-    ? `RUN --mount=type=secret,id=buildenv sh -c 'set -a && . /run/secrets/buildenv && set +a && ${buildCmd}'`
-    : `RUN ${buildCmd}`;
+  if (hasBuildVars) {
+    // Multi-stage: build vars go into builder via .env.local (auto-loaded by Next.js/dotenv).
+    // Runner copies the final state of /app after the build + rm, so .env.local is not in
+    // the deployed image. Builder intermediate layers still have it but are not deployed.
+    return [
+      "FROM node:20-alpine AS builder",
+      "WORKDIR /app",
+      "COPY . .",
+      "RUN npm ci",
+      `RUN ${buildCmd} && rm -f .env.local`,
+      "",
+      "FROM node:20-alpine AS runner",
+      "WORKDIR /app",
+      "ENV NODE_ENV=production",
+      "COPY --from=builder /app .",
+      `EXPOSE ${puerto}`,
+      `CMD ["sh", "-c", "${startCmd}"]`,
+    ].join("\n");
+  }
 
   return [
-    "# syntax=docker/dockerfile:1",
     "FROM node:20-alpine",
     "WORKDIR /app",
     "COPY . .",
     "RUN npm ci",
-    runBuild,
+    `RUN ${buildCmd}`,
     `EXPOSE ${puerto}`,
     `CMD ["sh", "-c", "${startCmd}"]`,
   ].join("\n");
@@ -100,31 +115,16 @@ function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
-  buildEnvFilePath?: string;
 }): string {
-  const lines = [
+  return [
     "services:",
     "  app:",
     "    build:",
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
-  ];
-
-  if (params.buildEnvFilePath) {
-    lines.push("      secrets:", "        - buildenv");
-  }
-
-  lines.push("    ports:", `      - "${params.puerto}:${params.puerto}"`);
-
-  if (params.buildEnvFilePath) {
-    lines.push(
-      "secrets:",
-      "  buildenv:",
-      `    file: "${params.buildEnvFilePath}"`,
-    );
-  }
-
-  return lines.join("\n");
+    "    ports:",
+    `      - "${params.puerto}:${params.puerto}"`,
+  ].join("\n");
 }
 
 function generarDockerComposeConImage(params: {
@@ -258,25 +258,21 @@ export async function deployProyecto(params: {
 
       const hasBuildVars = variablesBuildTime && variablesBuildTime.length > 0;
       if (hasBuildVars) {
+        // Write to .env.local in the repo so COPY . . picks it up during build.
+        // The multi-stage Dockerfile deletes it before the runner stage copies,
+        // so the deployed image stays clean.
         const buildEnvContent = variablesBuildTime
           .map(({ clave, valor }) => `${clave}=${valor}`)
           .join("\n");
-        await writeFile(buildEnvFilePath, buildEnvContent, {
+        await writeFile(`${repoDir}/.env.local`, buildEnvContent, {
           encoding: "utf-8",
           mode: 0o600,
         });
       }
 
-      const effectiveBuildEnvPath = hasBuildVars ? buildEnvFilePath : undefined;
-
       await writeFile(
         dfGenerado,
-        generarDockerfileNodejs(
-          buildCmd,
-          startCmd,
-          puerto,
-          effectiveBuildEnvPath,
-        ),
+        generarDockerfileNodejs(buildCmd, startCmd, puerto, hasBuildVars),
       );
       await writeFile(
         composePath,
@@ -284,7 +280,6 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfGenerado,
           puerto,
-          buildEnvFilePath: effectiveBuildEnvPath,
         }),
       );
       composeFile = composePath;
@@ -334,7 +329,7 @@ export async function deployProyecto(params: {
         await unlink(envFilePath).catch(() => {});
       }
       if (variablesBuildTime && variablesBuildTime.length > 0) {
-        await unlink(buildEnvFilePath).catch(() => {});
+        await unlink(`${repoDir}/.env.local`).catch(() => {});
       }
     }
 
