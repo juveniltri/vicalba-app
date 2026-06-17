@@ -169,13 +169,22 @@ export async function deployProyecto(params: {
       }
     : { ...process.env };
 
+  // SSH keys only work with SSH URLs — convert HTTPS GitHub URLs automatically
+  const effectiveRepoUrl =
+    credencial && repoUrl
+      ? repoUrl.replace(
+          /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,
+          "git@github.com:$1.git",
+        )
+      : repoUrl;
+
   const opts = { env: gitEnv };
   let capturedSha = "";
 
   try {
     // Operaciones git — solo para tipos que usan repo
-    if (tipo !== "image" && repoUrl) {
-      await ensureRepo(repoUrl, repoDir, gitEnv);
+    if (tipo !== "image" && effectiveRepoUrl) {
+      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv);
 
       if (sha) {
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
