@@ -27,6 +27,10 @@ docker compose version
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
 touch /var/vicalba/traefik/acme.json
 chmod 600 /var/vicalba/traefik/acme.json
+
+# El panel corre como UID 1001 — debe poder escribir en repos y traefik/dynamic
+chown -R 1001:1001 /var/vicalba/repos
+chown -R 1001:1001 /var/vicalba/traefik/dynamic
 ```
 
 > `chmod 600` en `acme.json` es obligatorio — Traefik lo rechaza si tiene permisos más abiertos.
@@ -48,10 +52,11 @@ cd /opt/vicalba-app
 
 ## 5. Apuntar el DNS antes de arrancar
 
-En tu registrador de dominios, crea un registro **A**:
+En tu registrador de dominios, crea **dos registros A**:
 
 ```
-panel.tudominio.com  →  A  →  <IP_DE_TU_VPS>
+panel.tudominio.com   →  A  →  <IP_DE_TU_VPS>
+*.tudominio.com       →  A  →  <IP_DE_TU_VPS>   ← cubre subdominios de clientes
 ```
 
 Verifica que propaga antes de continuar (si no resuelve, Let's Encrypt fallará):
@@ -81,6 +86,9 @@ openssl rand -hex 32
 
 # ENCRYPTION_KEY — exactamente 64 caracteres hex (32 bytes)
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# DOCKER_GID — GID del grupo docker en la VPS
+getent group docker | cut -d: -f3
 ```
 
 El `.env` final debe quedar así:
@@ -93,6 +101,7 @@ PANEL_DOMAIN=panel.tudominio.com
 ACME_EMAIL=tu@email.com
 GITHUB_WEBHOOK_SECRET=<resultado-openssl-hex>
 ENCRYPTION_KEY=<64-hex-chars>
+DOCKER_GID=<resultado-getent>
 ```
 
 ---
