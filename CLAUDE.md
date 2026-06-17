@@ -273,6 +273,9 @@ Ver `CONTEXT.md` para el glosario completo.
   - CI/CD pipeline: GitHub Actions (lint + type-check + test:unit); variables de entorno inyectadas en deploy; SSE de logs sin contenedores intermedios (en master, branch feature/ci-deploy-variables-sse)
   - Credenciales SSH: modelo CredencialSSH cifrado en BD (clavePublica + clavePrivada AES-256-GCM), router CRUD, GIT_SSH_COMMAND en deploy, UI gestión + asignación por proyecto
   - Tipos de proyecto multi-tipo: enum TipoProyecto (compose/dockerfile/nodejs/image), campos puerto/imagenUrl/dockerfilePath/buildCommand/startCommand; deploy genera Dockerfile+compose dinámico según tipo; buildCommand/startCommand con fallback a package.json; form dinámico con campos condicionales; botón Editar en detalle de proyecto; parseTRPCError para UX de validación (412 tests, branch feature/ci-deploy-variables-sse)
+  - Hotfix producción (`hotfix/traefik-ssl-prisma-config`, en master): prisma.config.ts copiado al runner Docker; tlsChallenge en Traefik; ACME_EMAIL via CLI arg; ENCRYPTION_KEY y DOCKER_GID en docker-compose; trustHost en NextAuth; asegurarRedCliente idempotente en deploy; UIDs explícitos (1001) en Dockerfile; git+openssh+docker-cli instalados en runner; alias de red en conectarContenedoresARedCliente
+  - Fixes de deploy SSH (`hotfix/build-time-variables`): conversión automática HTTPS→SSH cuando hay credencial asignada; normalización de clave privada (Unix line endings + newline final); DOCKER_BUILDKIT=1 en docker compose; conectarTraefikARed en cada deploy (idempotente)
+  - Variables build-time (`hotfix/build-time-variables`): campo enBuildTime en VariableEntorno; proyectos nodejs usan Dockerfile multi-stage (vars en .env.local del stage builder, imagen final limpia); toggle por variable en UI; router variables expone toggleBuildTime
 - **En construcción:** —
-- **Bloqueado / pendiente:** —
-- **Próximo hito:** PR `feature/ci-deploy-variables-sse` → `develop` → `master`
+- **Bloqueado / pendiente:** Sincronizar develop con master (master está por delante por commits directos durante hotfixes)
+- **Próximo hito:** Merge `hotfix/build-time-variables` → `develop`, sync `develop` con `master`, PR `develop` → `master`

@@ -301,10 +301,18 @@ export const proyectosRouter = router({
     const variablesDB = await prisma.variableEntorno.findMany({
       where: { proyectoId: input.id },
     });
-    const variables = variablesDB.map((v) => ({
-      clave: v.clave,
-      valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-    }));
+    const variables = variablesDB
+      .filter((v) => !v.enBuildTime)
+      .map((v) => ({
+        clave: v.clave,
+        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+      }));
+    const variablesBuildTime = variablesDB
+      .filter((v) => v.enBuildTime)
+      .map((v) => ({
+        clave: v.clave,
+        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+      }));
 
     const credencial = proyecto.credencialId
       ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
@@ -325,6 +333,7 @@ export const proyectosRouter = router({
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
       variables,
+      variablesBuildTime,
       credencial,
       imagenUrl: proyecto.imagenUrl,
       dockerfilePath: proyecto.dockerfilePath,
@@ -428,10 +437,18 @@ export const proyectosRouter = router({
       const variablesDB = await prisma.variableEntorno.findMany({
         where: { proyectoId: deploy.proyectoId },
       });
-      const variables = variablesDB.map((v) => ({
-        clave: v.clave,
-        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-      }));
+      const variables = variablesDB
+        .filter((v) => !v.enBuildTime)
+        .map((v) => ({
+          clave: v.clave,
+          valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+        }));
+      const variablesBuildTime = variablesDB
+        .filter((v) => v.enBuildTime)
+        .map((v) => ({
+          clave: v.clave,
+          valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+        }));
 
       const credencial = proyecto.credencialId
         ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
@@ -451,6 +468,7 @@ export const proyectosRouter = router({
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         variables,
+        variablesBuildTime,
         credencial,
         imagenUrl: proyecto.imagenUrl,
         dockerfilePath: proyecto.dockerfilePath,

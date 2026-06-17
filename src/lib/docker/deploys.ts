@@ -10,6 +10,7 @@ export async function ejecutarDeploy(params: {
   clienteSlug: string;
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
+  variablesBuildTime?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };
   imagenUrl?: string | null;
   dockerfilePath?: string | null;

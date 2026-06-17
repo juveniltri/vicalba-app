@@ -7,9 +7,15 @@ import {
   crearVariableAction,
   eliminarVariableAction,
   revelarVariableAction,
+  toggleBuildTimeAction,
 } from "@/app/(panel)/actions";
 
-type VariableResumen = { id: string; clave: string; creadoEn: Date };
+type VariableResumen = {
+  id: string;
+  clave: string;
+  enBuildTime: boolean;
+  creadoEn: Date;
+};
 
 export function VariablesPanel({
   proyectoId,
@@ -26,6 +32,7 @@ export function VariablesPanel({
   const [showAddForm, setShowAddForm] = useState(false);
   const [newClave, setNewClave] = useState("");
   const [newValor, setNewValor] = useState("");
+  const [newEnBuildTime, setNewEnBuildTime] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -87,7 +94,12 @@ export function VariablesPanel({
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const result = await crearVariableAction(proyectoId, newClave, newValor);
+    const result = await crearVariableAction(
+      proyectoId,
+      newClave,
+      newValor,
+      newEnBuildTime,
+    );
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -95,7 +107,21 @@ export function VariablesPanel({
     }
     setNewClave("");
     setNewValor("");
+    setNewEnBuildTime(false);
     setShowAddForm(false);
+    router.refresh();
+    setLoading(false);
+  }
+
+  async function handleToggleBuildTime(id: string, current: boolean) {
+    setLoading(true);
+    setError(null);
+    const result = await toggleBuildTimeAction(id, !current);
+    if (result?.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
     router.refresh();
     setLoading(false);
   }
@@ -119,6 +145,7 @@ export function VariablesPanel({
               <tr className="border-b border-border bg-surface">
                 <Th>Clave</Th>
                 <Th>Valor</Th>
+                <Th>Build time</Th>
                 <Th>Acciones</Th>
               </tr>
             </thead>
@@ -130,6 +157,25 @@ export function VariablesPanel({
                 >
                   <td className="px-4 py-3 font-body text-sm text-text-primary">
                     {v.clave}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={v.enBuildTime}
+                      aria-label={`Build time ${v.enBuildTime ? "activado" : "desactivado"}`}
+                      disabled={loading}
+                      onClick={() => handleToggleBuildTime(v.id, v.enBuildTime)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--duration-fast)] disabled:opacity-40 ${
+                        v.enBuildTime ? "bg-primary-500" : "bg-border"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-[var(--duration-fast)] ${
+                          v.enBuildTime ? "translate-x-4" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     {editingId === v.id ? (
@@ -240,6 +286,26 @@ export function VariablesPanel({
               className="font-body text-xs bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1 text-text-primary focus:outline-none focus:border-primary-300 flex-1"
             />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer self-start">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={newEnBuildTime}
+              onClick={() => setNewEnBuildTime((v) => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--duration-fast)] ${
+                newEnBuildTime ? "bg-primary-500" : "bg-border"
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-[var(--duration-fast)] ${
+                  newEnBuildTime ? "translate-x-4" : "translate-x-1"
+                }`}
+              />
+            </button>
+            <span className="font-body text-xs text-text-muted">
+              Disponible en build time
+            </span>
+          </label>
           <div className="flex gap-2">
             <Btn primary disabled={loading} aria-label="Guardar">
               {loading ? "…" : "Guardar"}
@@ -249,6 +315,7 @@ export function VariablesPanel({
                 setShowAddForm(false);
                 setNewClave("");
                 setNewValor("");
+                setNewEnBuildTime(false);
               }}
               aria-label="Cancelar"
             >
