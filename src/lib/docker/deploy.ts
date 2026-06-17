@@ -78,13 +78,19 @@ function generarDockerfileNodejs(
   buildCmd: string,
   startCmd: string,
   puerto: number,
+  buildEnvFilePath?: string,
 ): string {
+  const runBuild = buildEnvFilePath
+    ? `RUN --mount=type=secret,id=buildenv sh -c 'set -a && . /run/secrets/buildenv && set +a && ${buildCmd}'`
+    : `RUN ${buildCmd}`;
+
   return [
+    "# syntax=docker/dockerfile:1",
     "FROM node:20-alpine",
     "WORKDIR /app",
     "COPY . .",
     "RUN npm ci",
-    `RUN ${buildCmd}`,
+    runBuild,
     `EXPOSE ${puerto}`,
     `CMD ["sh", "-c", "${startCmd}"]`,
   ].join("\n");
@@ -94,16 +100,31 @@ function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
+  buildEnvFilePath?: string;
 }): string {
-  return [
+  const lines = [
     "services:",
     "  app:",
     "    build:",
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
-    "    ports:",
-    `      - "${params.puerto}:${params.puerto}"`,
-  ].join("\n");
+  ];
+
+  if (params.buildEnvFilePath) {
+    lines.push("      secrets:", "        - buildenv");
+  }
+
+  lines.push("    ports:", `      - "${params.puerto}:${params.puerto}"`);
+
+  if (params.buildEnvFilePath) {
+    lines.push(
+      "secrets:",
+      "  buildenv:",
+      `    file: "${params.buildEnvFilePath}"`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function generarDockerComposeConImage(params: {
@@ -127,6 +148,7 @@ export async function deployProyecto(params: {
   clienteSlug: string;
   proyectoNombre: string;
   variables?: Array<{ clave: string; valor: string }>;
+  variablesBuildTime?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };
   imagenUrl?: string | null;
   dockerfilePath?: string | null;
@@ -142,6 +164,7 @@ export async function deployProyecto(params: {
     clienteSlug,
     proyectoNombre,
     variables,
+    variablesBuildTime,
     credencial,
     imagenUrl,
     dockerfilePath,
@@ -153,6 +176,7 @@ export async function deployProyecto(params: {
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const panelDir = `${env.REPOS_DIR}/${clienteSlug}/.panel`;
   const envFilePath = `${panelDir}/${proyectoNombre}.env`;
+  const buildEnvFilePath = `${panelDir}/${proyectoNombre}.build.env`;
   const keyFilePath = `${panelDir}/${proyectoNombre}.deploy_key`;
   const projectSlug = `${clienteSlug}-${proyectoNombre}`;
 
@@ -231,9 +255,28 @@ export async function deployProyecto(params: {
       const startCmd = await resolverComando(repoDir, "start", startCommand);
       const dfGenerado = `${panelDir}/${proyectoNombre}.Dockerfile`;
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
+
+      const hasBuildVars = variablesBuildTime && variablesBuildTime.length > 0;
+      if (hasBuildVars) {
+        const buildEnvContent = variablesBuildTime
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(buildEnvFilePath, buildEnvContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+      }
+
+      const effectiveBuildEnvPath = hasBuildVars ? buildEnvFilePath : undefined;
+
       await writeFile(
         dfGenerado,
-        generarDockerfileNodejs(buildCmd, startCmd, puerto),
+        generarDockerfileNodejs(
+          buildCmd,
+          startCmd,
+          puerto,
+          effectiveBuildEnvPath,
+        ),
       );
       await writeFile(
         composePath,
@@ -241,6 +284,7 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfGenerado,
           puerto,
+          buildEnvFilePath: effectiveBuildEnvPath,
         }),
       );
       composeFile = composePath;
@@ -286,6 +330,9 @@ export async function deployProyecto(params: {
     } finally {
       if (hasVars) {
         await unlink(envFilePath).catch(() => {});
+      }
+      if (variablesBuildTime && variablesBuildTime.length > 0) {
+        await unlink(buildEnvFilePath).catch(() => {});
       }
     }
 

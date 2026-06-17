@@ -175,12 +175,22 @@ export async function crearVariableAction(
   proyectoId: string,
   clave: string,
   valor: string,
+  enBuildTime: boolean = false,
 ) {
   try {
     const api = await createServerCaller();
-    await api.variables.crear({ proyectoId, clave, valor });
+    await api.variables.crear({ proyectoId, clave, valor, enBuildTime });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al crear variable") };
+  }
+}
+
+export async function toggleBuildTimeAction(id: string, enBuildTime: boolean) {
+  try {
+    const api = await createServerCaller();
+    await api.variables.toggleBuildTime({ id, enBuildTime });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al actualizar variable") };
   }
 }
 
