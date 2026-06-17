@@ -325,7 +325,9 @@ export async function deployProyecto(params: {
 
     let output = "";
     try {
-      const { stdout, stderr } = await execFileAsync("docker", composeArgs);
+      const { stdout, stderr } = await execFileAsync("docker", composeArgs, {
+        env: { ...process.env, DOCKER_BUILDKIT: "1" },
+      });
       output = stdout + "\n" + stderr;
     } finally {
       if (hasVars) {
