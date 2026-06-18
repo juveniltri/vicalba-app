@@ -14,6 +14,32 @@ const claveSchema = z
     "La clave solo puede contener mayúsculas, números y guiones bajos (ej: DATABASE_URL)",
   );
 
+const CLAVE_RE = /^[A-Z_][A-Z0-9_]*$/;
+
+function parsearDotEnv(
+  contenido: string,
+): Array<{ clave: string; valor: string; valida: boolean }> {
+  return contenido
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => {
+      const sinExport = line.replace(/^export\s+/, "");
+      const idx = sinExport.indexOf("=");
+      if (idx === -1) return null;
+      const clave = sinExport.slice(0, idx).trim();
+      let valor = sinExport.slice(idx + 1).trim();
+      if (
+        (valor.startsWith('"') && valor.endsWith('"')) ||
+        (valor.startsWith("'") && valor.endsWith("'"))
+      ) {
+        valor = valor.slice(1, -1);
+      }
+      return { clave, valor, valida: CLAVE_RE.test(clave) };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+}
+
 async function findVariableOrThrow(id: string) {
   const variable = await prisma.variableEntorno.findUnique({ where: { id } });
   if (!variable)
@@ -89,6 +115,43 @@ export const variablesRouter = router({
         data: { enBuildTime: input.enBuildTime },
         select: { id: true, clave: true, enBuildTime: true, creadoEn: true },
       });
+    }),
+
+  importar: protectedProcedure
+    .input(z.object({ proyectoId: z.string(), contenido: z.string() }))
+    .mutation(async ({ input }) => {
+      const { proyectoId, contenido } = input;
+      const parsed = parsearDotEnv(contenido);
+      const validas = parsed.filter((e) => e.valida);
+      const invalidas = parsed.filter((e) => !e.valida).map((e) => e.clave);
+
+      if (validas.length === 0)
+        return { creadas: 0, actualizadas: 0, invalidas };
+
+      const existentes = await prisma.variableEntorno.findMany({
+        where: { proyectoId, clave: { in: validas.map((e) => e.clave) } },
+        select: { clave: true },
+      });
+      const clavesExistentes = new Set(existentes.map((e) => e.clave));
+
+      await Promise.all(
+        validas.map(({ clave, valor }) => {
+          const { valorCifrado, iv, authTag } = cifrar(valor);
+          return prisma.variableEntorno.upsert({
+            where: { proyectoId_clave: { proyectoId, clave } },
+            create: { proyectoId, clave, valorCifrado, iv, authTag },
+            update: { valorCifrado, iv, authTag },
+            select: { id: true },
+          });
+        }),
+      );
+
+      return {
+        creadas: validas.filter((e) => !clavesExistentes.has(e.clave)).length,
+        actualizadas: validas.filter((e) => clavesExistentes.has(e.clave))
+          .length,
+        invalidas,
+      };
     }),
 
   eliminar: protectedProcedure.input(idInput).mutation(async ({ input }) => {

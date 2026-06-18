@@ -12,6 +12,9 @@ vi.mock("@/app/(panel)/actions", () => ({
   revelarVariableAction: vi
     .fn()
     .mockResolvedValue({ valor: "postgres://secret" }),
+  importarVariablesAction: vi
+    .fn()
+    .mockResolvedValue({ creadas: 2, actualizadas: 0, invalidas: [] }),
 }));
 
 import {
@@ -19,6 +22,7 @@ import {
   actualizarVariableAction,
   eliminarVariableAction,
   revelarVariableAction,
+  importarVariablesAction,
 } from "@/app/(panel)/actions";
 
 const variablesBase = [
@@ -165,6 +169,69 @@ describe("VariablesPanel — añadir variable", () => {
         "mi-api-key",
         false,
       );
+    });
+  });
+});
+
+describe("VariablesPanel — importar .env", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("muestra botón Importar .env", () => {
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    expect(
+      screen.getByRole("button", { name: /importar \.env/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("muestra textarea al pulsar Importar .env", () => {
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
+    expect(
+      screen.getByRole("textbox", { name: /contenido/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("llama a importarVariablesAction con el contenido del textarea", async () => {
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
+      target: { value: "API_KEY=abc\nDB_URL=postgres://localhost" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
+    await waitFor(() => {
+      expect(importarVariablesAction).toHaveBeenCalledWith(
+        "p1",
+        "API_KEY=abc\nDB_URL=postgres://localhost",
+      );
+    });
+  });
+
+  it("muestra el resumen tras importar correctamente", async () => {
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
+      target: { value: "API_KEY=abc" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/2 creadas/i)).toBeInTheDocument();
+    });
+  });
+
+  it("muestra las claves inválidas en el resumen", async () => {
+    vi.mocked(importarVariablesAction).mockResolvedValueOnce({
+      creadas: 1,
+      actualizadas: 0,
+      invalidas: ["lowercase_key"],
+    });
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
+      target: { value: "VALID=x\nlowercase_key=y" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/lowercase_key/i)).toBeInTheDocument();
     });
   });
 });
