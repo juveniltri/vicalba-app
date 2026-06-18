@@ -124,7 +124,10 @@ describe("deployProyecto", () => {
         },
       }),
     );
-    expect(mockConnect).toHaveBeenCalledWith({ Container: "c1" });
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c1",
+      EndpointConfig: { Aliases: ["acme-web-app"] },
+    });
   });
 
   it("ignora silenciosamente el error 'already exists' al conectar a la red", async () => {
@@ -152,7 +155,7 @@ describe("deployProyecto con variables de entorno", () => {
     );
   });
 
-  it("escribe .env.panel y lo pasa como --env-file cuando hay variables", async () => {
+  it("escribe .env en el repoDir y no usa --env-file cuando hay variables (tipo compose)", async () => {
     await deployProyecto({
       ...baseParams,
       variables: [
@@ -161,31 +164,29 @@ describe("deployProyecto con variables de entorno", () => {
       ],
     });
 
-    const envFilePath = "/var/vicalba/repos/acme/.panel/web-app.env";
     expect(mockWriteFile).toHaveBeenCalledWith(
-      envFilePath,
-      'DATABASE_URL="postgres://localhost/db"\nJWT_SECRET="supersecret"',
-      "utf-8",
+      "/var/vicalba/repos/acme/web-app/.env",
+      "DATABASE_URL=postgres://localhost/db\nJWT_SECRET=supersecret",
+      { encoding: "utf-8", mode: 0o600 },
     );
 
     const dockerCall = vi
       .mocked(mockExecFile)
       .mock.calls.find((c) => c[0] === "docker");
-    expect(dockerCall?.[1]).toContain("--env-file");
-    expect(dockerCall?.[1]).toContain(envFilePath);
+    expect(dockerCall?.[1]).not.toContain("--env-file");
   });
 
-  it("elimina .env.panel en el bloque finally tras deploy exitoso", async () => {
+  it("no elimina el .env del repoDir tras deploy exitoso (se mantiene para reinicios)", async () => {
     await deployProyecto({
       ...baseParams,
       variables: [{ clave: "X", valor: "y" }],
     });
-    expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/.panel/web-app.env",
+    expect(mockUnlink).not.toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/web-app/.env",
     );
   });
 
-  it("elimina .env.panel aunque el deploy falle", async () => {
+  it("no elimina el .env aunque el deploy falle", async () => {
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -202,12 +203,12 @@ describe("deployProyecto con variables de entorno", () => {
         variables: [{ clave: "X", valor: "y" }],
       }),
     ).rejects.toThrow();
-    expect(mockUnlink).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/.panel/web-app.env",
+    expect(mockUnlink).not.toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/web-app/.env",
     );
   });
 
-  it("escapa comillas dobles y barras invertidas en los valores", async () => {
+  it("escribe valores sin escapar en el .env del repoDir (docker compose parsea .env natively)", async () => {
     await deployProyecto({
       ...baseParams,
       variables: [
@@ -217,9 +218,9 @@ describe("deployProyecto con variables de entorno", () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/.panel/web-app.env",
-      'PASSWORD="p@ss#word\\"with\\"quotes"\nPATH_VAR="C:\\\\Users\\\\name"',
-      "utf-8",
+      "/var/vicalba/repos/acme/web-app/.env",
+      'PASSWORD=p@ss#word"with"quotes\nPATH_VAR=C:\\Users\\name',
+      { encoding: "utf-8", mode: 0o600 },
     );
   });
 
@@ -362,7 +363,7 @@ describe("deployProyecto con credencial SSH", () => {
 
     expect(mockWriteFile).toHaveBeenCalledWith(
       keyFilePath,
-      "-----BEGIN RSA PRIVATE KEY-----",
+      "-----BEGIN RSA PRIVATE KEY-----\n",
       { mode: 0o600 },
     );
   });

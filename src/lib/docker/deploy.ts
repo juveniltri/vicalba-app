@@ -112,10 +112,24 @@ function generarDockerfileNodejs(
   ].join("\n");
 }
 
+function serializarEnvironment(
+  variables: Array<{ clave: string; valor: string }>,
+): string[] {
+  if (!variables.length) return [];
+  return [
+    "    environment:",
+    ...variables.map(
+      ({ clave, valor }) =>
+        `      ${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+    ),
+  ];
+}
+
 function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
+  variables?: Array<{ clave: string; valor: string }>;
 }): string {
   return [
     "services:",
@@ -125,12 +139,14 @@ function generarDockerComposeConBuild(params: {
     `      dockerfile: "${params.dockerfile}"`,
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
+    ...serializarEnvironment(params.variables ?? []),
   ].join("\n");
 }
 
 function generarDockerComposeConImage(params: {
   imagenUrl: string;
   puerto: number;
+  variables?: Array<{ clave: string; valor: string }>;
 }): string {
   return [
     "services:",
@@ -138,6 +154,7 @@ function generarDockerComposeConImage(params: {
     `    image: "${params.imagenUrl}"`,
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
+    ...serializarEnvironment(params.variables ?? []),
   ].join("\n");
 }
 
@@ -176,8 +193,6 @@ export async function deployProyecto(params: {
   const puerto = params.puerto ?? 3000;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const panelDir = `${env.REPOS_DIR}/${clienteSlug}/.panel`;
-  const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-  const buildEnvFilePath = `${panelDir}/${proyectoNombre}.build.env`;
   const keyFilePath = `${panelDir}/${proyectoNombre}.deploy_key`;
   const projectSlug = `${clienteSlug}-${proyectoNombre}`;
 
@@ -234,8 +249,21 @@ export async function deployProyecto(params: {
     // Determinar fichero compose según tipo
     let composeFile: string;
 
+    const runtimeVars = variables ?? [];
+
     if (tipo === "compose") {
       composeFile = `${repoDir}/docker-compose.yml`;
+      // For user-managed compose files, write .env next to the compose file so
+      // docker compose auto-loads it for ${VAR} substitution on every up/restart.
+      if (runtimeVars.length > 0) {
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(`${repoDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+      }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
       const dfAbsoluto = dfPath.startsWith("/")
@@ -248,6 +276,7 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfAbsoluto,
           puerto,
+          variables: runtimeVars,
         }),
       );
       composeFile = composePath;
@@ -281,6 +310,7 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfGenerado,
           puerto,
+          variables: runtimeVars,
         }),
       );
       composeFile = composePath;
@@ -289,21 +319,13 @@ export async function deployProyecto(params: {
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
       await writeFile(
         composePath,
-        generarDockerComposeConImage({ imagenUrl: imagenUrl!, puerto }),
+        generarDockerComposeConImage({
+          imagenUrl: imagenUrl!,
+          puerto,
+          variables: runtimeVars,
+        }),
       );
       composeFile = composePath;
-    }
-
-    // Variables de entorno
-    const hasVars = variables && variables.length > 0;
-    if (hasVars) {
-      const envContent = variables
-        .map(({ clave, valor }) => {
-          const escaped = valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-          return `${clave}="${escaped}"`;
-        })
-        .join("\n");
-      await writeFile(envFilePath, envContent, "utf-8");
     }
 
     const composeArgs = [
@@ -312,7 +334,6 @@ export async function deployProyecto(params: {
       projectSlug,
       "-f",
       composeFile,
-      ...(hasVars ? ["--env-file", envFilePath] : []),
       "up",
       "--build",
       "-d",
@@ -326,9 +347,6 @@ export async function deployProyecto(params: {
       });
       output = stdout + "\n" + stderr;
     } finally {
-      if (hasVars) {
-        await unlink(envFilePath).catch(() => {});
-      }
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
       }

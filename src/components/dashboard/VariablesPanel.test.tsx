@@ -163,6 +163,7 @@ describe("VariablesPanel — añadir variable", () => {
         "p1",
         "API_KEY",
         "mi-api-key",
+        false,
       );
     });
   });
