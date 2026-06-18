@@ -15,6 +15,7 @@ export function Sidebar() {
       >
         <SidebarLink href="/">Dashboard</SidebarLink>
         <SidebarLink href="/proyectos">Proyectos</SidebarLink>
+        <SidebarLink href="/usuarios">Usuarios</SidebarLink>
         <SidebarLink href="/configuracion">Configuración</SidebarLink>
       </nav>
       <div className="p-2 border-t border-border">
