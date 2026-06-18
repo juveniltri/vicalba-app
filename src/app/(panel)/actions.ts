@@ -194,6 +194,18 @@ export async function toggleBuildTimeAction(id: string, enBuildTime: boolean) {
   }
 }
 
+export async function importarVariablesAction(
+  proyectoId: string,
+  contenido: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.variables.importar({ proyectoId, contenido });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al importar variables") };
+  }
+}
+
 export async function actualizarVariableAction(id: string, valor: string) {
   try {
     const api = await createServerCaller();
