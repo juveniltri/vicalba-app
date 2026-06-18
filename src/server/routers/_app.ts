@@ -3,6 +3,7 @@ import { clientesRouter } from "./clientes";
 import { configuracionRouter } from "./configuracion";
 import { credencialesRouter } from "./credenciales";
 import { proyectosRouter } from "./proyectos";
+import { usuariosRouter } from "./usuarios";
 import { variablesRouter } from "./variables";
 
 export const appRouter = router({
@@ -10,6 +11,7 @@ export const appRouter = router({
   configuracion: configuracionRouter,
   credenciales: credencialesRouter,
   proyectos: proyectosRouter,
+  usuarios: usuariosRouter,
   variables: variablesRouter,
 });
 

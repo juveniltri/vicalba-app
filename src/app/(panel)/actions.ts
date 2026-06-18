@@ -311,6 +311,50 @@ export async function guardarEmailAction(
   }
 }
 
+export async function crearUsuarioAction(
+  email: string,
+  nombre: string,
+  password: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.usuarios.crear({ email, nombre, password });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al crear usuario") };
+  }
+}
+
+export async function actualizarUsuarioAction(
+  id: string,
+  nombre: string,
+  email: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.usuarios.actualizar({ id, nombre, email });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al actualizar usuario") };
+  }
+}
+
+export async function cambiarPasswordAction(id: string, password: string) {
+  try {
+    const api = await createServerCaller();
+    await api.usuarios.cambiarPassword({ id, password });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cambiar contraseña") };
+  }
+}
+
+export async function eliminarUsuarioAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.usuarios.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar usuario") };
+  }
+}
+
 export async function guardarTelegramAction(
   habilitado: boolean,
   botToken: string | undefined,
