@@ -81,4 +81,34 @@ describe("LogsPanel — interacción", () => {
     fireEvent.click(screen.getByRole("button", { name: /cerrar logs/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("muestra botón para expandir el panel", () => {
+    render(
+      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
+    );
+    expect(
+      screen.getByRole("button", { name: /expandir/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("cambia el botón a 'reducir' tras expandir", () => {
+    render(
+      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /expandir/i }));
+    expect(
+      screen.getByRole("button", { name: /reducir/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("vuelve a mostrar 'expandir' al reducir", () => {
+    render(
+      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /expandir/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reducir/i }));
+    expect(
+      screen.getByRole("button", { name: /expandir/i }),
+    ).toBeInTheDocument();
+  });
 });
