@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LogLine } from "@/hooks/useContainerLogs";
 
 export function LogsPanel({
@@ -15,6 +15,7 @@ export function LogsPanel({
   onClose: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -30,15 +31,26 @@ export function LogsPanel({
             <span className="text-text-muted">○ Disconnected</span>
           )}
         </span>
-        <button
-          onClick={onClose}
-          aria-label="Cerrar logs"
-          className="font-body text-xs text-text-muted hover:text-text-primary"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Reducir logs" : "Expandir logs"}
+            className="font-body text-xs text-text-muted hover:text-text-primary"
+          >
+            {expanded ? "⊟" : "⊞"}
+          </button>
+          <button
+            onClick={onClose}
+            aria-label="Cerrar logs"
+            className="font-body text-xs text-text-muted hover:text-text-primary"
+          >
+            ✕
+          </button>
+        </div>
       </div>
-      <div className="h-40 overflow-y-auto p-2 font-mono text-xs text-text-primary space-y-0.5">
+      <div
+        className={`${expanded ? "h-[60vh]" : "h-64"} overflow-y-auto p-3 font-mono text-xs text-text-primary space-y-0.5 transition-[height] duration-[var(--duration-fast)]`}
+      >
         {error && <p className="text-state-error">{error}</p>}
         {lines.length === 0 && !error && (
           <p className="text-text-muted">Esperando logs…</p>
