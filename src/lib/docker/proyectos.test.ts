@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   mockStop,
   mockStart,
+  mockRestart,
   mockGetContainer,
   mockLogs,
   mockDemuxStream,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   mockStop: vi.fn(),
   mockStart: vi.fn(),
+  mockRestart: vi.fn(),
   mockGetContainer: vi.fn(),
   mockLogs: vi.fn(),
   mockDemuxStream: vi.fn(),
@@ -197,13 +199,13 @@ describe("restartProyecto", () => {
     mockGetContainer.mockReturnValue({
       stop: mockStop,
       start: mockStart,
+      restart: mockRestart,
       logs: mockLogs,
     });
-    mockStop.mockResolvedValue(undefined);
-    mockStart.mockResolvedValue(undefined);
+    mockRestart.mockResolvedValue(undefined);
   });
 
-  it("stops then starts each container found by label", async () => {
+  it("llama a restart en cada contenedor en marcha", async () => {
     mockListContainers.mockResolvedValue([
       makeContainer("c1", "nginx"),
       makeContainer("c2", "node"),
@@ -212,32 +214,32 @@ describe("restartProyecto", () => {
 
     expect(mockGetContainer).toHaveBeenCalledWith("c1");
     expect(mockGetContainer).toHaveBeenCalledWith("c2");
-    expect(mockStop).toHaveBeenCalledTimes(2);
-    expect(mockStart).toHaveBeenCalledTimes(2);
+    expect(mockRestart).toHaveBeenCalledTimes(2);
+    expect(mockStop).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
   });
 
-  it("ignores 304 on stop (already stopped) and still starts", async () => {
+  it("solo consulta contenedores en marcha (all=false)", async () => {
+    mockListContainers.mockResolvedValue([]);
+    await restartProyecto("cliente-uno", "web-app");
+
+    expect(mockListContainers).toHaveBeenCalledWith(
+      expect.objectContaining({ all: false }),
+    );
+  });
+
+  it("ignora 304 en restart", async () => {
     mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
-    mockStop.mockRejectedValueOnce({ statusCode: 304 });
+    mockRestart.mockRejectedValueOnce({ statusCode: 304 });
 
     await expect(
       restartProyecto("cliente-uno", "web-app"),
     ).resolves.toBeUndefined();
-    expect(mockStart).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores 304 on start (already running after stop)", async () => {
+  it("lanza DockerError NOT_FOUND en 404", async () => {
     mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
-    mockStart.mockRejectedValueOnce({ statusCode: 304 });
-
-    await expect(
-      restartProyecto("cliente-uno", "web-app"),
-    ).resolves.toBeUndefined();
-  });
-
-  it("throws DockerError NOT_FOUND on 404 during stop", async () => {
-    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
-    mockStop.mockRejectedValueOnce({ statusCode: 404 });
+    mockRestart.mockRejectedValueOnce({ statusCode: 404 });
 
     const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
 
@@ -245,19 +247,9 @@ describe("restartProyecto", () => {
     expect(err.code).toBe("NOT_FOUND");
   });
 
-  it("throws DockerError NOT_FOUND on 404 during start", async () => {
+  it("lanza DockerError UNKNOWN en error inesperado", async () => {
     mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
-    mockStart.mockRejectedValueOnce({ statusCode: 404 });
-
-    const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
-
-    expect(err).toBeInstanceOf(DockerError);
-    expect(err.code).toBe("NOT_FOUND");
-  });
-
-  it("throws DockerError UNKNOWN on unexpected error during stop", async () => {
-    mockListContainers.mockResolvedValue([makeContainer("c1", "nginx")]);
-    mockStop.mockRejectedValueOnce(new Error("daemon error"));
+    mockRestart.mockRejectedValueOnce(new Error("daemon error"));
 
     const err = await restartProyecto("cliente-uno", "web-app").catch((e) => e);
 
