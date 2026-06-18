@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockExecFile,
+  mockSpawn,
   mockWriteFile,
   mockMkdir,
   mockUnlink,
@@ -28,8 +29,24 @@ const {
         },
       );
     });
+
+  const makeSpawnResult = (exitCode = 0) => ({
+    stdout: { on: vi.fn() },
+    stderr: { on: vi.fn() },
+    on: vi
+      .fn()
+      .mockImplementation(
+        (event: string, cb: (arg: unknown) => void) =>
+          event === "close" && setImmediate(() => cb(exitCode)),
+      ),
+  });
+  const spawnMock = vi.fn().mockImplementation(() => makeSpawnResult(0));
+  (spawnMock as unknown as { _make: typeof makeSpawnResult })._make =
+    makeSpawnResult;
+
   return {
     mockExecFile: execFileMock,
+    mockSpawn: spawnMock,
     mockWriteFile: vi.fn().mockResolvedValue(undefined),
     mockMkdir: vi.fn().mockResolvedValue(undefined),
     mockUnlink: vi.fn().mockResolvedValue(undefined),
@@ -39,7 +56,10 @@ const {
   };
 });
 
-vi.mock("node:child_process", () => ({ execFile: mockExecFile }));
+vi.mock("node:child_process", () => ({
+  execFile: mockExecFile,
+  spawn: mockSpawn,
+}));
 vi.mock("node:fs/promises", () => ({
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
@@ -63,6 +83,10 @@ vi.mock("dockerode", () => ({
 
 import { deployProyecto } from "./deploy";
 
+const makeSpawnResult = (
+  mockSpawn as unknown as { _make: (exitCode?: number) => object }
+)._make;
+
 const baseParams = {
   tipo: "compose",
   repoUrl: "https://github.com/org/repo",
@@ -78,6 +102,7 @@ describe("deployProyecto", () => {
     mockMkdir.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -90,15 +115,14 @@ describe("deployProyecto", () => {
   it("ejecuta docker compose con -p projectSlug y sin override de red", async () => {
     await deployProyecto(baseParams);
 
-    const composeCalls = vi
-      .mocked(mockExecFile)
-      .mock.calls.filter(([cmd]) => cmd === "docker");
-    expect(composeCalls.length).toBeGreaterThan(0);
-    const composeArgs = composeCalls[composeCalls.length - 1][1] as string[];
-    expect(composeArgs).toContain("-p");
-    expect(composeArgs).toContain("acme-web-app");
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["-p", "acme-web-app"]),
+      expect.anything(),
+    );
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
     expect(
-      composeArgs.some((a) => a.includes("docker-compose.network.yml")),
+      spawnArgs.some((a) => a.includes("docker-compose.network.yml")),
     ).toBe(false);
   });
 
@@ -146,6 +170,7 @@ describe("deployProyecto con variables de entorno", () => {
     mockUnlink.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -170,10 +195,8 @@ describe("deployProyecto con variables de entorno", () => {
       { encoding: "utf-8", mode: 0o600 },
     );
 
-    const dockerCall = vi
-      .mocked(mockExecFile)
-      .mock.calls.find((c) => c[0] === "docker");
-    expect(dockerCall?.[1]).not.toContain("--env-file");
+    const spawnArgs = mockSpawn.mock.calls[0]?.[1] as string[] | undefined;
+    expect(spawnArgs).not.toContain("--env-file");
   });
 
   it("no elimina el .env del repoDir tras deploy exitoso (se mantiene para reinicios)", async () => {
@@ -187,16 +210,8 @@ describe("deployProyecto con variables de entorno", () => {
   });
 
   it("no elimina el .env aunque el deploy falle", async () => {
-    mockExecFile.mockImplementation(
-      (
-        _cmd: string,
-        args: string[],
-        cb: (err: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (args[0] === "compose") return cb(new Error("docker error"), "", "");
-        return cb(null, "", "");
-      },
-    );
+    mockSpawn.mockImplementationOnce(() => makeSpawnResult(1));
+
     await expect(
       deployProyecto({
         ...baseParams,
@@ -242,6 +257,7 @@ describe("deployProyecto — captura de SHA y path con sha", () => {
     mockUnlink.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
   });
 
   it("sin sha: hace checkout de la rama y retorna el sha capturado", async () => {
@@ -344,6 +360,7 @@ describe("deployProyecto con credencial SSH", () => {
     mockUnlink.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
     mockExecFile.mockImplementation(
       (
         _cmd: string,
@@ -378,16 +395,7 @@ describe("deployProyecto con credencial SSH", () => {
   });
 
   it("elimina .deploy_key aunque el deploy falle", async () => {
-    mockExecFile.mockImplementation(
-      (
-        _cmd: string,
-        args: string[],
-        cb: (err: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (args[0] === "compose") return cb(new Error("docker error"), "", "");
-        return cb(null, "", "");
-      },
-    );
+    mockSpawn.mockImplementationOnce(() => makeSpawnResult(1));
 
     await expect(
       deployProyecto({ ...baseParams, credencial: { clavePrivada: "key" } }),

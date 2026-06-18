@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
@@ -12,6 +12,7 @@ async function ensureRepo(
   repoUrl: string,
   repoDir: string,
   gitEnv: NodeJS.ProcessEnv,
+  onLog?: (line: string) => void,
 ): Promise<void> {
   const opts = { env: gitEnv };
   try {
@@ -20,7 +21,9 @@ async function ensureRepo(
       ["-C", repoDir, "rev-parse", "--is-inside-work-tree"],
       opts,
     );
+    onLog?.("→ Repositorio ya clonado, actualizando...");
   } catch {
+    onLog?.("→ Clonando repositorio...");
     await execFileAsync("git", ["clone", repoUrl, repoDir], opts);
   }
 }
@@ -158,6 +161,44 @@ function generarDockerComposeConImage(params: {
   ].join("\n");
 }
 
+function spawnDockerCompose(
+  args: string[],
+  onLog?: (line: string) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let collected = "";
+    const proc = spawn("docker", args, {
+      env: { ...process.env, DOCKER_BUILDKIT: "1" },
+    });
+
+    const handleChunk = (chunk: Buffer) => {
+      const text = chunk.toString();
+      collected += text;
+      if (onLog) {
+        text
+          .split("\n")
+          .filter(Boolean)
+          .forEach((line) => onLog(line));
+      }
+    };
+
+    proc.stdout.on("data", handleChunk);
+    proc.stderr.on("data", handleChunk);
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        const err = new Error(`docker compose exited with code ${code}`);
+        Object.assign(err, { stdout: collected, stderr: "" });
+        reject(err);
+      } else {
+        resolve(collected);
+      }
+    });
+
+    proc.on("error", reject);
+  });
+}
+
 export async function deployProyecto(params: {
   tipo: string;
   repoUrl?: string | null;
@@ -173,6 +214,7 @@ export async function deployProyecto(params: {
   buildCommand?: string | null;
   startCommand?: string | null;
   puerto?: number | null;
+  onLog?: (line: string) => void;
 }): Promise<{ output: string; sha: string }> {
   const {
     tipo,
@@ -188,6 +230,7 @@ export async function deployProyecto(params: {
     dockerfilePath,
     buildCommand,
     startCommand,
+    onLog,
   } = params;
 
   const puerto = params.puerto ?? 3000;
@@ -227,12 +270,14 @@ export async function deployProyecto(params: {
   try {
     // Operaciones git — solo para tipos que usan repo
     if (tipo !== "image" && effectiveRepoUrl) {
-      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv);
+      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv, onLog);
 
       if (sha) {
+        onLog?.(`→ Haciendo checkout de ${sha}...`);
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
         await execFileAsync("git", ["-C", repoDir, "checkout", sha], opts);
       } else {
+        onLog?.(`→ Actualizando rama ${rama}...`);
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
         await execFileAsync(
           "git",
@@ -244,6 +289,7 @@ export async function deployProyecto(params: {
       capturedSha = (
         await execFileAsync("git", ["-C", repoDir, "rev-parse", "HEAD"], opts)
       ).stdout.trim();
+      onLog?.(`→ SHA: ${capturedSha}`);
     }
 
     // Determinar fichero compose según tipo
@@ -340,12 +386,11 @@ export async function deployProyecto(params: {
       "--force-recreate",
     ];
 
+    onLog?.("→ Construyendo e iniciando contenedores...");
+
     let output = "";
     try {
-      const { stdout, stderr } = await execFileAsync("docker", composeArgs, {
-        env: { ...process.env, DOCKER_BUILDKIT: "1" },
-      });
-      output = stdout + "\n" + stderr;
+      output = await spawnDockerCompose(composeArgs, onLog);
     } finally {
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
@@ -358,6 +403,7 @@ export async function deployProyecto(params: {
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
+    onLog?.("✓ Deploy completado");
     return { output, sha: capturedSha };
   } finally {
     if (credencial) {

@@ -18,6 +18,7 @@ import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import { EditarProyectoButton } from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
+import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import {
   deployProyectoAction,
   detenerAction,
@@ -150,6 +151,9 @@ export default async function DetalleProyectoPage({
           </form>
         </div>
       </div>
+
+      {/* Deploy logs en tiempo real */}
+      <DeployLogsPanel proyectoId={id} active={isDeploying} />
 
       {/* Información */}
       <Section
