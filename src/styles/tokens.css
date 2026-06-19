@@ -6,43 +6,28 @@
 /* Fuentes cargadas via next/font en src/app/layout.tsx — no importar desde CSS */
 
 :root {
-  /* ── Colores — Primary ─────────────────────────────────────────── */
+  /* ── Colores — Primary (escala azul) ───────────────────────────── */
   --color-primary-50:  #EFF6FF;
   --color-primary-100: #DBEAFE;
   --color-primary-300: #93C5FD;
+  --color-primary-400: #60A5FA;
   --color-primary-500: #1D4ED8;
   --color-primary-700: #1E40AF;
   --color-primary-900: #1E3A8A;
-
-  /* ── Colores — Semánticos ──────────────────────────────────────── */
-  --color-accent:      #22D3EE;
-  --color-background:  #030712;
-  --color-surface:     #0F172A;
-  --color-border:      #1E293B;
-
-  /* ── Colores — Texto ───────────────────────────────────────────── */
-  --color-text-primary: #F1F5F9;
-  --color-text-muted:   #64748B;
-
-  /* ── Colores — Estado ──────────────────────────────────────────── */
-  --color-state-running:   #22D3EE;
-  --color-state-stopped:   #475569;
-  --color-state-error:     #DC2626;
-  --color-state-deploying: #F59E0B;
 
   /* ── Tipografía ────────────────────────────────────────────────── */
   --font-display: 'Space Grotesk', sans-serif;
   --font-body:    'JetBrains Mono', monospace;
 
   /* ── Escala tipográfica ────────────────────────────────────────── */
-  --text-xs:   0.75rem;    /* 12px */
-  --text-sm:   0.875rem;   /* 14px */
-  --text-base: 1rem;       /* 16px */
-  --text-lg:   1.125rem;   /* 18px */
-  --text-xl:   1.25rem;    /* 20px */
-  --text-2xl:  1.5rem;     /* 24px */
-  --text-3xl:  1.875rem;   /* 30px */
-  --text-4xl:  2.25rem;    /* 36px */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+  --text-4xl:  2.25rem;
 
   /* ── Componentes ───────────────────────────────────────────────── */
   --radius-sm:   2px;
@@ -50,18 +35,15 @@
   --radius-lg:   4px;
   --radius-full: 9999px;
 
-  --shadow-soft:     0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-dramatic: 0 4px 16px rgba(0, 0, 0, 0.6);
-
   /* ── Espaciado (múltiplos de 4px) ──────────────────────────────── */
-  --space-1:  0.25rem;   /* 4px  */
-  --space-2:  0.5rem;    /* 8px  */
-  --space-3:  0.75rem;   /* 12px */
-  --space-4:  1rem;      /* 16px */
-  --space-6:  1.5rem;    /* 24px */
-  --space-8:  2rem;      /* 32px */
-  --space-12: 3rem;      /* 48px */
-  --space-16: 4rem;      /* 64px */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
 
   /* ── Animaciones ───────────────────────────────────────────────── */
   --duration-fast: 150ms;
@@ -71,13 +53,49 @@
   --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* ── Modo claro ────────────────────────────────────────────────────────────── */
+/* ── Tema oscuro (default) ─────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --color-background:   #0f1117;
+  --color-surface:      #1a1d27;
+  --color-elevated:     #22263a;
+  --color-border:       #2a2d3a;
+
+  --color-text-primary: #e8eaf6;
+  --color-text-muted:   #8b8fa8;
+
+  --color-accent:       #6366f1;
+  --color-accent-hover: #4f46e5;
+
+  --color-state-running:   #22D3EE;
+  --color-state-stopped:   #475569;
+  --color-state-success:   #22c55e;
+  --color-state-error:     #ef4444;
+  --color-state-deploying: #f59e0b;
+
+  --shadow-soft:     0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-dramatic: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Tema claro ────────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --color-background:   #F8FAFC;
-  --color-surface:      #FFFFFF;
-  --color-border:       #E2E8F0;
-  --color-text-primary: #0F172A;
-  --color-text-muted:   #94A3B8;
-  --shadow-soft:        0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-dramatic:    0 4px 16px rgba(0, 0, 0, 0.12);
+  --color-background:   #f1f5f9;
+  --color-surface:      #ffffff;
+  --color-elevated:     #f8fafc;
+  --color-border:       #e2e8f0;
+
+  --color-text-primary: #0f172a;
+  --color-text-muted:   #64748b;
+
+  --color-accent:       #6366f1;
+  --color-accent-hover: #4f46e5;
+
+  --color-state-running:   #0ea5e9;
+  --color-state-stopped:   #94a3b8;
+  --color-state-success:   #22c55e;
+  --color-state-error:     #ef4444;
+  --color-state-deploying: #f59e0b;
+
+  --shadow-soft:     0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-dramatic: 0 4px 16px rgba(0, 0, 0, 0.12);
 }

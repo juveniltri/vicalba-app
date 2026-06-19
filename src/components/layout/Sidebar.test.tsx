@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -8,6 +8,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/(panel)/actions", () => ({
   logoutAction: vi.fn(),
+}));
+
+vi.mock("@/hooks/useTheme", () => ({
+  useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -29,6 +33,8 @@ vi.mock("next/link", () => ({
 }));
 
 import { Sidebar } from "@/components/layout/Sidebar";
+
+beforeEach(() => vi.clearAllMocks());
 
 describe("Sidebar", () => {
   it("renderiza el nombre de la aplicación", () => {
@@ -57,6 +63,13 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     expect(
       screen.getByRole("navigation", { name: "navegación principal" }),
+    ).toBeInTheDocument();
+  });
+
+  it("muestra el botón de cambio de tema", () => {
+    render(<Sidebar />);
+    expect(
+      screen.getByRole("button", { name: /activar modo claro/i }),
     ).toBeInTheDocument();
   });
 });
