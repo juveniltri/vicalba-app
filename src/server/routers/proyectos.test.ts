@@ -1,6 +1,16 @@
 // src/server/routers/proyectos.test.ts
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/env", () => ({
+  env: {
+    REPOS_DIR: "/var/vicalba/repos",
+    NODE_ENV: "test",
+    DATABASE_URL: "postgresql://test",
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "0".repeat(64),
+  },
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -12,6 +22,9 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(),
     },
     variableEntorno: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    volumen: {
       findMany: vi.fn().mockResolvedValue([]),
     },
     deploy: { findMany: vi.fn(), findUnique: vi.fn() },

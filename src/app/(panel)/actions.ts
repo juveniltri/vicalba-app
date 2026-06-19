@@ -311,6 +311,28 @@ export async function guardarEmailAction(
   }
 }
 
+export async function crearVolumenAction(
+  proyectoId: string,
+  nombre: string,
+  rutaContenedor: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.volumenes.crear({ proyectoId, nombre, rutaContenedor });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al crear volumen") };
+  }
+}
+
+export async function eliminarVolumenAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.volumenes.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar volumen") };
+  }
+}
+
 export async function crearUsuarioAction(
   email: string,
   nombre: string,

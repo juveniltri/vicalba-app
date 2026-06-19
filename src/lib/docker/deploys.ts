@@ -21,6 +21,7 @@ export async function ejecutarDeploy(params: {
   buildCommand?: string | null;
   startCommand?: string | null;
   puerto?: number | null;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): Promise<{ resultado: "exito" | "error"; output: string }> {
   const { proyectoId, ...deployParams } = params;
 

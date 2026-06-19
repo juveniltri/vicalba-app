@@ -16,6 +16,7 @@ import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
+import { VolumenesPanel } from "@/components/dashboard/VolumenesPanel";
 import { EditarProyectoButton } from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
@@ -46,10 +47,11 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales] = await Promise.all([
+  const [variables, deploys, credenciales, volumenes] = await Promise.all([
     api.variables.listar({ proyectoId: id }),
     api.proyectos.listarDeploys({ proyectoId: id }),
     api.credenciales.listar(),
+    api.volumenes.listar({ proyectoId: id }),
   ]);
 
   const isDeploying = proyecto.estado === "deploying";
@@ -258,6 +260,11 @@ export default async function DetalleProyectoPage({
       {/* Variables de entorno */}
       <Section titulo="Variables de entorno">
         <VariablesPanel proyectoId={id} variablesIniciales={variables} />
+      </Section>
+
+      {/* Volúmenes */}
+      <Section titulo="Volúmenes">
+        <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
       </Section>
 
       {/* Historial de deploys */}

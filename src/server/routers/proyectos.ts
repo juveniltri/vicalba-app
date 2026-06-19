@@ -3,6 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
 import { descifrar } from "@/lib/crypto";
+import { env } from "@/env";
+import { rutaHostVolumen } from "@/lib/volumenes";
 import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
@@ -298,9 +300,10 @@ export const proyectosRouter = router({
         message: "El proyecto no tiene repositorio configurado",
       });
 
-    const variablesDB = await prisma.variableEntorno.findMany({
-      where: { proyectoId: input.id },
-    });
+    const [variablesDB, volumenesDB] = await Promise.all([
+      prisma.variableEntorno.findMany({ where: { proyectoId: input.id } }),
+      prisma.volumen.findMany({ where: { proyectoId: input.id } }),
+    ]);
     const variables = variablesDB
       .filter((v) => !v.enBuildTime)
       .map((v) => ({
@@ -313,6 +316,15 @@ export const proyectosRouter = router({
         clave: v.clave,
         valor: descifrar(v.valorCifrado, v.iv, v.authTag),
       }));
+    const volumenes = volumenesDB.map((v) => ({
+      rutaHost: rutaHostVolumen(
+        env.REPOS_DIR,
+        proyecto.cliente.slug,
+        proyecto.nombre,
+        v.nombre,
+      ),
+      rutaContenedor: v.rutaContenedor,
+    }));
 
     const credencial = proyecto.credencialId
       ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
@@ -340,6 +352,7 @@ export const proyectosRouter = router({
       buildCommand: proyecto.buildCommand,
       startCommand: proyecto.startCommand,
       puerto: proyecto.puerto,
+      volumenes,
     })
       .then(async ({ resultado, output }) => {
         await prisma.proyecto.update({
