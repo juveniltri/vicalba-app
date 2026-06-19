@@ -76,6 +76,15 @@ EOF
   fi
 }
 
+# ─── Cargar .env.local en el entorno ─────────────────────────────────────────
+# Exporta todas las vars para que los subshells de npm (prisma, etc.) las vean.
+load_env() {
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+}
+
 # ─── Directorios locales ──────────────────────────────────────────────────────
 setup_dirs() {
   mkdir -p /tmp/vicalba/repos /tmp/vicalba/traefik/dynamic
@@ -131,6 +140,7 @@ case "$CMD" in
   start)
     check_prereqs
     setup_env
+    load_env
     setup_dirs
     db_up
     migrate
@@ -152,6 +162,7 @@ case "$CMD" in
   reset)
     check_prereqs
     setup_env
+    load_env
     setup_dirs
     db_up
     log "Reseteando BD (borra todo y recrea)..."
