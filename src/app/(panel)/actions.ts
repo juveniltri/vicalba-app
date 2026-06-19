@@ -194,6 +194,18 @@ export async function toggleBuildTimeAction(id: string, enBuildTime: boolean) {
   }
 }
 
+export async function importarVariablesAction(
+  proyectoId: string,
+  contenido: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.variables.importar({ proyectoId, contenido });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al importar variables") };
+  }
+}
+
 export async function actualizarVariableAction(id: string, valor: string) {
   try {
     const api = await createServerCaller();
@@ -296,6 +308,72 @@ export async function guardarEmailAction(
     });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al guardar email") };
+  }
+}
+
+export async function crearVolumenAction(
+  proyectoId: string,
+  nombre: string,
+  rutaContenedor: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.volumenes.crear({ proyectoId, nombre, rutaContenedor });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al crear volumen") };
+  }
+}
+
+export async function eliminarVolumenAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.volumenes.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar volumen") };
+  }
+}
+
+export async function crearUsuarioAction(
+  email: string,
+  nombre: string,
+  password: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.usuarios.crear({ email, nombre, password });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al crear usuario") };
+  }
+}
+
+export async function actualizarUsuarioAction(
+  id: string,
+  nombre: string,
+  email: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.usuarios.actualizar({ id, nombre, email });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al actualizar usuario") };
+  }
+}
+
+export async function cambiarPasswordAction(id: string, password: string) {
+  try {
+    const api = await createServerCaller();
+    await api.usuarios.cambiarPassword({ id, password });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cambiar contraseña") };
+  }
+}
+
+export async function eliminarUsuarioAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.usuarios.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar usuario") };
   }
 }
 

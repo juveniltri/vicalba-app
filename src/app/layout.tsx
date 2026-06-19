@@ -27,8 +27,17 @@ export default function RootLayout({
     <html
       lang="es"
       data-theme="dark"
+      suppressHydrationWarning
       className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} h-full`}
     >
+      <head>
+        {/* Aplica el tema guardado antes del primer paint para evitar flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('vicalba-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

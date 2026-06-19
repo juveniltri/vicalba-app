@@ -7,7 +7,7 @@ on:
     branches: [develop, master]
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
   # ─── 1. Calidad de código ───────────────────────────────────────
@@ -22,7 +22,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: TypeScript
         run: npm run type-check
@@ -43,7 +43,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Run tests
         run: npm run test:unit -- --coverage
@@ -75,7 +75,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Build
         run: npm run build
@@ -100,7 +100,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Dependency audit
         run: npm audit --audit-level=high

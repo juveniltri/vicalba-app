@@ -71,17 +71,10 @@ export async function restartProyecto(
   proyectoNombre: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, true);
+  const containers = await listProjectContainers(slug, false);
   for (const c of containers) {
-    const container = docker.getContainer(c.Id);
     try {
-      await container.stop();
-    } catch (err) {
-      if ((err as { statusCode?: number }).statusCode !== 304)
-        handleDockerError(err);
-    }
-    try {
-      await container.start();
+      await docker.getContainer(c.Id).restart();
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 304)
         handleDockerError(err);

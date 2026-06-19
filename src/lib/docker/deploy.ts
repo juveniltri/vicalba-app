@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
@@ -12,6 +12,7 @@ async function ensureRepo(
   repoUrl: string,
   repoDir: string,
   gitEnv: NodeJS.ProcessEnv,
+  onLog?: (line: string) => void,
 ): Promise<void> {
   const opts = { env: gitEnv };
   try {
@@ -20,7 +21,9 @@ async function ensureRepo(
       ["-C", repoDir, "rev-parse", "--is-inside-work-tree"],
       opts,
     );
+    onLog?.("→ Repositorio ya clonado, actualizando...");
   } catch {
+    onLog?.("→ Clonando repositorio...");
     await execFileAsync("git", ["clone", repoUrl, repoDir], opts);
   }
 }
@@ -112,10 +115,38 @@ function generarDockerfileNodejs(
   ].join("\n");
 }
 
+function serializarEnvironment(
+  variables: Array<{ clave: string; valor: string }>,
+): string[] {
+  if (!variables.length) return [];
+  return [
+    "    environment:",
+    ...variables.map(
+      ({ clave, valor }) =>
+        `      ${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+    ),
+  ];
+}
+
+function serializarVolumes(
+  volumenes: Array<{ rutaHost: string; rutaContenedor: string }>,
+): string[] {
+  if (!volumenes.length) return [];
+  return [
+    "    volumes:",
+    ...volumenes.map(
+      ({ rutaHost, rutaContenedor }) =>
+        `      - "${rutaHost}:${rutaContenedor}"`,
+    ),
+  ];
+}
+
 function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
+  variables?: Array<{ clave: string; valor: string }>;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
   return [
     "services:",
@@ -125,12 +156,16 @@ function generarDockerComposeConBuild(params: {
     `      dockerfile: "${params.dockerfile}"`,
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
+    ...serializarEnvironment(params.variables ?? []),
+    ...serializarVolumes(params.volumenes ?? []),
   ].join("\n");
 }
 
 function generarDockerComposeConImage(params: {
   imagenUrl: string;
   puerto: number;
+  variables?: Array<{ clave: string; valor: string }>;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
   return [
     "services:",
@@ -138,7 +173,47 @@ function generarDockerComposeConImage(params: {
     `    image: "${params.imagenUrl}"`,
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
+    ...serializarEnvironment(params.variables ?? []),
+    ...serializarVolumes(params.volumenes ?? []),
   ].join("\n");
+}
+
+function spawnDockerCompose(
+  args: string[],
+  onLog?: (line: string) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let collected = "";
+    const proc = spawn("docker", args, {
+      env: { ...process.env, DOCKER_BUILDKIT: "1" },
+    });
+
+    const handleChunk = (chunk: Buffer) => {
+      const text = chunk.toString();
+      collected += text;
+      if (onLog) {
+        text
+          .split("\n")
+          .filter(Boolean)
+          .forEach((line) => onLog(line));
+      }
+    };
+
+    proc.stdout.on("data", handleChunk);
+    proc.stderr.on("data", handleChunk);
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        const err = new Error(`docker compose exited with code ${code}`);
+        Object.assign(err, { stdout: collected, stderr: "" });
+        reject(err);
+      } else {
+        resolve(collected);
+      }
+    });
+
+    proc.on("error", reject);
+  });
 }
 
 export async function deployProyecto(params: {
@@ -156,6 +231,8 @@ export async function deployProyecto(params: {
   buildCommand?: string | null;
   startCommand?: string | null;
   puerto?: number | null;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  onLog?: (line: string) => void;
 }): Promise<{ output: string; sha: string }> {
   const {
     tipo,
@@ -171,13 +248,13 @@ export async function deployProyecto(params: {
     dockerfilePath,
     buildCommand,
     startCommand,
+    onLog,
   } = params;
+  const volumenes = params.volumenes ?? [];
 
   const puerto = params.puerto ?? 3000;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
   const panelDir = `${env.REPOS_DIR}/${clienteSlug}/.panel`;
-  const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-  const buildEnvFilePath = `${panelDir}/${proyectoNombre}.build.env`;
   const keyFilePath = `${panelDir}/${proyectoNombre}.deploy_key`;
   const projectSlug = `${clienteSlug}-${proyectoNombre}`;
 
@@ -212,12 +289,14 @@ export async function deployProyecto(params: {
   try {
     // Operaciones git — solo para tipos que usan repo
     if (tipo !== "image" && effectiveRepoUrl) {
-      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv);
+      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv, onLog);
 
       if (sha) {
+        onLog?.(`→ Haciendo checkout de ${sha}...`);
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
         await execFileAsync("git", ["-C", repoDir, "checkout", sha], opts);
       } else {
+        onLog?.(`→ Actualizando rama ${rama}...`);
         await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
         await execFileAsync(
           "git",
@@ -229,13 +308,27 @@ export async function deployProyecto(params: {
       capturedSha = (
         await execFileAsync("git", ["-C", repoDir, "rev-parse", "HEAD"], opts)
       ).stdout.trim();
+      onLog?.(`→ SHA: ${capturedSha}`);
     }
 
     // Determinar fichero compose según tipo
     let composeFile: string;
 
+    const runtimeVars = variables ?? [];
+
     if (tipo === "compose") {
       composeFile = `${repoDir}/docker-compose.yml`;
+      // For user-managed compose files, write .env next to the compose file so
+      // docker compose auto-loads it for ${VAR} substitution on every up/restart.
+      if (runtimeVars.length > 0) {
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(`${repoDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+      }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
       const dfAbsoluto = dfPath.startsWith("/")
@@ -248,6 +341,8 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfAbsoluto,
           puerto,
+          variables: runtimeVars,
+          volumenes,
         }),
       );
       composeFile = composePath;
@@ -281,6 +376,8 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfGenerado,
           puerto,
+          variables: runtimeVars,
+          volumenes,
         }),
       );
       composeFile = composePath;
@@ -289,21 +386,14 @@ export async function deployProyecto(params: {
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
       await writeFile(
         composePath,
-        generarDockerComposeConImage({ imagenUrl: imagenUrl!, puerto }),
+        generarDockerComposeConImage({
+          imagenUrl: imagenUrl!,
+          puerto,
+          variables: runtimeVars,
+          volumenes,
+        }),
       );
       composeFile = composePath;
-    }
-
-    // Variables de entorno
-    const hasVars = variables && variables.length > 0;
-    if (hasVars) {
-      const envContent = variables
-        .map(({ clave, valor }) => {
-          const escaped = valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-          return `${clave}="${escaped}"`;
-        })
-        .join("\n");
-      await writeFile(envFilePath, envContent, "utf-8");
     }
 
     const composeArgs = [
@@ -312,23 +402,18 @@ export async function deployProyecto(params: {
       projectSlug,
       "-f",
       composeFile,
-      ...(hasVars ? ["--env-file", envFilePath] : []),
       "up",
       "--build",
       "-d",
       "--force-recreate",
     ];
 
+    onLog?.("→ Construyendo e iniciando contenedores...");
+
     let output = "";
     try {
-      const { stdout, stderr } = await execFileAsync("docker", composeArgs, {
-        env: { ...process.env, DOCKER_BUILDKIT: "1" },
-      });
-      output = stdout + "\n" + stderr;
+      output = await spawnDockerCompose(composeArgs, onLog);
     } finally {
-      if (hasVars) {
-        await unlink(envFilePath).catch(() => {});
-      }
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
       }
@@ -340,6 +425,7 @@ export async function deployProyecto(params: {
       await conectarContenedoresARedCliente(projectSlug, clienteSlug);
     }
 
+    onLog?.("✓ Deploy completado");
     return { output, sha: capturedSha };
   } finally {
     if (credencial) {

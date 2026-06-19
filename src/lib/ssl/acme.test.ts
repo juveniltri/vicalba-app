@@ -20,6 +20,21 @@ const acmeConCerts = JSON.stringify({
   },
 });
 
+// Estructura real que escribe Traefik: sans: null, campos extra en cada cert
+const acmeTraefikReal = JSON.stringify({
+  letsencrypt: {
+    Account: { Email: "admin@ejemplo.com" },
+    Certificates: [
+      {
+        domain: { main: "app.ejemplo.com", sans: null },
+        certificate: "LS0tLS1CRUdJTi...",
+        key: "LS0tLS1CRUdJTi...",
+        Store: "default",
+      },
+    ],
+  },
+});
+
 describe("leerEstadoSSL", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -63,5 +78,37 @@ describe("leerEstadoSSL", () => {
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: false });
+  });
+
+  it("devuelve activo: true con la estructura real de Traefik (sans: null, campos extra)", async () => {
+    mockReadFile.mockResolvedValue(acmeTraefikReal);
+    const result = await leerEstadoSSL("app.ejemplo.com");
+    expect(result).toEqual({ activo: true });
+  });
+
+  it("devuelve activo: false si el dominio no está en la estructura real de Traefik", async () => {
+    mockReadFile.mockResolvedValue(acmeTraefikReal);
+    const result = await leerEstadoSSL("otro.com");
+    expect(result).toEqual({ activo: false });
+  });
+
+  it("devuelve activo: true con múltiples resolvers y el cert en el segundo", async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        myresolver: { Account: {} },
+        letsencrypt: {
+          Certificates: [
+            {
+              domain: { main: "app.ejemplo.com", sans: null },
+              certificate: "abc",
+              key: "abc",
+              Store: "default",
+            },
+          ],
+        },
+      }),
+    );
+    const result = await leerEstadoSSL("app.ejemplo.com");
+    expect(result).toEqual({ activo: true });
   });
 });

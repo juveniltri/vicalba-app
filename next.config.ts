@@ -39,6 +39,14 @@ const nextConfig: NextConfig = {
   // Externalizarlos hace que Node.js los resuelva en runtime desde node_modules.
   serverExternalPackages: ["ssh2", "dockerode", "docker-modem"],
 
+  experimental: {
+    // HACK: serverBodySizeLimit no está en los tipos de ExperimentalConfig de Next.js 15
+    // pero sí existe en runtime. El límite por defecto (4 MB) es insuficiente para
+    // archivos de cámara (DNG ~20-50 MB). Revisar cuando los tipos se actualicen.
+    // @ts-expect-error -- opción válida en runtime, tipado pendiente upstream
+    serverBodySizeLimit: 100 * 1024 * 1024, // 100 MB
+  },
+
   async headers() {
     if (process.env.NODE_ENV !== "production") return [];
     return [{ source: "/(.*)", headers: securityHeaders }];

@@ -198,11 +198,15 @@ docker compose up -d --build panel
 ### Desarrollo local
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # solo PostgreSQL
-cp .env.production.example .env.local             # ajustar DATABASE_URL y vars mínimas
-npm run db:migrate && npm run db:seed
-npm run dev
+./scripts/dev.sh start   # levanta PostgreSQL, migra, siembra y arranca el servidor
+./scripts/dev.sh stop    # para PostgreSQL
+./scripts/dev.sh reset   # recrea la BD desde cero
+./scripts/dev.sh status  # estado de los servicios
 ```
+
+El script crea `.env.local` automáticamente con secretos generados si no existe,
+detecta el socket Docker en macOS/Linux y crea los directorios necesarios en `/tmp/vicalba/`.
+Credenciales del seed: `admin@vicalba.local` / `dev-password-2026`
 
 ### Nota — redes de clientes y Traefik
 
@@ -276,6 +280,13 @@ Ver `CONTEXT.md` para el glosario completo.
   - Hotfix producción (`hotfix/traefik-ssl-prisma-config`, en master): prisma.config.ts copiado al runner Docker; tlsChallenge en Traefik; ACME_EMAIL via CLI arg; ENCRYPTION_KEY y DOCKER_GID en docker-compose; trustHost en NextAuth; asegurarRedCliente idempotente en deploy; UIDs explícitos (1001) en Dockerfile; git+openssh+docker-cli instalados en runner; alias de red en conectarContenedoresARedCliente
   - Fixes de deploy SSH (`hotfix/build-time-variables`): conversión automática HTTPS→SSH cuando hay credencial asignada; normalización de clave privada (Unix line endings + newline final); DOCKER_BUILDKIT=1 en docker compose; conectarTraefikARed en cada deploy (idempotente)
   - Variables build-time (`hotfix/build-time-variables`): campo enBuildTime en VariableEntorno; proyectos nodejs usan Dockerfile multi-stage (vars en .env.local del stage builder, imagen final limpia); toggle por variable en UI; router variables expone toggleBuildTime
+  - Gestión de usuarios: CRUD completo (crear/editar/cambiar password/eliminar), router usuarios, GestionUsuarios UI, enlace en sidebar (PR #20, en develop)
+  - Logs de deploy SSE: stream en tiempo real del proceso de deploy sin contenedores intermedios (PR #19, en develop)
+  - Importación masiva de variables: parseo de contenido .env, upsert por clave, informe de creadas/actualizadas/inválidas (PR #17, en develop)
+  - Volúmenes persistentes + file manager: modelo Volumen en BD, router CRUD, bind mounts en deploy, API `/api/volumes/[id]/files` (GET/POST/DELETE con navegación de subdirectorios), componente VolumenesPanel con explorador básico (PR #21, en develop)
+  - CI/CD estabilización: Node 22 en GitHub Actions, `npm install --prefer-offline` (cross-platform con macOS lock file), cobertura 100% en routers, audit sin high vulns (nodemailer ^9.0.1, hono ^4.12.26)
+  - Script de desarrollo local: `scripts/dev.sh` (start/stop/reset/status), crea .env.local automáticamente, detecta socket Docker
+  - UX improvements (`feature/ux-improvements`, PR #→develop): bug SSL (sans nullish), botón Abrir URL (AbrirUrlBoton con HTTPS/HTTP según sslActivo), file manager modal 85vw×85vh (ZIP download con fflate, mkdir, drag & drop, breadcrumb Home), logs modal 80vw×80vh (useContainerLogs propio, filtros ALL/ERR/WARN/INFO/DEBUG por nivel Pino, toggle timestamps, limpiar buffer), dark/light theme toggle (useTheme DOM-first, ThemeToggle sol/luna en sidebar, tokens.css paleta completa dark+light, script inline anti-FOUC, 578 tests)
 - **En construcción:** —
-- **Bloqueado / pendiente:** Sincronizar develop con master (master está por delante por commits directos durante hotfixes)
-- **Próximo hito:** Merge `hotfix/build-time-variables` → `develop`, sync `develop` con `master`, PR `develop` → `master`
+- **Bloqueado / pendiente:** PR develop → master pendiente de merge; PR feature/ux-improvements → develop pendiente de merge
+- **Próximo hito:** Merge feature/ux-improvements → develop → master

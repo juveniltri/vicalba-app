@@ -6,6 +6,7 @@ import {
   actualizarVariableAction,
   crearVariableAction,
   eliminarVariableAction,
+  importarVariablesAction,
   revelarVariableAction,
   toggleBuildTimeAction,
 } from "@/app/(panel)/actions";
@@ -33,6 +34,13 @@ export function VariablesPanel({
   const [newClave, setNewClave] = useState("");
   const [newValor, setNewValor] = useState("");
   const [newEnBuildTime, setNewEnBuildTime] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
+  const [importContenido, setImportContenido] = useState("");
+  const [importResult, setImportResult] = useState<{
+    creadas: number;
+    actualizadas: number;
+    invalidas: string[];
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -109,6 +117,23 @@ export function VariablesPanel({
     setNewValor("");
     setNewEnBuildTime(false);
     setShowAddForm(false);
+    router.refresh();
+    setLoading(false);
+  }
+
+  async function handleImportar(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setImportResult(null);
+    const result = await importarVariablesAction(proyectoId, importContenido);
+    if ("error" in result) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+    setImportResult(result);
+    setImportContenido("");
     router.refresh();
     setLoading(false);
   }
@@ -323,14 +348,69 @@ export function VariablesPanel({
             </Btn>
           </div>
         </form>
+      ) : showImportForm ? (
+        <form onSubmit={handleImportar} className="flex flex-col gap-2 pt-1">
+          <textarea
+            aria-label="Contenido"
+            rows={8}
+            placeholder={
+              "# Pega aquí el contenido de tu .env\nDATABASE_URL=postgres://...\nAPI_KEY=secreto"
+            }
+            value={importContenido}
+            onChange={(e) => setImportContenido(e.target.value)}
+            required
+            className="font-mono text-xs bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary focus:outline-none focus:border-primary-300 resize-y"
+          />
+          {importResult && (
+            <div className="font-body text-xs text-text-muted flex flex-col gap-0.5">
+              <span>
+                {importResult.creadas} creadas, {importResult.actualizadas}{" "}
+                actualizadas
+              </span>
+              {importResult.invalidas.length > 0 && (
+                <span className="text-state-error">
+                  Claves ignoradas (formato inválido):{" "}
+                  {importResult.invalidas.join(", ")}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Btn primary disabled={loading} aria-label="Importar">
+              {loading ? "…" : "Importar"}
+            </Btn>
+            <Btn
+              onClick={() => {
+                setShowImportForm(false);
+                setImportContenido("");
+                setImportResult(null);
+              }}
+              aria-label="Cancelar"
+            >
+              Cancelar
+            </Btn>
+          </div>
+        </form>
       ) : (
-        <button
-          type="button"
-          onClick={() => setShowAddForm(true)}
-          className="self-start font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors duration-[var(--duration-fast)]"
-        >
-          + Añadir variable
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAddForm(true)}
+            className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors duration-[var(--duration-fast)]"
+          >
+            + Añadir variable
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowImportForm(true);
+              setImportResult(null);
+            }}
+            className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors duration-[var(--duration-fast)]"
+          >
+            Importar .env
+          </button>
+        </div>
       )}
     </div>
   );

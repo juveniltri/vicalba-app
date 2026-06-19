@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/env", () => ({
+  env: {
+    REPOS_DIR: "/var/vicalba/repos",
+    NODE_ENV: "test",
+    DATABASE_URL: "postgresql://test",
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "0".repeat(64),
+  },
+}));
+
 vi.mock("@/lib/docker/deploy", () => ({
   deployProyecto: vi.fn().mockResolvedValue(undefined),
 }));
@@ -33,6 +43,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      upsert: vi.fn(),
       delete: vi.fn(),
     },
   },
@@ -247,6 +258,119 @@ describe("variables.eliminar", () => {
   });
 });
 
+describe("variables.importar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.variableEntorno.upsert).mockResolvedValue(
+      mockVariable as never,
+    );
+  });
+
+  it("parsea pares KEY=VALUE y llama a upsert por cada uno", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "DATABASE_URL=postgres://localhost\nJWT_SECRET=supersecret",
+    });
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(2);
+    expect(cifrar).toHaveBeenCalledWith("postgres://localhost");
+    expect(cifrar).toHaveBeenCalledWith("supersecret");
+  });
+
+  it("ignora comentarios y líneas vacías", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "# comentario\n\nAPI_KEY=abc\n  \n",
+    });
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("elimina el prefijo export", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "export MY_VAR=hello",
+    });
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          proyectoId_clave: { proyectoId: "p1", clave: "MY_VAR" },
+        }),
+      }),
+    );
+  });
+
+  it("elimina comillas dobles y simples del valor", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "A=\"valor doble\"\nB='valor simple'",
+    });
+    expect(cifrar).toHaveBeenCalledWith("valor doble");
+    expect(cifrar).toHaveBeenCalledWith("valor simple");
+  });
+
+  it("preserva el = dentro del valor", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "URL=https://example.com?a=1&b=2",
+    });
+    expect(cifrar).toHaveBeenCalledWith("https://example.com?a=1&b=2");
+  });
+
+  it("devuelve invalidas para claves con formato incorrecto", async () => {
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "lowercase_key=val\n123_INVALID=val\nVALID_KEY=val",
+    });
+    expect(result.invalidas).toContain("lowercase_key");
+    expect(result.invalidas).toContain("123_INVALID");
+    expect(result.invalidas).not.toContain("VALID_KEY");
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("devuelve creadas y actualizadas según si la clave existía", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      { clave: "EXISTING_KEY" },
+    ] as never);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "EXISTING_KEY=nuevo\nNEW_KEY=valor",
+    });
+    expect(result.creadas).toBe(1);
+    expect(result.actualizadas).toBe(1);
+  });
+
+  it("devuelve todo a cero si el contenido está vacío", async () => {
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "# solo comentarios\n\n",
+    });
+    expect(result.creadas).toBe(0);
+    expect(result.actualizadas).toBe(0);
+    expect(result.invalidas).toHaveLength(0);
+    expect(prisma.variableEntorno.upsert).not.toHaveBeenCalled();
+  });
+
+  it("ignora líneas sin signo igual", async () => {
+    vi.mocked(prisma.variableEntorno.upsert).mockResolvedValue({} as never);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.importar({
+      proyectoId: "p1",
+      contenido: "LINEA_SIN_IGUAL\nDB_HOST=localhost",
+    });
+    expect(result.creadas).toBe(1);
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("variables.revelar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -273,5 +397,69 @@ describe("variables.revelar", () => {
     await expect(
       createCaller(ctx).variables.revelar({ id: "no-existe" }),
     ).rejects.toThrow("no encontrada");
+  });
+});
+
+describe("variables.toggleBuildTime", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("activa enBuildTime en la variable", async () => {
+    vi.mocked(prisma.variableEntorno.findUnique).mockResolvedValue(
+      mockVariable as never,
+    );
+    vi.mocked(prisma.variableEntorno.update).mockResolvedValue({
+      id: "v1",
+      clave: "DATABASE_URL",
+      enBuildTime: true,
+      creadoEn: new Date(),
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.toggleBuildTime({
+      id: "v1",
+      enBuildTime: true,
+    });
+
+    expect(prisma.variableEntorno.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "v1" },
+        data: { enBuildTime: true },
+      }),
+    );
+    expect(result.enBuildTime).toBe(true);
+  });
+
+  it("desactiva enBuildTime en la variable", async () => {
+    vi.mocked(prisma.variableEntorno.findUnique).mockResolvedValue(
+      mockVariable as never,
+    );
+    vi.mocked(prisma.variableEntorno.update).mockResolvedValue({
+      id: "v1",
+      clave: "DATABASE_URL",
+      enBuildTime: false,
+      creadoEn: new Date(),
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.toggleBuildTime({
+      id: "v1",
+      enBuildTime: false,
+    });
+
+    expect(result.enBuildTime).toBe(false);
+  });
+
+  it("lanza NOT_FOUND si la variable no existe", async () => {
+    vi.mocked(prisma.variableEntorno.findUnique).mockResolvedValue(null);
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).variables.toggleBuildTime({
+        id: "no-existe",
+        enBuildTime: true,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

@@ -1,6 +1,16 @@
 // src/server/routers/proyectos.test.ts
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/env", () => ({
+  env: {
+    REPOS_DIR: "/var/vicalba/repos",
+    NODE_ENV: "test",
+    DATABASE_URL: "postgresql://test",
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "0".repeat(64),
+  },
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -12,6 +22,9 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(),
     },
     variableEntorno: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    volumen: {
       findMany: vi.fn().mockResolvedValue([]),
     },
     deploy: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -213,6 +226,45 @@ describe("proyectos.listar", () => {
       callArg?.include as { proyectos?: { include?: unknown } }
     )?.proyectos;
     expect(proyectosInclude).not.toHaveProperty("include");
+  });
+
+  it("includes sslActivo: true for projects with domain when cert exists", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBe(true);
+    expect(leerEstadoSSL).toHaveBeenCalledWith("app.cliente-uno.com");
+  });
+
+  it("includes sslActivo: false for projects with domain but no cert", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: false });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBe(false);
+  });
+
+  it("includes sslActivo: null for projects without domain", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue([
+      {
+        ...mockDbData[0],
+        proyectos: [{ ...mockDbData[0].proyectos[0], dominio: null }],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBeNull();
+    expect(leerEstadoSSL).not.toHaveBeenCalled();
   });
 
   it("throws UNAUTHORIZED when not authenticated", async () => {
@@ -1317,6 +1369,58 @@ describe("proyectos.deploy — con variables de entorno", () => {
       expect.objectContaining({ variables: [] }),
     );
   });
+
+  it("descifra variablesBuildTime y las pasa a ejecutarDeploy", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        clave: "BUILD_VAR",
+        valorCifrado: "cifrado-build",
+        iv: "iv-build",
+        authTag: "tag-build",
+        enBuildTime: true,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variablesBuildTime: [{ clave: "BUILD_VAR", valor: "valor-descifrado" }],
+      }),
+    );
+  });
+
+  it("pasa volumenes con rutaHost calculada a ejecutarDeploy", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.volumen.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        nombre: "galeria",
+        rutaContenedor: "/app/public/galeria",
+        creadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        volumenes: [
+          {
+            rutaHost: "/var/vicalba/repos/cliente-uno/web-app/volumes/galeria",
+            rutaContenedor: "/app/public/galeria",
+          },
+        ],
+      }),
+    );
+  });
 });
 
 describe("proyectos.listarDeploys", () => {
@@ -1582,6 +1686,35 @@ describe("proyectos.rollback", () => {
     await vi.waitFor(() => {
       expect(prisma.proyecto.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { estado: "error" } }),
+      );
+    });
+  });
+
+  it("descifra variablesBuildTime y las pasa a ejecutarDeploy en rollback", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        clave: "BUILD_VAR",
+        valorCifrado: "cifrado-build",
+        iv: "iv-build",
+        authTag: "tag-build",
+        enBuildTime: true,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    await vi.waitFor(() => {
+      expect(ejecutarDeploy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variablesBuildTime: [
+            { clave: "BUILD_VAR", valor: "valor-descifrado" },
+          ],
+        }),
       );
     });
   });
