@@ -1330,6 +1330,58 @@ describe("proyectos.deploy — con variables de entorno", () => {
       expect.objectContaining({ variables: [] }),
     );
   });
+
+  it("descifra variablesBuildTime y las pasa a ejecutarDeploy", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        clave: "BUILD_VAR",
+        valorCifrado: "cifrado-build",
+        iv: "iv-build",
+        authTag: "tag-build",
+        enBuildTime: true,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variablesBuildTime: [{ clave: "BUILD_VAR", valor: "valor-descifrado" }],
+      }),
+    );
+  });
+
+  it("pasa volumenes con rutaHost calculada a ejecutarDeploy", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.volumen.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        nombre: "galeria",
+        rutaContenedor: "/app/public/galeria",
+        creadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        volumenes: [
+          {
+            rutaHost: "/var/vicalba/repos/cliente-uno/web-app/volumes/galeria",
+            rutaContenedor: "/app/public/galeria",
+          },
+        ],
+      }),
+    );
+  });
 });
 
 describe("proyectos.listarDeploys", () => {
@@ -1595,6 +1647,35 @@ describe("proyectos.rollback", () => {
     await vi.waitFor(() => {
       expect(prisma.proyecto.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { estado: "error" } }),
+      );
+    });
+  });
+
+  it("descifra variablesBuildTime y las pasa a ejecutarDeploy en rollback", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        clave: "BUILD_VAR",
+        valorCifrado: "cifrado-build",
+        iv: "iv-build",
+        authTag: "tag-build",
+        enBuildTime: true,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    await vi.waitFor(() => {
+      expect(ejecutarDeploy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variablesBuildTime: [
+            { clave: "BUILD_VAR", valor: "valor-descifrado" },
+          ],
+        }),
       );
     });
   });

@@ -224,6 +224,20 @@ describe("volumenes.crear", () => {
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
+  it("relanza el error si crear falla por un motivo distinto a P2002", async () => {
+    const dbError = new Error("connection lost");
+    vi.mocked(prisma.volumen.create).mockRejectedValue(dbError);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).volumenes.crear({
+        proyectoId: "p1",
+        nombre: "galeria",
+        rutaContenedor: "/app/public/galeria",
+      }),
+    ).rejects.toThrow("connection lost");
+  });
+
   it("rechaza nombres de volumen con caracteres inválidos", async () => {
     const ctx = await createContext();
     await expect(

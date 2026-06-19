@@ -196,6 +196,20 @@ describe("usuarios.crear", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("relanza el error si crear falla por un motivo distinto a P2002", async () => {
+    const dbError = new Error("connection lost");
+    vi.mocked(prisma.user.create).mockRejectedValue(dbError);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.crear({
+        email: "x@x.com",
+        nombre: "X",
+        password: "secret123",
+      }),
+    ).rejects.toThrow("connection lost");
+  });
 });
 
 describe("usuarios.actualizar", () => {
@@ -238,6 +252,35 @@ describe("usuarios.actualizar", () => {
         email: "x@x.com",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lanza CONFLICT si el email ya está en uso (P2002)", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue({ code: "P2002" });
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.actualizar({
+        id: "u1",
+        nombre: "X",
+        email: "dup@vicalba.local",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("relanza el error si actualizar falla por un motivo distinto a P2002", async () => {
+    const dbError = new Error("db timeout");
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(dbError);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.actualizar({
+        id: "u1",
+        nombre: "X",
+        email: "x@x.com",
+      }),
+    ).rejects.toThrow("db timeout");
   });
 });
 
