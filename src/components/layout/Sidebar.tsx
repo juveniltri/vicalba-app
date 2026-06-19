@@ -1,5 +1,6 @@
 import { logoutAction } from "@/app/(panel)/actions";
 import { SidebarLink } from "./SidebarLink";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Sidebar() {
   return (
@@ -18,7 +19,8 @@ export function Sidebar() {
         <SidebarLink href="/usuarios">Usuarios</SidebarLink>
         <SidebarLink href="/configuracion">Configuración</SidebarLink>
       </nav>
-      <div className="p-2 border-t border-border">
+      <div className="p-2 border-t border-border flex flex-col gap-0.5">
+        <ThemeToggle />
         <form action={logoutAction}>
           <button
             type="submit"

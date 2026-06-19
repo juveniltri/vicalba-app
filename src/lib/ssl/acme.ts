@@ -10,7 +10,7 @@ const acmeSchema = z.record(
         z.object({
           domain: z.object({
             main: z.string(),
-            sans: z.array(z.string()).optional(),
+            sans: z.array(z.string()).nullish(),
           }),
         }),
       )

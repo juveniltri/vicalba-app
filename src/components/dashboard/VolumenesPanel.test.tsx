@@ -167,24 +167,16 @@ describe("VolumenesPanel — eliminar volumen", () => {
   });
 });
 
-describe("VolumenesPanel — file manager", () => {
+describe("VolumenesPanel — file manager modal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
-      json: async () => [
-        {
-          nombre: "foto1.jpg",
-          tipo: "file",
-          tamaño: 12345,
-          modificadoEn: null,
-        },
-        { nombre: "subfolder", tipo: "dir", tamaño: null, modificadoEn: null },
-      ],
+      json: async () => [],
     } as Response);
   });
 
-  it("muestra el botón 'Ficheros' por volumen", () => {
+  it("muestra el botón 'Explorar' por volumen", () => {
     render(
       <VolumenesPanel proyectoId="p1" volumenesIniciales={mockVolumenes} />,
     );
@@ -193,17 +185,27 @@ describe("VolumenesPanel — file manager", () => {
     ).toBeInTheDocument();
   });
 
-  it("abre el file manager y carga ficheros al pulsar 'Cargar'", async () => {
+  it("abre el modal explorador al pulsar 'Explorar'", async () => {
     render(
       <VolumenesPanel proyectoId="p1" volumenesIniciales={mockVolumenes} />,
     );
     fireEvent.click(
       screen.getByRole("button", { name: /explorar ficheros de galeria/i }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /cargar/i }));
     await waitFor(() =>
-      expect(screen.getByText(/foto1\.jpg/)).toBeInTheDocument(),
+      expect(screen.getByText(/Explorador — galeria/i)).toBeInTheDocument(),
     );
-    expect(screen.getByText(/subfolder/)).toBeInTheDocument();
+  });
+
+  it("cierra el modal al pulsar el botón de cerrar", async () => {
+    render(
+      <VolumenesPanel proyectoId="p1" volumenesIniciales={mockVolumenes} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /explorar ficheros de galeria/i }),
+    );
+    await waitFor(() => screen.getByText(/Explorador — galeria/i));
+    fireEvent.click(screen.getByRole("button", { name: /cerrar/i }));
+    expect(screen.queryByText(/Explorador — galeria/i)).not.toBeInTheDocument();
   });
 });

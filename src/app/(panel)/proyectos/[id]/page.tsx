@@ -11,6 +11,7 @@ const LABEL_TIPO: Record<string, string> = {
 };
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
+import { AbrirUrlBoton } from "@/components/dashboard/AbrirUrlBoton";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
@@ -47,12 +48,16 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales, volumenes] = await Promise.all([
-    api.variables.listar({ proyectoId: id }),
-    api.proyectos.listarDeploys({ proyectoId: id }),
-    api.credenciales.listar(),
-    api.volumenes.listar({ proyectoId: id }),
-  ]);
+  const [variables, deploys, credenciales, volumenes, estadoSSL] =
+    await Promise.all([
+      api.variables.listar({ proyectoId: id }),
+      api.proyectos.listarDeploys({ proyectoId: id }),
+      api.credenciales.listar(),
+      api.volumenes.listar({ proyectoId: id }),
+      proyecto.dominio
+        ? api.proyectos.estadoSSL({ dominio: proyecto.dominio })
+        : Promise.resolve(null),
+    ]);
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
@@ -72,7 +77,13 @@ export default async function DetalleProyectoPage({
           <StatusBadge estado={proyecto.estado} />
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          {proyecto.dominio && (
+            <AbrirUrlBoton
+              dominio={proyecto.dominio}
+              sslActivo={estadoSSL?.activo ?? null}
+            />
+          )}
           <form
             action={async () => {
               "use server";
@@ -188,11 +199,7 @@ export default async function DetalleProyectoPage({
                 <span className="font-body text-sm text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
                   {proyecto.dominio}
                 </span>
-                <SSLBadge
-                  estado={await api.proyectos.estadoSSL({
-                    dominio: proyecto.dominio,
-                  })}
-                />
+                {estadoSSL && <SSLBadge estado={estadoSSL} />}
               </div>
             ) : (
               <span className="font-body text-sm text-text-primary">—</span>
