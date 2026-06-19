@@ -22,8 +22,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm install -g npm@11
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: TypeScript
         run: npm run type-check
@@ -44,8 +43,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm install -g npm@11
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Run tests
         run: npm run test:unit -- --coverage
@@ -77,8 +75,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm install -g npm@11
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Build
         run: npm run build
@@ -103,8 +100,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - run: npm install -g npm@11
-      - run: npm ci
+      - run: npm install --prefer-offline
 
       - name: Dependency audit
         run: npm audit --audit-level=high
