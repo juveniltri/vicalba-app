@@ -534,30 +534,42 @@ export const proyectosRouter = router({
       orderBy: { nombre: "asc" },
     });
 
-    return clientes.map((cliente) => ({
-      id: cliente.id,
-      slug: cliente.slug,
-      nombre: cliente.nombre,
-      proyectos: cliente.proyectos.map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        clienteSlug: cliente.slug,
-        estado: p.estado,
-        dominio: p.dominio,
-        repositorioUrl: p.repositorioUrl,
-        rama: p.rama,
-        autoDeployHabilitado: p.autoDeployHabilitado,
-        tipo: p.tipo,
-        puerto: p.puerto,
-        imagenUrl: p.imagenUrl,
-        dockerfilePath: p.dockerfilePath,
-        buildCommand: p.buildCommand,
-        startCommand: p.startCommand,
-        ultimoDeploy:
-          p.ultimoDeployEn && p.ultimoDeployRama
-            ? { hace: formatHace(p.ultimoDeployEn), rama: p.ultimoDeployRama }
-            : null,
+    const result = await Promise.all(
+      clientes.map(async (cliente) => ({
+        id: cliente.id,
+        slug: cliente.slug,
+        nombre: cliente.nombre,
+        proyectos: await Promise.all(
+          cliente.proyectos.map(async (p) => {
+            const ssl = p.dominio ? await leerEstadoSSL(p.dominio) : null;
+            return {
+              id: p.id,
+              nombre: p.nombre,
+              clienteSlug: cliente.slug,
+              estado: p.estado,
+              dominio: p.dominio,
+              repositorioUrl: p.repositorioUrl,
+              rama: p.rama,
+              autoDeployHabilitado: p.autoDeployHabilitado,
+              tipo: p.tipo,
+              puerto: p.puerto,
+              imagenUrl: p.imagenUrl,
+              dockerfilePath: p.dockerfilePath,
+              buildCommand: p.buildCommand,
+              startCommand: p.startCommand,
+              sslActivo: ssl ? ssl.activo : null,
+              ultimoDeploy:
+                p.ultimoDeployEn && p.ultimoDeployRama
+                  ? {
+                      hace: formatHace(p.ultimoDeployEn),
+                      rama: p.ultimoDeployRama,
+                    }
+                  : null,
+            };
+          }),
+        ),
       })),
-    }));
+    );
+    return result;
   }),
 });

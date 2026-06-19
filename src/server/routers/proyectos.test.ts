@@ -228,6 +228,45 @@ describe("proyectos.listar", () => {
     expect(proyectosInclude).not.toHaveProperty("include");
   });
 
+  it("includes sslActivo: true for projects with domain when cert exists", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBe(true);
+    expect(leerEstadoSSL).toHaveBeenCalledWith("app.cliente-uno.com");
+  });
+
+  it("includes sslActivo: false for projects with domain but no cert", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: false });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBe(false);
+  });
+
+  it("includes sslActivo: null for projects without domain", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue([
+      {
+        ...mockDbData[0],
+        proyectos: [{ ...mockDbData[0].proyectos[0], dominio: null }],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.listar();
+
+    expect(result[0].proyectos[0].sslActivo).toBeNull();
+    expect(leerEstadoSSL).not.toHaveBeenCalled();
+  });
+
   it("throws UNAUTHORIZED when not authenticated", async () => {
     vi.mocked(auth).mockResolvedValue(null);
 

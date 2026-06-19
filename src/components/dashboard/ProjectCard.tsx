@@ -13,6 +13,7 @@ import {
 } from "@/app/(panel)/actions";
 import { useContainerLogs } from "@/hooks/useContainerLogs";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
+import { AbrirUrlBoton } from "./AbrirUrlBoton";
 import { LogsPanel } from "./LogsPanel";
 import { ProyectoFormModal } from "./ProyectoForm";
 import { StatusBadge } from "./StatusBadge";
@@ -108,9 +109,15 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
       </div>
 
       {proyecto.dominio && (
-        <p className="font-body text-xs text-text-muted truncate">
-          {proyecto.dominio}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="font-body text-xs text-text-muted truncate">
+            {proyecto.dominio}
+          </p>
+          <AbrirUrlBoton
+            dominio={proyecto.dominio}
+            sslActivo={proyecto.sslActivo}
+          />
+        </div>
       )}
 
       {proyecto.ultimoDeploy && (

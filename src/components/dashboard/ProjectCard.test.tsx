@@ -52,6 +52,7 @@ const base: ProyectoResumen = {
   repositorioUrl: "https://github.com/org/web-app",
   rama: "main",
   autoDeployHabilitado: false,
+  sslActivo: true,
   ultimoDeploy: { hace: "hace 2h", rama: "main" },
 };
 
@@ -64,6 +65,28 @@ describe("ProjectCard — contenido", () => {
   it("muestra el dominio cuando existe", () => {
     render(<ProjectCard proyecto={base} />);
     expect(screen.getByText("app.cliente-uno.com")).toBeInTheDocument();
+  });
+
+  it("muestra botón URL con https:// cuando sslActivo es true", () => {
+    render(<ProjectCard proyecto={{ ...base, sslActivo: true }} />);
+    const link = screen.getByTitle("Abrir en el navegador");
+    expect(link).toHaveAttribute("href", "https://app.cliente-uno.com");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("muestra botón URL con http:// cuando sslActivo es false", () => {
+    render(<ProjectCard proyecto={{ ...base, sslActivo: false }} />);
+    const link = screen.getByTitle("Abrir en el navegador");
+    expect(link).toHaveAttribute("href", "http://app.cliente-uno.com");
+  });
+
+  it("no muestra botón URL si no hay dominio", () => {
+    render(
+      <ProjectCard proyecto={{ ...base, dominio: null, sslActivo: null }} />,
+    );
+    expect(
+      screen.queryByTitle("Abrir en el navegador"),
+    ).not.toBeInTheDocument();
   });
 
   it("muestra rama y tiempo del último deploy", () => {
