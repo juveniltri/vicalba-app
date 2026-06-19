@@ -70,6 +70,7 @@ model Proyecto {
   startCommand         String?
   variables            VariableEntorno[]
   deploys              Deploy[]
+  volumenes            Volumen[]
   creadoEn             DateTime          @default(now())
   actualizadoEn        DateTime          @updatedAt
 
@@ -89,6 +90,17 @@ model VariableEntorno {
   actualizadoEn DateTime @updatedAt
 
   @@unique([proyectoId, clave])
+}
+
+model Volumen {
+  id             String   @id @default(cuid())
+  proyectoId     String
+  proyecto       Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre         String
+  rutaContenedor String
+  creadoEn       DateTime @default(now())
+
+  @@unique([proyectoId, nombre])
 }
 
 model User {

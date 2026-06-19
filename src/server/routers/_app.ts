@@ -5,6 +5,7 @@ import { credencialesRouter } from "./credenciales";
 import { proyectosRouter } from "./proyectos";
 import { usuariosRouter } from "./usuarios";
 import { variablesRouter } from "./variables";
+import { volumenesRouter } from "./volumenes";
 
 export const appRouter = router({
   clientes: clientesRouter,
@@ -13,6 +14,7 @@ export const appRouter = router({
   proyectos: proyectosRouter,
   usuarios: usuariosRouter,
   variables: variablesRouter,
+  volumenes: volumenesRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/env", () => ({
+  env: {
+    REPOS_DIR: "/var/vicalba/repos",
+    NODE_ENV: "test",
+    DATABASE_URL: "postgresql://test",
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "0".repeat(64),
+  },
+}));
+
 vi.mock("@/lib/docker/proyectos", () => ({
   iniciarProyecto: vi.fn(),
   detenerProyecto: vi.fn(),
@@ -186,6 +196,20 @@ describe("usuarios.crear", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("relanza el error si crear falla por un motivo distinto a P2002", async () => {
+    const dbError = new Error("connection lost");
+    vi.mocked(prisma.user.create).mockRejectedValue(dbError);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.crear({
+        email: "x@x.com",
+        nombre: "X",
+        password: "secret123",
+      }),
+    ).rejects.toThrow("connection lost");
+  });
 });
 
 describe("usuarios.actualizar", () => {
@@ -228,6 +252,35 @@ describe("usuarios.actualizar", () => {
         email: "x@x.com",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lanza CONFLICT si el email ya está en uso (P2002)", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue({ code: "P2002" });
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.actualizar({
+        id: "u1",
+        nombre: "X",
+        email: "dup@vicalba.local",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("relanza el error si actualizar falla por un motivo distinto a P2002", async () => {
+    const dbError = new Error("db timeout");
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(dbError);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).usuarios.actualizar({
+        id: "u1",
+        nombre: "X",
+        email: "x@x.com",
+      }),
+    ).rejects.toThrow("db timeout");
   });
 });
 

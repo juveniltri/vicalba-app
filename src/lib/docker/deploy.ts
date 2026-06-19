@@ -128,11 +128,25 @@ function serializarEnvironment(
   ];
 }
 
+function serializarVolumes(
+  volumenes: Array<{ rutaHost: string; rutaContenedor: string }>,
+): string[] {
+  if (!volumenes.length) return [];
+  return [
+    "    volumes:",
+    ...volumenes.map(
+      ({ rutaHost, rutaContenedor }) =>
+        `      - "${rutaHost}:${rutaContenedor}"`,
+    ),
+  ];
+}
+
 function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
   variables?: Array<{ clave: string; valor: string }>;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
   return [
     "services:",
@@ -143,6 +157,7 @@ function generarDockerComposeConBuild(params: {
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
+    ...serializarVolumes(params.volumenes ?? []),
   ].join("\n");
 }
 
@@ -150,6 +165,7 @@ function generarDockerComposeConImage(params: {
   imagenUrl: string;
   puerto: number;
   variables?: Array<{ clave: string; valor: string }>;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
   return [
     "services:",
@@ -158,6 +174,7 @@ function generarDockerComposeConImage(params: {
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
+    ...serializarVolumes(params.volumenes ?? []),
   ].join("\n");
 }
 
@@ -214,6 +231,7 @@ export async function deployProyecto(params: {
   buildCommand?: string | null;
   startCommand?: string | null;
   puerto?: number | null;
+  volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
   onLog?: (line: string) => void;
 }): Promise<{ output: string; sha: string }> {
   const {
@@ -232,6 +250,7 @@ export async function deployProyecto(params: {
     startCommand,
     onLog,
   } = params;
+  const volumenes = params.volumenes ?? [];
 
   const puerto = params.puerto ?? 3000;
   const repoDir = `${env.REPOS_DIR}/${clienteSlug}/${proyectoNombre}`;
@@ -323,6 +342,7 @@ export async function deployProyecto(params: {
           dockerfile: dfAbsoluto,
           puerto,
           variables: runtimeVars,
+          volumenes,
         }),
       );
       composeFile = composePath;
@@ -357,6 +377,7 @@ export async function deployProyecto(params: {
           dockerfile: dfGenerado,
           puerto,
           variables: runtimeVars,
+          volumenes,
         }),
       );
       composeFile = composePath;
@@ -369,6 +390,7 @@ export async function deployProyecto(params: {
           imagenUrl: imagenUrl!,
           puerto,
           variables: runtimeVars,
+          volumenes,
         }),
       );
       composeFile = composePath;
