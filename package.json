@@ -70,6 +70,10 @@
     "*.{ts,tsx}": "eslint --fix",
     "*.{ts,tsx,js,json,md}": "prettier --write"
   },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=11"
+  },
   "overrides": {
     "hono": "^4.12.26",
     "nodemailer": "^9.0.1"
