@@ -286,6 +286,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - Volúmenes persistentes + file manager: modelo Volumen en BD, router CRUD, bind mounts en deploy, API `/api/volumes/[id]/files` (GET/POST/DELETE con navegación de subdirectorios), componente VolumenesPanel con explorador básico (PR #21, en develop)
   - CI/CD estabilización: Node 22 en GitHub Actions, `npm install --prefer-offline` (cross-platform con macOS lock file), cobertura 100% en routers, audit sin high vulns (nodemailer ^9.0.1, hono ^4.12.26)
   - Script de desarrollo local: `scripts/dev.sh` (start/stop/reset/status), crea .env.local automáticamente, detecta socket Docker
+  - UX improvements (`feature/ux-improvements`, PR #→develop): bug SSL (sans nullish), botón Abrir URL (AbrirUrlBoton con HTTPS/HTTP según sslActivo), file manager modal 85vw×85vh (ZIP download con fflate, mkdir, drag & drop, breadcrumb Home), logs modal 80vw×80vh (useContainerLogs propio, filtros ALL/ERR/WARN/INFO/DEBUG por nivel Pino, toggle timestamps, limpiar buffer), dark/light theme toggle (useTheme DOM-first, ThemeToggle sol/luna en sidebar, tokens.css paleta completa dark+light, script inline anti-FOUC, 578 tests)
 - **En construcción:** —
-- **Bloqueado / pendiente:** PR develop → master pendiente de merge
-- **Próximo hito:** Merge develop → master, luego `feature/ux-improvements` (ver `docs/spec-ux-improvements.md`)
+- **Bloqueado / pendiente:** PR develop → master pendiente de merge; PR feature/ux-improvements → develop pendiente de merge
+- **Próximo hito:** Merge feature/ux-improvements → develop → master
