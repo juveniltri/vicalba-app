@@ -1,6 +1,18 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// LogsModal usa useContainerLogs internamente; lo mockeamos para los tests del panel
+vi.mock("@/hooks/useContainerLogs", () => ({
+  useContainerLogs: vi.fn().mockReturnValue({
+    lines: [],
+    connected: false,
+    error: null,
+    sinContenedores: false,
+    clear: vi.fn(),
+  }),
+}));
+
 import { LogsPanel } from "./LogsPanel";
 import type { LogLine } from "@/hooks/useContainerLogs";
 
@@ -8,29 +20,35 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
+beforeEach(() => vi.clearAllMocks());
+
 const noOp = vi.fn();
+
+// Todos los renders necesitan los nuevos props requeridos
+const panelProps = {
+  lines: [] as LogLine[],
+  connected: false,
+  error: null,
+  onClose: noOp,
+  proyectoId: "p1",
+  proyectoNombre: "web-app",
+};
 
 describe("LogsPanel — estado de conexión", () => {
   it("muestra Live cuando connected es true", () => {
-    render(
-      <LogsPanel lines={[]} connected={true} error={null} onClose={noOp} />,
-    );
+    render(<LogsPanel {...panelProps} connected={true} />);
     expect(screen.getByText(/Live/)).toBeInTheDocument();
   });
 
   it("muestra Disconnected cuando connected es false", () => {
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
-    );
+    render(<LogsPanel {...panelProps} />);
     expect(screen.getByText(/Disconnected/)).toBeInTheDocument();
   });
 });
 
 describe("LogsPanel — contenido", () => {
   it("muestra placeholder cuando no hay líneas", () => {
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
-    );
+    render(<LogsPanel {...panelProps} />);
     expect(screen.getByText(/Esperando logs/)).toBeInTheDocument();
   });
 
@@ -39,35 +57,19 @@ describe("LogsPanel — contenido", () => {
       { servicio: "nginx", line: "server started" },
       { servicio: "node", line: "listening on 3000" },
     ];
-    render(
-      <LogsPanel lines={lines} connected={true} error={null} onClose={noOp} />,
-    );
+    render(<LogsPanel {...panelProps} lines={lines} connected={true} />);
     expect(screen.getByText(/server started/)).toBeInTheDocument();
     expect(screen.getByText(/\[nginx\]/)).toBeInTheDocument();
     expect(screen.getByText(/listening on 3000/)).toBeInTheDocument();
   });
 
   it("muestra el mensaje de error cuando hay error", () => {
-    render(
-      <LogsPanel
-        lines={[]}
-        connected={false}
-        error="Connection lost"
-        onClose={noOp}
-      />,
-    );
+    render(<LogsPanel {...panelProps} error="Connection lost" />);
     expect(screen.getByText("Connection lost")).toBeInTheDocument();
   });
 
   it("no muestra placeholder cuando hay error", () => {
-    render(
-      <LogsPanel
-        lines={[]}
-        connected={false}
-        error="Connection lost"
-        onClose={noOp}
-      />,
-    );
+    render(<LogsPanel {...panelProps} error="Connection lost" />);
     expect(screen.queryByText(/Esperando logs/)).not.toBeInTheDocument();
   });
 });
@@ -75,40 +77,31 @@ describe("LogsPanel — contenido", () => {
 describe("LogsPanel — interacción", () => {
   it("llama onClose al hacer click en el botón cerrar", () => {
     const onClose = vi.fn();
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={onClose} />,
-    );
+    render(<LogsPanel {...panelProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: /cerrar logs/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("muestra botón para expandir el panel", () => {
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
-    );
+  it("muestra el botón para abrir el modal de logs", () => {
+    render(<LogsPanel {...panelProps} />);
     expect(
-      screen.getByRole("button", { name: /expandir/i }),
+      screen.getByRole("button", { name: /expandir logs/i }),
     ).toBeInTheDocument();
   });
 
-  it("cambia el botón a 'reducir' tras expandir", () => {
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
+  it("abre el modal de logs al pulsar el botón expandir", async () => {
+    render(<LogsPanel {...panelProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /expandir logs/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Logs — web-app/)).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /expandir/i }));
-    expect(
-      screen.getByRole("button", { name: /reducir/i }),
-    ).toBeInTheDocument();
   });
 
-  it("vuelve a mostrar 'expandir' al reducir", () => {
-    render(
-      <LogsPanel lines={[]} connected={false} error={null} onClose={noOp} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /expandir/i }));
-    fireEvent.click(screen.getByRole("button", { name: /reducir/i }));
-    expect(
-      screen.getByRole("button", { name: /expandir/i }),
-    ).toBeInTheDocument();
+  it("cierra el modal al pulsar X dentro del modal", async () => {
+    render(<LogsPanel {...panelProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /expandir logs/i }));
+    await waitFor(() => screen.getByText(/Logs — web-app/));
+    fireEvent.click(screen.getByRole("button", { name: /cerrar logs modal/i }));
+    expect(screen.queryByText(/Logs — web-app/)).not.toBeInTheDocument();
   });
 });

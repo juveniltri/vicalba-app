@@ -206,6 +206,8 @@ export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
           connected={connected}
           error={logsError}
           onClose={handleToggleLogs}
+          proyectoId={proyecto.id}
+          proyectoNombre={proyecto.nombre}
         />
       )}
 

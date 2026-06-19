@@ -85,11 +85,16 @@ export function ExploradorVolumenModal({
 
   async function handleSubir(files: FileList) {
     setUploading(true);
+    setError(null);
     const form = new FormData();
     Array.from(files).forEach((f) => form.append("file", f));
     const url = `/api/volumes/${volumen.id}/files${ruta ? `?path=${encodeURIComponent(ruta)}` : ""}`;
     try {
-      await fetch(url, { method: "POST", body: form });
+      const res = await fetch(url, { method: "POST", body: form });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `Error ${res.status} al subir fichero`);
+      }
       await cargarFicheros(ruta);
     } catch (e) {
       setError((e as Error).message);
@@ -153,9 +158,9 @@ export function ExploradorVolumenModal({
               type="button"
               aria-label="Raíz"
               onClick={() => cargarFicheros("")}
-              className="hover:text-text-primary shrink-0"
+              className="hover:text-text-primary shrink-0 px-1 py-0.5 rounded"
             >
-              /
+              Home
             </button>
             {rutaParts.map((part, i) => {
               const subpath = rutaParts.slice(0, i + 1).join("/");

@@ -1,4 +1,4 @@
-import { readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
@@ -98,24 +98,39 @@ export async function POST(
   let formData: FormData;
   try {
     formData = await req.formData();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(`Error al leer el fichero: ${msg}`, { status: 400 });
+  }
+
+  try {
+    await mkdir(target, { recursive: true });
   } catch {
-    return new Response("Invalid form data", { status: 400 });
+    return new Response("Cannot create upload directory", { status: 500 });
   }
 
   const subidos: string[] = [];
+  const errores: string[] = [];
   for (const [, value] of formData.entries()) {
     if (!(value instanceof File)) continue;
     const safeName = path.basename(value.name);
     if (!safeName || safeName === "." || safeName === "..") continue;
     const destPath = path.join(target, safeName);
-    // Validate destination is still inside base dir
     if (!destPath.startsWith(base)) continue;
-    const buffer = Buffer.from(await value.arrayBuffer());
-    await writeFile(destPath, buffer);
-    subidos.push(safeName);
+    try {
+      const buffer = Buffer.from(await value.arrayBuffer());
+      await writeFile(destPath, buffer);
+      subidos.push(safeName);
+    } catch (err) {
+      errores.push(`${safeName}: ${(err as Error).message}`);
+    }
   }
 
-  return Response.json({ subidos });
+  if (errores.length && !subidos.length) {
+    return new Response(errores.join(", "), { status: 500 });
+  }
+
+  return Response.json({ subidos, errores });
 }
 
 // DELETE — remove file or directory
