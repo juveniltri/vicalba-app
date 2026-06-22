@@ -14,6 +14,12 @@ const claveSchema = z
     "La clave solo puede contener mayúsculas, números y guiones bajos (ej: DATABASE_URL)",
   );
 
+// Los valores se escriben literalmente en ficheros .env — los saltos de línea
+// romperían el formato y permitirían inyectar variables adicionales.
+const valorSchema = z
+  .string()
+  .regex(/^[^\r\n]*$/, "El valor no puede contener saltos de línea");
+
 const CLAVE_RE = /^[A-Z_][A-Z0-9_]*$/;
 
 function parsearDotEnv(
@@ -66,7 +72,7 @@ export const variablesRouter = router({
       z.object({
         proyectoId: z.string(),
         clave: claveSchema,
-        valor: z.string(),
+        valor: valorSchema,
         enBuildTime: z.boolean().default(false),
       }),
     )
@@ -95,7 +101,7 @@ export const variablesRouter = router({
     }),
 
   actualizar: protectedProcedure
-    .input(z.object({ id: z.string(), valor: z.string() }))
+    .input(z.object({ id: z.string(), valor: valorSchema }))
     .mutation(async ({ input }) => {
       await findVariableOrThrow(input.id);
       const { valorCifrado, iv, authTag } = cifrar(input.valor);
