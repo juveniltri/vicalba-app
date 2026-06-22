@@ -1,10 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { loader } from "@monaco-editor/react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { guardarComposeAction } from "@/app/(panel)/actions";
 import { extraerServicios } from "@/lib/compose";
+
+// Servir Monaco desde /monaco-editor/vs (copiado en prebuild) en vez de jsdelivr CDN.
+// Así la CSP estricta de producción no necesita permitir dominios externos.
+loader.config({ paths: { vs: "/monaco-editor/vs" } });
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,

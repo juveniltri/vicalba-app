@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-monaco": "node -e \"require('fs').cpSync('node_modules/monaco-editor/min/vs','public/monaco-editor/vs',{recursive:true,force:true})\"",
+    "predev": "npm run copy-monaco",
     "dev": "next dev",
+    "prebuild": "npm run copy-monaco",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
