@@ -414,3 +414,96 @@ describe("deployProyecto con credencial SSH", () => {
     expect(keyCall).toBeUndefined();
   });
 });
+
+describe("deployProyecto — composeContent (compose editor)", () => {
+  const composeYaml = `services:\n  web:\n    image: nginx:alpine\n  api:\n    build: .\n`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("escribe composeContent en panelDir como fichero compose", async () => {
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      composeYaml,
+      { encoding: "utf-8" },
+    );
+  });
+
+  it("usa el fichero de panelDir (no repoDir) como -f en docker compose", async () => {
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    const fIdx = spawnArgs.indexOf("-f");
+    expect(spawnArgs[fIdx + 1]).toBe(
+      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+  });
+
+  it("escribe env vars en panelDir como .env con --env-file cuando hay composeContent", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent: composeYaml,
+      variables: [
+        { clave: "DB_URL", valor: "postgres://localhost/db" },
+        { clave: "SECRET", valor: "abc123" },
+      ],
+    });
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      "/var/vicalba/repos/acme/.panel/web-app.env",
+      "DB_URL=postgres://localhost/db\nSECRET=abc123",
+      { encoding: "utf-8", mode: 0o600 },
+    );
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    const envFileIdx = spawnArgs.indexOf("--env-file");
+    expect(envFileIdx).toBeGreaterThan(-1);
+    expect(spawnArgs[envFileIdx + 1]).toBe(
+      "/var/vicalba/repos/acme/.panel/web-app.env",
+    );
+  });
+
+  it("no necesita repoUrl para desplegar cuando hay composeContent", async () => {
+    await expect(
+      deployProyecto({
+        tipo: "compose",
+        rama: "main",
+        clienteSlug: "acme",
+        proyectoNombre: "web-app",
+        composeContent: composeYaml,
+      }),
+    ).resolves.toBeDefined();
+
+    // Sin repoUrl no se llama a git
+    const gitCalls = vi
+      .mocked(mockExecFile)
+      .mock.calls.filter(([cmd]) => cmd === "git");
+    expect(gitCalls).toHaveLength(0);
+  });
+
+  it("sigue usando repoDir/docker-compose.yml cuando no hay composeContent", async () => {
+    await deployProyecto(baseParams);
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    const fIdx = spawnArgs.indexOf("-f");
+    expect(spawnArgs[fIdx + 1]).toBe(
+      "/var/vicalba/repos/acme/web-app/docker-compose.yml",
+    );
+  });
+});

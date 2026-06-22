@@ -68,6 +68,7 @@ model Proyecto {
   dockerfilePath       String?
   buildCommand         String?
   startCommand         String?
+  composeContent       String?           @db.Text
   variables            VariableEntorno[]
   deploys              Deploy[]
   volumenes            Volumen[]
