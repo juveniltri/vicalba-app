@@ -6,9 +6,11 @@ export default function PanelLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-screen">
+    <div className="grid grid-cols-[240px_1fr] min-h-screen bg-background text-text-primary font-display">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-6 bg-background">{children}</main>
+      <main className="min-w-0 overflow-x-hidden overflow-y-auto">
+        {children}
+      </main>
     </div>
   );
 }

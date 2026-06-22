@@ -13,7 +13,7 @@ export default async function UsuariosPage() {
   const usuarios = await api.usuarios.listar();
 
   return (
-    <div className="max-w-2xl flex flex-col gap-8">
+    <div className="max-w-2xl flex flex-col gap-8 px-10 pt-10 pb-14">
       <h1 className="font-display text-2xl font-bold text-text-primary">
         Usuarios
       </h1>
