@@ -39,7 +39,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("Sidebar", () => {
   it("renderiza el nombre de la aplicación", () => {
     render(<Sidebar />);
-    expect(screen.getByText("VICALBA")).toBeInTheDocument();
+    expect(screen.getByText("vicalba")).toBeInTheDocument();
   });
 
   it("renderiza el enlace Dashboard", () => {

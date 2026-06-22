@@ -1,4 +1,5 @@
 import type { EstadoServicio } from "@/lib/schemas/dashboard";
+import { Sparkline } from "@/components/ui/Sparkline";
 
 interface StatsBarProps {
   proyectos: Array<{ estado: EstadoServicio }>;
@@ -12,53 +13,80 @@ export function StatsBar({ proyectos }: StatsBarProps) {
 
   return (
     <div
-      className="flex flex-wrap gap-3 mb-8"
+      className="grid grid-cols-2 sm:grid-cols-4 gap-3"
       role="region"
       aria-label="resumen de estado"
     >
-      <StatPill id="stat-total" count={total} label="total" />
-      <StatPill
+      <StatCard
+        id="stat-total"
+        count={total}
+        label="Total"
+        seed={41}
+        base={Math.max(total * 8, 30)}
+        amp={20}
+        color="var(--color-text-primary)"
+      />
+      <StatCard
         id="stat-running"
         count={running}
-        label="running"
-        colorClass="text-state-running"
+        label="Running"
+        seed={17}
+        base={Math.max(running * 8, 25)}
+        amp={22}
+        color="var(--color-state-running)"
       />
-      <StatPill
+      <StatCard
         id="stat-stopped"
         count={stopped}
-        label="stopped"
-        colorClass="text-state-stopped"
+        label="Stopped"
+        seed={63}
+        base={Math.max(stopped * 8, 20)}
+        amp={18}
+        color="var(--color-text-muted)"
       />
-      <StatPill
+      <StatCard
         id="stat-error"
         count={error}
-        label="error"
-        colorClass="text-state-error"
+        label="Error"
+        seed={89}
+        base={Math.max(error * 8, 15)}
+        amp={25}
+        color="var(--color-state-error)"
       />
     </div>
   );
 }
 
-function StatPill({
+function StatCard({
   id,
   count,
   label,
-  colorClass = "text-text-muted",
+  seed,
+  base,
+  amp,
+  color,
 }: {
   id: string;
   count: number;
   label: string;
-  colorClass?: string;
+  seed: number;
+  base: number;
+  amp: number;
+  color: string;
 }) {
   return (
     <div
       data-testid={id}
-      className="flex items-center gap-2 bg-surface border border-border rounded-[var(--radius-md)] px-4 py-2"
+      className="bg-surface border border-border rounded-[var(--radius-lg)] p-[15px_16px_13px]"
+      style={{ color }}
     >
-      <span className={`font-display text-xl font-bold ${colorClass}`}>
+      <div className="font-display text-[10.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+        {label}
+      </div>
+      <div className="font-display font-bold text-[28px] -tracking-[0.03em] mt-2 leading-none">
         {count}
-      </span>
-      <span className="font-body text-xs text-text-muted">{label}</span>
+      </div>
+      <Sparkline seed={seed} base={base} amp={amp} bars={20} />
     </div>
   );
 }

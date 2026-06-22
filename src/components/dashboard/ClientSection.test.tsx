@@ -6,22 +6,14 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 vi.mock("@/app/(panel)/actions", () => ({
   logoutAction: vi.fn(),
-  iniciarAction: vi.fn().mockResolvedValue(undefined),
-  detenerAction: vi.fn().mockResolvedValue(undefined),
-  restartAction: vi.fn().mockResolvedValue(undefined),
   eliminarClienteAction: vi.fn().mockResolvedValue(undefined),
   crearProyectoAction: vi.fn().mockResolvedValue(undefined),
   editarClienteAction: vi.fn().mockResolvedValue(undefined),
   eliminarProyectoAction: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/hooks/useContainerLogs", () => ({
-  useContainerLogs: vi.fn().mockReturnValue({
-    lines: [],
-    connected: false,
-    error: null,
-    clear: vi.fn(),
-  }),
+vi.mock("./LogsModal", () => ({
+  LogsModal: () => null,
 }));
 
 vi.mock("./ClienteForm", () => ({
@@ -38,6 +30,8 @@ vi.mock("./ProyectoForm", () => ({
       <button onClick={onClose}>Cerrar</button>
     </div>
   ),
+  EditarProyectoButton: () => null,
+  EliminarProyectoButton: () => null,
 }));
 
 import { ClientSection } from "@/components/dashboard/ClientSection";
@@ -54,8 +48,17 @@ const cliente: ClienteConProyectos = {
       nombre: "web-app",
       clienteSlug: "cliente-test",
       estado: "running",
-      servicios: [],
       dominio: null,
+      repositorioUrl: null,
+      rama: "main",
+      autoDeployHabilitado: false,
+      sslActivo: null,
+      tipo: "compose",
+      puerto: null,
+      imagenUrl: null,
+      dockerfilePath: null,
+      buildCommand: null,
+      startCommand: null,
       ultimoDeploy: null,
     },
     {
@@ -63,8 +66,17 @@ const cliente: ClienteConProyectos = {
       nombre: "api",
       clienteSlug: "cliente-test",
       estado: "stopped",
-      servicios: [],
       dominio: null,
+      repositorioUrl: null,
+      rama: "main",
+      autoDeployHabilitado: false,
+      sslActivo: null,
+      tipo: "compose",
+      puerto: null,
+      imagenUrl: null,
+      dockerfilePath: null,
+      buildCommand: null,
+      startCommand: null,
       ultimoDeploy: null,
     },
   ],
@@ -77,7 +89,9 @@ describe("ClientSection", () => {
 
   it("muestra el nombre del cliente", () => {
     render(<ClientSection cliente={cliente} />);
-    expect(screen.getByText("Cliente Test")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Cliente Test" }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza una tarjeta por proyecto", () => {
@@ -95,52 +109,56 @@ describe("ClientSection", () => {
   it("muestra los botones de acción del cliente", () => {
     render(<ClientSection cliente={cliente} />);
     expect(
-      screen.getByRole("button", { name: /nuevo proyecto/i }),
+      screen.getByRole("button", { name: /\+ Proyecto/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /editar cliente/i }),
+      screen.getByRole("button", { name: /^Editar$/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /eliminar cliente/i }),
+      screen.getByRole("button", { name: /^Eliminar$/i }),
     ).toBeInTheDocument();
   });
 
-  it("click en Nuevo proyecto abre el modal de proyecto", () => {
+  it("click en + Proyecto abre el modal de proyecto", () => {
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /nuevo proyecto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /\+ Proyecto/i }));
     expect(screen.getByTestId("proyecto-form-modal")).toBeInTheDocument();
   });
 
-  it("click en Editar cliente abre el modal de cliente", () => {
+  it("click en Editar abre el modal de cliente", () => {
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /editar cliente/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Editar$/i }));
     expect(screen.getByTestId("cliente-form-modal")).toBeInTheDocument();
   });
 
-  it("click en Eliminar cliente muestra confirmación", () => {
+  it("click en Eliminar muestra confirmación", () => {
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /eliminar cliente/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Eliminar$/i }));
     expect(screen.getByText(/¿Eliminar cliente?/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^sí$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^no$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /confirmar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /cancelar/i }),
+    ).toBeInTheDocument();
   });
 
   it("confirmar eliminar llama eliminarClienteAction con el id del cliente", async () => {
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /eliminar cliente/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^sí$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Eliminar$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() => {
       expect(eliminarClienteAction).toHaveBeenCalledWith("c1");
     });
   });
 
-  it("click en No cancela la confirmación de eliminar", () => {
+  it("click en Cancelar cierra la confirmación de eliminar", () => {
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /eliminar cliente/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^no$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Eliminar$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
     expect(screen.queryByText(/¿Eliminar cliente?/i)).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /eliminar cliente/i }),
+      screen.getByRole("button", { name: /^Eliminar$/i }),
     ).toBeInTheDocument();
   });
 
@@ -149,8 +167,8 @@ describe("ClientSection", () => {
       error: "No se puede eliminar un cliente con proyectos",
     });
     render(<ClientSection cliente={cliente} />);
-    fireEvent.click(screen.getByRole("button", { name: /eliminar cliente/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^sí$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Eliminar$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
         "No se puede eliminar un cliente con proyectos",

@@ -1,255 +1,109 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  deployProyectoAction,
-  detenerAction,
-  eliminarProyectoAction,
-  iniciarAction,
-  restartAction,
-  toggleAutoDeployAction,
-} from "@/app/(panel)/actions";
-import { useContainerLogs } from "@/hooks/useContainerLogs";
+import Link from "next/link";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
-import { AbrirUrlBoton } from "./AbrirUrlBoton";
-import { LogsPanel } from "./LogsPanel";
-import { ProyectoFormModal } from "./ProyectoForm";
 import { StatusBadge } from "./StatusBadge";
+import { AbrirUrlBoton } from "./AbrirUrlBoton";
+import { LogsModal } from "./LogsModal";
+import {
+  IconLock,
+  IconGlobe,
+  IconClock,
+  IconLogs,
+  IconRedeploy,
+  IconAlert,
+} from "@/components/ui/icons";
 
-export function ProjectCard({ proyecto }: { proyecto: ProyectoResumen }) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [logsOpen, setLogsOpen] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const isDeploying = proyecto.estado === "deploying" || loading;
-  const canEdit = !isDeploying;
+const ghostBtn =
+  "inline-flex items-center gap-1.5 font-display text-xs font-medium px-[11px] py-1.5 rounded-[var(--radius-md)] border border-border bg-transparent text-text-muted hover:text-text-primary hover:bg-elevated transition-colors";
 
-  const {
-    lines,
-    connected,
-    error: logsError,
-    clear,
-  } = useContainerLogs(logsOpen ? proyecto.id : null);
-
-  async function handleIniciar() {
-    setLoading(true);
-    setError(null);
-    const result = await iniciarAction(proyecto.id);
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      router.refresh();
-    }
-    setLoading(false);
-  }
-
-  async function handleDetener() {
-    setLoading(true);
-    setError(null);
-    const result = await detenerAction(proyecto.id);
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      router.refresh();
-    }
-    setLoading(false);
-  }
-
-  async function handleRestart() {
-    setLoading(true);
-    setError(null);
-    const result = await restartAction(proyecto.id);
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      router.refresh();
-    }
-    setLoading(false);
-  }
-
-  async function handleDeploy() {
-    setLoading(true);
-    setError(null);
-    const result = await deployProyectoAction(proyecto.id);
-    if (result?.error) {
-      setError(result.error);
-    } else {
-      router.refresh();
-    }
-    setLoading(false);
-  }
-
-  async function handleToggleAutoDeploy() {
-    const result = await toggleAutoDeployAction(proyecto.id);
-    if (result?.error) setError(result.error);
-    else router.refresh();
-  }
-
-  function handleToggleLogs() {
-    if (logsOpen) {
-      clear();
-      setLogsOpen(false);
-    } else {
-      setLogsOpen(true);
-    }
-  }
-
-  return (
-    <div className="bg-surface border border-border rounded-[var(--radius-md)] p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-display text-sm font-semibold text-text-primary">
-          {proyecto.nombre}
-        </h3>
-        <StatusBadge estado={proyecto.estado} />
-      </div>
-
-      {proyecto.dominio && (
-        <div className="flex items-center gap-1.5">
-          <p className="font-body text-xs text-text-muted truncate">
-            {proyecto.dominio}
-          </p>
-          <AbrirUrlBoton
-            dominio={proyecto.dominio}
-            sslActivo={proyecto.sslActivo}
-          />
-        </div>
-      )}
-
-      {proyecto.ultimoDeploy && (
-        <p className="font-body text-xs text-text-muted">
-          {proyecto.ultimoDeploy.rama} · {proyecto.ultimoDeploy.hace}
-        </p>
-      )}
-
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          aria-label="Auto-deploy"
-          checked={proyecto.autoDeployHabilitado}
-          onChange={handleToggleAutoDeploy}
-          className="accent-primary-500"
-        />
-        <span className="font-body text-xs text-text-muted">Auto-deploy</span>
-      </label>
-
-      {error && (
-        <p role="alert" className="font-body text-xs text-state-error">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-wrap gap-2 pt-1">
-        {!isDeploying && proyecto.estado === "running" && (
-          <ActionButton onClick={handleDetener}>Stop</ActionButton>
-        )}
-        {!isDeploying &&
-          (proyecto.estado === "stopped" || proyecto.estado === "error") && (
-            <ActionButton onClick={handleIniciar}>Start</ActionButton>
-          )}
-        {!isDeploying &&
-          (proyecto.estado === "running" || proyecto.estado === "error") && (
-            <ActionButton onClick={handleRestart}>Restart</ActionButton>
-          )}
-        <ActionButton onClick={handleDeploy} disabled={isDeploying} primary>
-          {isDeploying ? "Deploying..." : "Deploy"}
-        </ActionButton>
-        <ActionButton onClick={handleToggleLogs}>
-          {logsOpen ? "Hide Logs" : "Logs"}
-        </ActionButton>
-        {canEdit && (
-          <>
-            <ActionButton onClick={() => setShowEditModal(true)}>
-              Editar
-            </ActionButton>
-            {confirmDelete ? (
-              <>
-                <span className="font-body text-xs text-state-error self-center">
-                  ¿Eliminar?
-                </span>
-                <ActionButton
-                  onClick={async () => {
-                    setDeleteLoading(true);
-                    const result = await eliminarProyectoAction(proyecto.id);
-                    if (result?.error) {
-                      setError(result.error);
-                      setDeleteLoading(false);
-                      setConfirmDelete(false);
-                    } else {
-                      router.refresh();
-                    }
-                  }}
-                  disabled={deleteLoading}
-                >
-                  Sí
-                </ActionButton>
-                <ActionButton onClick={() => setConfirmDelete(false)}>
-                  No
-                </ActionButton>
-              </>
-            ) : (
-              <ActionButton onClick={() => setConfirmDelete(true)}>
-                Eliminar
-              </ActionButton>
-            )}
-          </>
-        )}
-      </div>
-
-      {logsOpen && (
-        <LogsPanel
-          lines={lines}
-          connected={connected}
-          error={logsError}
-          onClose={handleToggleLogs}
-          proyectoId={proyecto.id}
-          proyectoNombre={proyecto.nombre}
-        />
-      )}
-
-      {showEditModal && (
-        <ProyectoFormModal
-          proyecto={proyecto}
-          onClose={() => setShowEditModal(false)}
-        />
-      )}
-
-      <Link
-        href={`/proyectos/${proyecto.id}`}
-        className="self-start font-body text-xs text-text-muted hover:text-primary-300 transition-colors duration-[var(--duration-fast)]"
-      >
-        Ver detalle →
-      </Link>
-    </div>
-  );
-}
-
-function ActionButton({
-  children,
-  onClick,
-  disabled = false,
-  primary = false,
+export function ProjectCard({
+  p,
+  clienteNombre,
 }: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  primary?: boolean;
+  p: ProyectoResumen;
+  clienteNombre: string;
 }) {
+  const [logsOpen, setLogsOpen] = useState(false);
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border transition-opacity duration-[var(--duration-fast)] disabled:opacity-40 disabled:cursor-not-allowed ${
-        primary
-          ? "bg-primary-500 border-primary-500 text-white hover:bg-primary-700"
-          : "bg-transparent border-border text-text-primary hover:border-primary-300"
-      }`}
-    >
-      {children}
-    </button>
+    <>
+      <article className="flex flex-col bg-surface border border-border rounded-[var(--radius-lg)] p-[20px_20px_16px] transition-colors hover:border-[color-mix(in_oklab,var(--color-accent)_45%,var(--color-border))]">
+        {/* Cabecera */}
+        <div className="flex items-start gap-3.5">
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-base font-bold -tracking-[0.02em] truncate">
+              {p.nombre}
+            </div>
+            <div className="font-body text-[11.5px] text-text-muted mt-1">
+              {clienteNombre}
+            </div>
+          </div>
+          <span className="shrink-0 mt-0.5">
+            <StatusBadge estado={p.estado} />
+          </span>
+        </div>
+
+        {/* Dominio */}
+        <div className="flex items-center gap-2 mt-[18px] min-w-0">
+          {p.dominio ? (
+            <>
+              <IconLock className="w-[13px] h-[13px] shrink-0 text-text-muted" />
+              <span className="font-body text-[12.5px] text-text-primary truncate min-w-0 flex-1">
+                {p.dominio}
+              </span>
+              <span className="shrink-0">
+                <AbrirUrlBoton dominio={p.dominio} sslActivo={p.sslActivo} />
+              </span>
+            </>
+          ) : (
+            <>
+              <IconGlobe className="w-[13px] h-[13px] shrink-0 text-text-muted" />
+              <span className="font-body text-[12.5px] text-text-muted truncate">
+                sin dominio · red interna
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 mt-5 pt-[15px] border-t border-border">
+          <span
+            className={`font-body text-[11px] inline-flex items-center gap-1.5 shrink-0 max-w-[40%] ${
+              p.estado === "error" ? "text-state-error" : "text-text-muted"
+            }`}
+          >
+            {p.estado === "error" ? (
+              <IconAlert className="w-3 h-3 shrink-0" />
+            ) : (
+              <IconClock className="w-3 h-3 shrink-0" />
+            )}
+            <span className="truncate">
+              {p.ultimoDeploy
+                ? `${p.ultimoDeploy.hace} · ${p.ultimoDeploy.rama}`
+                : "sin deploys"}
+            </span>
+          </span>
+          <span className="flex-1" />
+          <button onClick={() => setLogsOpen(true)} className={ghostBtn}>
+            <IconLogs className="w-[13px] h-[13px] shrink-0" /> Logs
+          </button>
+          <Link
+            href={`/proyectos/${p.id}`}
+            className={`${ghostBtn} hover:text-[var(--color-accent)] hover:border-[color-mix(in_oklab,var(--color-accent)_55%,var(--color-border))]`}
+          >
+            <IconRedeploy className="w-[13px] h-[13px] shrink-0" /> Ver
+          </Link>
+        </div>
+      </article>
+
+      <LogsModal
+        proyectoId={p.id}
+        proyectoNombre={p.nombre}
+        open={logsOpen}
+        onClose={() => setLogsOpen(false)}
+      />
+    </>
   );
 }
