@@ -58,3 +58,16 @@ traefik/logs/
 # ─── Misc ─────────────────────────────────────────────────────────────────────
 .cache/
 .parcel-cache/
+
+# ─── Design Sync (generated — do not commit) ──────────────────────────────────
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+synth-entry.ts
+.design-sync/compiled.css
+.design-sync/config.json
+.design-sync/conventions.md
+.design-sync/NOTES.md
+.design-sync/previews/

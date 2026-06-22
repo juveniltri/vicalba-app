@@ -9,6 +9,7 @@ const LABEL_TIPO: Record<string, string> = {
   image: "Docker Image",
   nodejs: "Node.js",
 };
+
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { AbrirUrlBoton } from "@/components/dashboard/AbrirUrlBoton";
@@ -18,7 +19,10 @@ import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import { VolumenesPanel } from "@/components/dashboard/VolumenesPanel";
-import { EditarProyectoButton } from "@/components/dashboard/ProyectoForm";
+import {
+  EditarProyectoButton,
+  EliminarProyectoButton,
+} from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import {
@@ -29,6 +33,13 @@ import {
   rollbackAction,
   toggleAutoDeployAction,
 } from "@/app/(panel)/actions";
+import { IconRedeploy, IconStop, IconCheck } from "@/components/ui/icons";
+
+const ghostBtn =
+  "inline-flex items-center gap-1.5 font-display text-xs font-medium px-3 py-1.5 rounded-[var(--radius-md)] border border-border bg-transparent text-text-muted hover:text-text-primary hover:bg-elevated transition-colors disabled:opacity-40 disabled:pointer-events-none";
+
+const primaryBtn =
+  "inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:pointer-events-none";
 
 export default async function DetalleProyectoPage({
   params,
@@ -63,27 +74,38 @@ export default async function DetalleProyectoPage({
   const canAct = !isDeploying;
 
   return (
-    <div className="max-w-3xl flex flex-col gap-8">
+    <div className="px-10 pt-8 pb-16">
       <DeployPoller isDeploying={isDeploying} />
-      {/* Cabecera */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-body text-xs text-text-muted bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5">
+
+      {/* ── Cabecera ───────────────────────────────────────────── */}
+      <div className="mb-8">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 mb-3">
+          <span className="font-body text-[11.5px] text-text-muted">
             {proyecto.clienteNombre}
           </span>
-          <h1 className="font-display text-2xl font-bold text-text-primary">
+          <span className="text-text-muted/40 text-xs">/</span>
+          <span className="font-body text-[11.5px] text-text-primary font-medium">
+            {proyecto.nombre}
+          </span>
+        </div>
+
+        {/* Título + badge */}
+        <div className="flex items-center gap-3 flex-wrap mb-4">
+          <h1 className="font-display text-2xl font-bold -tracking-[0.03em] text-text-primary">
             {proyecto.nombre}
           </h1>
           <StatusBadge estado={proyecto.estado} />
-        </div>
-
-        <div className="flex flex-wrap gap-2 items-center">
           {proyecto.dominio && (
             <AbrirUrlBoton
               dominio={proyecto.dominio}
               sslActivo={estadoSSL?.activo ?? null}
             />
           )}
+        </div>
+
+        {/* Barra de acciones */}
+        <div className="flex items-center gap-2 flex-wrap">
           <form
             action={async () => {
               "use server";
@@ -94,11 +116,12 @@ export default async function DetalleProyectoPage({
             <button
               type="submit"
               disabled={!canAct || proyecto.estado === "running"}
-              className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
+              className={ghostBtn}
             >
-              Iniciar
+              <IconCheck className="w-[13px] h-[13px]" /> Iniciar
             </button>
           </form>
+
           <form
             action={async () => {
               "use server";
@@ -109,11 +132,12 @@ export default async function DetalleProyectoPage({
             <button
               type="submit"
               disabled={!canAct || proyecto.estado === "stopped"}
-              className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
+              className={ghostBtn}
             >
-              Detener
+              <IconStop className="w-[13px] h-[13px]" /> Detener
             </button>
           </form>
+
           <form
             action={async () => {
               "use server";
@@ -124,26 +148,12 @@ export default async function DetalleProyectoPage({
             <button
               type="submit"
               disabled={!canAct || proyecto.estado === "stopped"}
-              className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
+              className={ghostBtn}
             >
-              Reiniciar
+              <IconRedeploy className="w-[13px] h-[13px]" /> Reiniciar
             </button>
           </form>
-          <form
-            action={async () => {
-              "use server";
-              await deployProyectoAction(id);
-              revalidatePath(`/proyectos/${id}`);
-            }}
-          >
-            <button
-              type="submit"
-              disabled={isDeploying}
-              className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] bg-primary-500 border border-primary-500 text-white hover:bg-primary-700 disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
-            >
-              {isDeploying ? "Deploying…" : "Deploy"}
-            </button>
-          </form>
+
           <form
             action={async () => {
               "use server";
@@ -153,143 +163,185 @@ export default async function DetalleProyectoPage({
           >
             <button
               type="submit"
-              className={`font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border transition-colors duration-[var(--duration-fast)] ${
+              className={`${ghostBtn} ${
                 proyecto.autoDeployHabilitado
-                  ? "border-state-running text-state-running"
-                  : "border-border text-text-muted hover:border-primary-300"
+                  ? "border-state-running text-state-running hover:text-state-running"
+                  : ""
               }`}
             >
-              Auto-deploy {proyecto.autoDeployHabilitado ? "ON" : "OFF"}
+              Auto-deploy{" "}
+              <span
+                className={`text-[10px] font-bold px-1 py-0.5 rounded-[3px] ${
+                  proyecto.autoDeployHabilitado
+                    ? "bg-state-running/15 text-state-running"
+                    : "bg-border text-text-muted"
+                }`}
+              >
+                {proyecto.autoDeployHabilitado ? "ON" : "OFF"}
+              </span>
+            </button>
+          </form>
+
+          <form
+            action={async () => {
+              "use server";
+              await deployProyectoAction(id);
+              revalidatePath(`/proyectos/${id}`);
+            }}
+          >
+            <button type="submit" disabled={isDeploying} className={primaryBtn}>
+              <IconRedeploy className="w-[13px] h-[13px]" />
+              {isDeploying ? "Deploying…" : "Deploy"}
             </button>
           </form>
         </div>
       </div>
 
-      {/* Deploy logs en tiempo real */}
+      {/* ── Deploy logs en tiempo real ──────────────────────────── */}
       <DeployLogsPanel proyectoId={id} active={isDeploying} />
 
-      {/* Información */}
-      <Section
-        titulo="Información"
-        accion={
-          <EditarProyectoButton
-            proyecto={{
-              id: proyecto.id,
-              nombre: proyecto.nombre,
-              dominio: proyecto.dominio,
-              repositorioUrl: proyecto.repositorioUrl,
-              rama: proyecto.rama,
-              tipo: proyecto.tipo,
-              puerto: proyecto.puerto,
-              imagenUrl: proyecto.imagenUrl,
-              dockerfilePath: proyecto.dockerfilePath,
-              buildCommand: proyecto.buildCommand,
-              startCommand: proyecto.startCommand,
-            }}
-          />
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo label="Tipo" valor={LABEL_TIPO[proyecto.tipo]} />
+      {/* ── Grid de secciones ──────────────────────────────────── */}
+      <div className="flex flex-col gap-6 max-w-4xl">
+        {/* Información */}
+        <Card
+          titulo="Información"
+          accion={
+            <EditarProyectoButton
+              proyecto={{
+                id: proyecto.id,
+                nombre: proyecto.nombre,
+                dominio: proyecto.dominio,
+                repositorioUrl: proyecto.repositorioUrl,
+                rama: proyecto.rama,
+                tipo: proyecto.tipo,
+                puerto: proyecto.puerto,
+                imagenUrl: proyecto.imagenUrl,
+                dockerfilePath: proyecto.dockerfilePath,
+                buildCommand: proyecto.buildCommand,
+                startCommand: proyecto.startCommand,
+              }}
+            />
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Campo label="Tipo" valor={LABEL_TIPO[proyecto.tipo]} />
 
-          <div className="flex flex-col gap-1">
-            <span className="font-body text-xs text-text-muted">Dominio</span>
-            {proyecto.dominio ? (
-              <div className="flex flex-col gap-1">
-                <span className="font-body text-sm text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
-                  {proyecto.dominio}
-                </span>
-                {estadoSSL && <SSLBadge estado={estadoSSL} />}
-              </div>
-            ) : (
-              <span className="font-body text-sm text-text-primary">—</span>
+            <div className="flex flex-col gap-1">
+              <span className="font-body text-xs text-text-muted">Dominio</span>
+              {proyecto.dominio ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-body text-sm text-text-primary font-mono bg-elevated border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
+                    {proyecto.dominio}
+                  </span>
+                  {estadoSSL && <SSLBadge estado={estadoSSL} />}
+                </div>
+              ) : (
+                <span className="font-body text-sm text-text-muted">—</span>
+              )}
+            </div>
+
+            {proyecto.tipo === "image" && (
+              <Campo
+                label="Imagen Docker"
+                valor={proyecto.imagenUrl ?? "—"}
+                mono={!!proyecto.imagenUrl}
+              />
+            )}
+
+            {proyecto.tipo !== "image" && (
+              <Campo
+                label="Repositorio"
+                valor={proyecto.repositorioUrl ?? "—"}
+                mono={!!proyecto.repositorioUrl}
+              />
+            )}
+
+            {proyecto.tipo !== "image" && (
+              <Campo label="Rama de deploy" valor={proyecto.rama} mono />
+            )}
+
+            {proyecto.tipo === "dockerfile" && (
+              <Campo
+                label="Ruta Dockerfile"
+                valor={proyecto.dockerfilePath ?? "Dockerfile"}
+                mono
+              />
+            )}
+
+            {proyecto.tipo === "nodejs" && proyecto.buildCommand && (
+              <Campo label="Build command" valor={proyecto.buildCommand} mono />
+            )}
+
+            {proyecto.tipo === "nodejs" && proyecto.startCommand && (
+              <Campo label="Start command" valor={proyecto.startCommand} mono />
+            )}
+
+            {proyecto.puerto && (
+              <Campo label="Puerto" valor={String(proyecto.puerto)} mono />
+            )}
+
+            {proyecto.ultimoDeploy && (
+              <Campo
+                label="Último deploy"
+                valor={`${proyecto.ultimoDeploy.hace} · ${proyecto.ultimoDeploy.rama}`}
+              />
             )}
           </div>
+        </Card>
 
-          {proyecto.tipo === "image" && (
-            <Campo
-              label="Imagen Docker"
-              valor={proyecto.imagenUrl ?? "—"}
-              mono={!!proyecto.imagenUrl}
-            />
-          )}
+        {/* Credencial SSH */}
+        <Card titulo="Credencial SSH">
+          <CredencialSelector
+            proyectoId={id}
+            credencialActualId={proyecto.credencialId}
+            credenciales={credenciales}
+          />
+        </Card>
 
-          {proyecto.tipo !== "image" && (
-            <Campo
-              label="Repositorio"
-              valor={proyecto.repositorioUrl ?? "—"}
-              mono={!!proyecto.repositorioUrl}
-            />
-          )}
+        {/* Variables de entorno */}
+        <Card titulo="Variables de entorno">
+          <VariablesPanel proyectoId={id} variablesIniciales={variables} />
+        </Card>
 
-          {proyecto.tipo !== "image" && (
-            <Campo label="Rama de deploy" valor={proyecto.rama} mono />
-          )}
+        {/* Volúmenes */}
+        <Card titulo="Volúmenes">
+          <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
+        </Card>
 
-          {proyecto.tipo === "dockerfile" && (
-            <Campo
-              label="Ruta Dockerfile"
-              valor={proyecto.dockerfilePath ?? "Dockerfile"}
-              mono
-            />
-          )}
+        {/* Historial de deploys */}
+        <Card titulo="Historial de deploys">
+          <HistorialDeploys
+            deploys={deploys}
+            isDeploying={isDeploying}
+            onRollback={async (deployId) => {
+              "use server";
+              await rollbackAction(deployId);
+            }}
+          />
+        </Card>
 
-          {proyecto.tipo === "nodejs" && proyecto.buildCommand && (
-            <Campo label="Build command" valor={proyecto.buildCommand} mono />
-          )}
-
-          {proyecto.tipo === "nodejs" && proyecto.startCommand && (
-            <Campo label="Start command" valor={proyecto.startCommand} mono />
-          )}
-
-          {proyecto.puerto && (
-            <Campo label="Puerto" valor={String(proyecto.puerto)} mono />
-          )}
-
-          {proyecto.ultimoDeploy && (
-            <Campo
-              label="Último deploy"
-              valor={`${proyecto.ultimoDeploy.hace} · ${proyecto.ultimoDeploy.rama}`}
-            />
-          )}
+        {/* Zona peligrosa */}
+        <div className="flex items-center justify-between px-5 py-4 bg-surface border border-state-error/30 rounded-[var(--radius-lg)]">
+          <div>
+            <p className="font-display text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em]">
+              Zona peligrosa
+            </p>
+            <p className="font-body text-xs text-text-muted mt-1">
+              Eliminar el proyecto y todos sus datos. Esta acción no se puede
+              deshacer.
+            </p>
+          </div>
+          <EliminarProyectoButton
+            proyectoId={proyecto.id}
+            proyectoNombre={proyecto.nombre}
+          />
         </div>
-      </Section>
-
-      {/* Credencial SSH */}
-      <Section titulo="Credencial SSH">
-        <CredencialSelector
-          proyectoId={id}
-          credencialActualId={proyecto.credencialId}
-          credenciales={credenciales}
-        />
-      </Section>
-
-      {/* Variables de entorno */}
-      <Section titulo="Variables de entorno">
-        <VariablesPanel proyectoId={id} variablesIniciales={variables} />
-      </Section>
-
-      {/* Volúmenes */}
-      <Section titulo="Volúmenes">
-        <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
-      </Section>
-
-      {/* Historial de deploys */}
-      <Section titulo="Historial de deploys">
-        <HistorialDeploys
-          deploys={deploys}
-          isDeploying={isDeploying}
-          onRollback={async (id) => {
-            "use server";
-            await rollbackAction(id);
-          }}
-        />
-      </Section>
+      </div>
     </div>
   );
 }
 
-function Section({
+function Card({
   titulo,
   accion,
   children,
@@ -299,9 +351,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section>
+    <section className="bg-surface border border-border rounded-[var(--radius-lg)] p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest">
+        <h2 className="font-display text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em]">
           {titulo}
         </h2>
         {accion}
@@ -326,7 +378,7 @@ function Campo({
       <span
         className={`font-body text-sm text-text-primary ${
           mono
-            ? "bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all"
+            ? "font-mono bg-elevated border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all"
             : ""
         }`}
       >

@@ -21,37 +21,49 @@ export function DeployLogsPanel({
   if (!active && lines.length === 0) return null;
 
   return (
-    <div className="mt-2 bg-background border border-border rounded-[var(--radius-sm)] flex flex-col">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-        <span className="font-body text-xs">
+    <div className="mb-6 bg-surface border border-border rounded-[var(--radius-lg)] flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="font-body text-[12.5px] font-medium flex items-center gap-2">
           {done === null && active ? (
-            <span className="text-state-warning animate-pulse">
-              ● Desplegando…
-            </span>
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-state-warning animate-pulse shrink-0" />
+              <span className="text-state-warning">Desplegando…</span>
+            </>
           ) : done === "exito" ? (
-            <span className="text-state-success">✓ Deploy completado</span>
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-state-running shrink-0" />
+              <span className="text-state-running">Deploy completado</span>
+            </>
           ) : done === "error" ? (
-            <span className="text-state-error">✗ Deploy fallido</span>
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-state-error shrink-0" />
+              <span className="text-state-error">Deploy fallido</span>
+            </>
           ) : (
-            <span className="text-text-muted">Deploy logs</span>
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-border shrink-0" />
+              <span className="text-text-muted">Deploy logs</span>
+            </>
           )}
         </span>
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Reducir deploy logs" : "Expandir deploy logs"}
-          className="font-body text-xs text-text-muted hover:text-text-primary"
+          className="font-body text-[11px] text-text-muted hover:text-text-primary px-2 py-1 rounded-[var(--radius-sm)] hover:bg-elevated transition-colors"
         >
-          {expanded ? "⊟" : "⊞"}
+          {expanded ? "Reducir" : "Expandir"}
         </button>
       </div>
+      {/* Terminal */}
       <div
-        className={`${expanded ? "h-[60vh]" : "h-64"} overflow-y-auto p-3 font-mono text-xs text-text-primary space-y-0.5 transition-[height] duration-[var(--duration-fast)]`}
+        className={`${expanded ? "h-[60vh]" : "h-56"} overflow-y-auto p-4 font-mono text-[12px] leading-[1.6] text-text-primary space-y-0.5 transition-[height] duration-[var(--duration-fast)] bg-[var(--color-background)]`}
       >
         {lines.length === 0 && (
           <p className="text-text-muted">Esperando output…</p>
         )}
         {lines.map((line, i) => (
-          <p key={i} className="whitespace-pre-wrap break-all leading-relaxed">
+          <p key={i} className="whitespace-pre-wrap break-all">
             {line}
           </p>
         ))}

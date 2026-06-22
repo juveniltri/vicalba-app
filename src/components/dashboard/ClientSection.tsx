@@ -28,10 +28,14 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
     router.refresh();
   }
 
+  const ghostBtn =
+    "inline-flex items-center gap-1.5 font-display text-xs font-medium px-[11px] py-1.5 rounded-[var(--radius-md)] border border-border bg-transparent text-text-muted hover:text-text-primary hover:bg-elevated transition-colors disabled:opacity-40";
+
   return (
     <section aria-label={cliente.nombre}>
-      <div className="flex items-center gap-4 mb-4">
-        <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest whitespace-nowrap">
+      {/* Cabecera de cliente */}
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="font-display text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em] whitespace-nowrap">
           {cliente.nombre}
         </h2>
         <div className="flex-1 h-px bg-border" />
@@ -44,37 +48,34 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
             <button
               onClick={handleEliminarCliente}
               disabled={deleteLoading}
-              className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-state-error text-state-error hover:bg-state-error/10 disabled:opacity-40 transition-opacity duration-[var(--duration-fast)]"
+              className="font-display text-xs px-[11px] py-1.5 rounded-[var(--radius-md)] border border-state-error text-state-error hover:bg-state-error/10 disabled:opacity-40 transition-colors"
             >
-              {deleteLoading ? "…" : "Sí"}
+              {deleteLoading ? "…" : "Confirmar"}
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-opacity duration-[var(--duration-fast)]"
+              className={ghostBtn}
             >
-              No
+              Cancelar
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowNuevoProyecto(true)}
-              aria-label="Nuevo proyecto"
-              className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-opacity duration-[var(--duration-fast)]"
+              className={`${ghostBtn} text-[var(--color-accent)] border-[color-mix(in_oklab,var(--color-accent)_40%,var(--color-border))] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/8`}
             >
               + Proyecto
             </button>
             <button
               onClick={() => setShowEditCliente(true)}
-              aria-label="Editar cliente"
-              className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-opacity duration-[var(--duration-fast)]"
+              className={ghostBtn}
             >
               Editar
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              aria-label="Eliminar cliente"
-              className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-state-error hover:text-state-error transition-opacity duration-[var(--duration-fast)]"
+              className={`${ghostBtn} hover:text-state-error hover:border-state-error`}
             >
               Eliminar
             </button>
@@ -83,14 +84,18 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
       </div>
 
       {deleteError && (
-        <p role="alert" className="font-body text-xs text-state-error mb-2">
+        <p role="alert" className="font-body text-xs text-state-error mb-3">
           {deleteError}
         </p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-[18px] max-md:grid-cols-1">
         {cliente.proyectos.map((proyecto) => (
-          <ProjectCard key={proyecto.id} proyecto={proyecto} />
+          <ProjectCard
+            key={proyecto.id}
+            p={proyecto}
+            clienteNombre={cliente.nombre}
+          />
         ))}
       </div>
 

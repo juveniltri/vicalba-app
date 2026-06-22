@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { EstadoServicio } from "@/lib/schemas/dashboard";
 import { MetricasSistema } from "@/components/metricas-sistema";
+import { StatsBar } from "@/components/dashboard/StatsBar";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -15,29 +16,15 @@ export default async function DashboardPage() {
   const clientes = await api.proyectos.listar();
   const proyectos = clientes.flatMap((c) => c.proyectos);
 
-  const stats = {
-    clientes: clientes.length,
-    proyectos: proyectos.length,
-    running: proyectos.filter((p) => p.estado === "running").length,
-    error: proyectos.filter((p) => p.estado === "error").length,
-  };
-
   return (
-    <div>
+    <div className="px-10 pt-10 pb-14 max-w-4xl">
       <h1 className="font-display text-2xl font-bold text-text-primary mb-6">
         Dashboard
       </h1>
 
       {/* Resumen */}
-      <div className="flex flex-wrap gap-3 mb-8">
-        <StatPill count={stats.clientes} label="clientes" />
-        <StatPill count={stats.proyectos} label="proyectos" />
-        <StatPill
-          count={stats.running}
-          label="running"
-          color="text-state-running"
-        />
-        <StatPill count={stats.error} label="error" color="text-state-error" />
+      <div className="mb-8">
+        <StatsBar proyectos={proyectos} />
       </div>
 
       {/* Lista compacta de clientes */}
@@ -87,23 +74,6 @@ export default async function DashboardPage() {
       </section>
 
       <MetricasSistema />
-    </div>
-  );
-}
-
-function StatPill({
-  count,
-  label,
-  color = "text-text-muted",
-}: {
-  count: number;
-  label: string;
-  color?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 bg-surface border border-border rounded-[var(--radius-md)] px-4 py-2">
-      <span className={`font-display text-xl font-bold ${color}`}>{count}</span>
-      <span className="font-body text-xs text-text-muted">{label}</span>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   crearProyectoAction,
   editarProyectoAction,
+  eliminarProyectoAction,
 } from "@/app/(panel)/actions";
 
 type TipoProyecto = "compose" | "dockerfile" | "image" | "nodejs";
@@ -364,5 +365,65 @@ export function EditarProyectoButton({
         <ProyectoFormModal proyecto={proyecto} onClose={() => setOpen(false)} />
       )}
     </>
+  );
+}
+
+export function EliminarProyectoButton({
+  proyectoId,
+  proyectoNombre,
+}: {
+  proyectoId: string;
+  proyectoNombre: string;
+}) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleEliminar() {
+    setLoading(true);
+    const result = await eliminarProyectoAction(proyectoId);
+    if (result?.error) {
+      setError(result.error);
+      setLoading(false);
+      setConfirm(false);
+    } else {
+      router.push("/proyectos");
+    }
+  }
+
+  if (confirm) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="font-body text-xs text-state-error">
+          ¿Eliminar &quot;{proyectoNombre}&quot;?
+        </span>
+        <button
+          onClick={handleEliminar}
+          disabled={loading}
+          className="font-display text-xs px-3 py-1.5 rounded-[var(--radius-md)] border border-state-error text-state-error hover:bg-state-error/10 disabled:opacity-40 transition-colors"
+        >
+          {loading ? "…" : "Confirmar"}
+        </button>
+        <button
+          onClick={() => setConfirm(false)}
+          className="font-display text-xs px-3 py-1.5 rounded-[var(--radius-md)] border border-border text-text-muted hover:bg-elevated transition-colors"
+        >
+          Cancelar
+        </button>
+        {error && (
+          <span className="font-body text-xs text-state-error">{error}</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setConfirm(true)}
+      className="font-display text-xs px-3 py-1.5 rounded-[var(--radius-md)] border border-border text-text-muted hover:text-state-error hover:border-state-error transition-colors"
+    >
+      Eliminar proyecto
+    </button>
   );
 }
