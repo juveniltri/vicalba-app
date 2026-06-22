@@ -59,6 +59,9 @@ traefik/logs/
 .cache/
 .parcel-cache/
 
+# ─── Monaco Editor (generado en prebuild — no commitear los 15 MB) ────────────
+public/monaco-editor/
+
 # ─── Design Sync (generated — do not commit) ──────────────────────────────────
 .ds-sync/
 ds-bundle/

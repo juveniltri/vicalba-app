@@ -25,6 +25,8 @@ const securityHeaders = [
       "font-src 'self' data: https://fonts.gstatic.com",
       // SSE para logs en tiempo real — necesita connect-src 'self'
       "connect-src 'self'",
+      // Monaco Editor usa blob: para sus web workers internos
+      "worker-src blob: 'self'",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",

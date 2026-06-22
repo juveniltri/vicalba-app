@@ -13,6 +13,7 @@ export async function ejecutarDeploy(params: {
   sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
+  composeContent?: string | null;
   variables?: Array<{ clave: string; valor: string }>;
   variablesBuildTime?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };

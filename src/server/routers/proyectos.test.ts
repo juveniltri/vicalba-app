@@ -2132,3 +2132,150 @@ describe("proyectos.rollback — notificaciones", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
+
+describe("proyectos.obtenerCompose", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve composeContent del proyecto", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      composeContent: "services:\n  web:\n    image: nginx\n",
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.obtenerCompose({
+      id: "p1",
+    });
+
+    expect(result.composeContent).toBe("services:\n  web:\n    image: nginx\n");
+  });
+
+  it("devuelve composeContent null cuando no hay compose guardado", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      composeContent: null,
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.obtenerCompose({
+      id: "p1",
+    });
+
+    expect(result.composeContent).toBeNull();
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.obtenerCompose({ id: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("proyectos.guardarCompose", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("guarda composeContent en BD y lo devuelve", async () => {
+    const content = "services:\n  app:\n    image: myapp:latest\n";
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      composeContent: content,
+    } as never);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.guardarCompose({
+      id: "p1",
+      composeContent: content,
+    });
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { composeContent: content },
+    });
+    expect(result.composeContent).toBe(content);
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.guardarCompose({
+        id: "nope",
+        composeContent: "services: {}",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("proyectos.deploy — composeContent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
+  });
+
+  it("pasa composeContent a ejecutarDeploy cuando el proyecto lo tiene", async () => {
+    const content = "services:\n  web:\n    image: nginx\n";
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      composeContent: content,
+      repositorioUrl: null,
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "deploying",
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ composeContent: content }),
+    );
+  });
+
+  it("permite deploy de tipo compose sin repositorioUrl cuando hay composeContent", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: null,
+      composeContent: "services:\n  app:\n    image: nginx\n",
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      estado: "deploying",
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("sigue lanzando CONFLICT para compose sin repositorioUrl ni composeContent", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: null,
+      composeContent: null,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+});

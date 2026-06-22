@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-monaco": "node -e \"require('fs').cpSync('node_modules/monaco-editor/min/vs','public/monaco-editor/vs',{recursive:true,force:true})\"",
+    "predev": "npm run copy-monaco",
     "dev": "next dev",
+    "prebuild": "npm run copy-monaco",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -20,6 +23,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@sentry/nextjs": "^10.56.0",
@@ -37,6 +41,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "superjson": "^2.2.6",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

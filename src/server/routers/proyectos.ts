@@ -87,6 +87,7 @@ export const proyectosRouter = router({
       dockerfilePath: proyecto.dockerfilePath,
       buildCommand: proyecto.buildCommand,
       startCommand: proyecto.startCommand,
+      composeContent: proyecto.composeContent ?? null,
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
           ? {
@@ -294,7 +295,10 @@ export const proyectosRouter = router({
         code: "CONFLICT",
         message: "El proyecto no tiene imagen configurada",
       });
-    if (proyecto.tipo !== "image" && !proyecto.repositorioUrl)
+    const needsRepo =
+      proyecto.tipo !== "image" &&
+      !(proyecto.tipo === "compose" && proyecto.composeContent);
+    if (needsRepo && !proyecto.repositorioUrl)
       throw new TRPCError({
         code: "CONFLICT",
         message: "El proyecto no tiene repositorio configurado",
@@ -344,6 +348,7 @@ export const proyectosRouter = router({
       rama: proyecto.rama,
       clienteSlug: proyecto.cliente.slug,
       proyectoNombre: proyecto.nombre,
+      composeContent: proyecto.composeContent,
       variables,
       variablesBuildTime,
       credencial,
@@ -572,4 +577,19 @@ export const proyectosRouter = router({
     );
     return result;
   }),
+
+  obtenerCompose: protectedProcedure.input(idInput).query(async ({ input }) => {
+    const proyecto = await findProyectoOrThrow(input.id);
+    return { composeContent: proyecto.composeContent ?? null };
+  }),
+
+  guardarCompose: protectedProcedure
+    .input(z.object({ id: z.string(), composeContent: z.string() }))
+    .mutation(async ({ input }) => {
+      await findProyectoOrThrow(input.id);
+      return prisma.proyecto.update({
+        where: { id: input.id },
+        data: { composeContent: input.composeContent },
+      });
+    }),
 });

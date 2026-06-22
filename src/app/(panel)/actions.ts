@@ -377,6 +377,16 @@ export async function eliminarUsuarioAction(id: string) {
   }
 }
 
+export async function guardarComposeAction(id: string, composeContent: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.guardarCompose({ id, composeContent });
+    return {};
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al guardar compose") };
+  }
+}
+
 export async function guardarTelegramAction(
   habilitado: boolean,
   botToken: string | undefined,

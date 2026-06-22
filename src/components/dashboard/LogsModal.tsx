@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useContainerLogs } from "@/hooks/useContainerLogs";
 import type { LogLine } from "@/hooks/useContainerLogs";
 
@@ -63,7 +63,13 @@ export function LogsModal({
   const [nivel, setNivel] = useState<Nivel>("ALL");
   const [mostrarTs, setMostrarTs] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [servicioFiltro, setServicioFiltro] = useState<string>("todos");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const serviciosDetectados = useMemo(() => {
+    const set = new Set(lines.map((l) => l.servicio));
+    return Array.from(set).sort();
+  }, [lines]);
 
   useEffect(() => {
     if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -71,7 +77,9 @@ export function LogsModal({
 
   if (!open) return null;
 
-  const lineasFiltradas = lines.filter((e) => pasaFiltro(e, nivel));
+  const lineasFiltradas = lines
+    .filter((e) => pasaFiltro(e, nivel))
+    .filter((e) => servicioFiltro === "todos" || e.servicio === servicioFiltro);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -103,6 +111,38 @@ export function LogsModal({
                 {n}
               </button>
             ))}
+            {/* Selector de servicio — solo si hay múltiples */}
+            {serviciosDetectados.length > 1 && (
+              <>
+                <span className="w-px h-3 bg-border mx-1" />
+                <button
+                  type="button"
+                  onClick={() => setServicioFiltro("todos")}
+                  className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                    servicioFiltro === "todos"
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                      : "border-border text-text-muted hover:border-primary-300"
+                  }`}
+                >
+                  todos
+                </button>
+                {serviciosDetectados.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setServicioFiltro(s)}
+                    className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                      servicioFiltro === s
+                        ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                        : "border-border text-text-muted hover:border-primary-300"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </>
+            )}
+
             <button
               type="button"
               onClick={() => setMostrarTs((v) => !v)}
