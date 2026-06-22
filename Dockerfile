@@ -4,9 +4,13 @@ WORKDIR /app
 
 RUN apk add --no-cache libc6-compat
 
+RUN npm install -g npm@11
+
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci
+# npm install vs npm ci: @emnapi resolves to different versions on macOS vs Alpine,
+# so the macOS-generated lock file fails the sync check on Linux builds.
+RUN npm install --prefer-offline
 
 COPY . .
 RUN npx prisma generate
