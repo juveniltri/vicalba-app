@@ -223,6 +223,7 @@ export async function deployProyecto(params: {
   sha?: string;
   clienteSlug: string;
   proyectoNombre: string;
+  composeContent?: string | null;
   variables?: Array<{ clave: string; valor: string }>;
   variablesBuildTime?: Array<{ clave: string; valor: string }>;
   credencial?: { clavePrivada: string };
@@ -241,6 +242,7 @@ export async function deployProyecto(params: {
     sha,
     clienteSlug,
     proyectoNombre,
+    composeContent,
     variables,
     variablesBuildTime,
     credencial,
@@ -317,17 +319,34 @@ export async function deployProyecto(params: {
     const runtimeVars = variables ?? [];
 
     if (tipo === "compose") {
-      composeFile = `${repoDir}/docker-compose.yml`;
-      // For user-managed compose files, write .env next to the compose file so
-      // docker compose auto-loads it for ${VAR} substitution on every up/restart.
-      if (runtimeVars.length > 0) {
-        const envContent = runtimeVars
-          .map(({ clave, valor }) => `${clave}=${valor}`)
-          .join("\n");
-        await writeFile(`${repoDir}/.env`, envContent, {
-          encoding: "utf-8",
-          mode: 0o600,
-        });
+      if (composeContent) {
+        // User-authored compose: write to panelDir so it stays separate from any repo clone
+        const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
+        await writeFile(composePath, composeContent, { encoding: "utf-8" });
+        composeFile = composePath;
+        if (runtimeVars.length > 0) {
+          const envFilePath = `${panelDir}/${proyectoNombre}.env`;
+          const envContent = runtimeVars
+            .map(({ clave, valor }) => `${clave}=${valor}`)
+            .join("\n");
+          await writeFile(envFilePath, envContent, {
+            encoding: "utf-8",
+            mode: 0o600,
+          });
+        }
+      } else {
+        composeFile = `${repoDir}/docker-compose.yml`;
+        // For repo-based compose files, write .env next to the compose file so
+        // docker compose auto-loads it for ${VAR} substitution on every up/restart.
+        if (runtimeVars.length > 0) {
+          const envContent = runtimeVars
+            .map(({ clave, valor }) => `${clave}=${valor}`)
+            .join("\n");
+          await writeFile(`${repoDir}/.env`, envContent, {
+            encoding: "utf-8",
+            mode: 0o600,
+          });
+        }
       }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
@@ -396,12 +415,18 @@ export async function deployProyecto(params: {
       composeFile = composePath;
     }
 
+    const envFileArgs =
+      tipo === "compose" && composeContent && runtimeVars.length > 0
+        ? ["--env-file", `${panelDir}/${proyectoNombre}.env`]
+        : [];
+
     const composeArgs = [
       "compose",
       "-p",
       projectSlug,
       "-f",
       composeFile,
+      ...envFileArgs,
       "up",
       "--build",
       "-d",

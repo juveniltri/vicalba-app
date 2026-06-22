@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
+import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
 import {
   deployProyectoAction,
   detenerAction,
@@ -297,6 +298,16 @@ export default async function DetalleProyectoPage({
             credenciales={credenciales}
           />
         </Card>
+
+        {/* Compose editor — solo para tipo compose */}
+        {proyecto.tipo === "compose" && (
+          <Card titulo="Docker Compose">
+            <ComposeEditor
+              proyectoId={id}
+              composeContentInicial={proyecto.composeContent}
+            />
+          </Card>
+        )}
 
         {/* Variables de entorno */}
         <Card titulo="Variables de entorno">

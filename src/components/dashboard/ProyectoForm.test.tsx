@@ -60,8 +60,18 @@ describe("ProyectoFormModal — nuevo proyecto", () => {
     expect(screen.getByLabelText(/dominio/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/puerto/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/repositorio/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
+    // Para tipo compose sin repo, rama no se muestra hasta que se rellena el repositorio
+    expect(screen.queryByLabelText(/rama/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/servicio/i)).not.toBeInTheDocument();
+  });
+
+  it("muestra el campo rama cuando se rellena el repositorio en tipo compose", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    expect(screen.queryByLabelText(/rama/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/repositorio/i), {
+      target: { value: "https://github.com/org/repo" },
+    });
+    expect(screen.getByLabelText(/rama/i)).toBeInTheDocument();
   });
 
   it("passes dominio to the action when filled", async () => {

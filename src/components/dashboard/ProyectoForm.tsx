@@ -17,7 +17,8 @@ const TIPOS: { value: TipoProyecto; label: string }[] = [
   { value: "nodejs", label: "Node.js" },
 ];
 
-const USA_REPO: TipoProyecto[] = ["compose", "dockerfile", "nodejs"];
+const USA_REPO: TipoProyecto[] = ["dockerfile", "nodejs"];
+const REPO_OPCIONAL: TipoProyecto[] = ["compose"];
 
 type ProyectoEditable = {
   id: string;
@@ -70,6 +71,9 @@ export function ProyectoFormModal({
   const [error, setError] = useState<string | null>(null);
 
   const usaRepo = USA_REPO.includes(tipo);
+  const repoOpcional = REPO_OPCIONAL.includes(tipo);
+  const mostrarRepo = usaRepo || repoOpcional;
+  const mostrarRama = usaRepo || (repoOpcional && repositorioUrl.trim() !== "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,7 +81,8 @@ export function ProyectoFormModal({
     setError(null);
     const dominioFinal = dominio.trim() || undefined;
     const puertoFinal = puerto.trim() ? parseInt(puerto, 10) : undefined;
-    const repoFinal = usaRepo ? repositorioUrl.trim() || undefined : undefined;
+    const repoFinal =
+      usaRepo || repoOpcional ? repositorioUrl.trim() || undefined : undefined;
     const imagenFinal =
       tipo === "image" ? imagenUrl.trim() || undefined : undefined;
     const dockerfilePathFinal =
@@ -186,13 +191,13 @@ export function ProyectoFormModal({
             </div>
           )}
 
-          {usaRepo && (
+          {mostrarRepo && (
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="repositorioUrl"
                 className="font-body text-xs text-text-muted"
               >
-                Repositorio GitHub (opcional)
+                Repositorio GitHub{repoOpcional ? " (opcional)" : ""}
               </label>
               <input
                 id="repositorioUrl"
@@ -200,12 +205,19 @@ export function ProyectoFormModal({
                 value={repositorioUrl}
                 onChange={(e) => setRepositorioUrl(e.target.value)}
                 placeholder="ej: https://github.com/org/repo"
+                required={usaRepo}
                 className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
               />
+              {repoOpcional && (
+                <p className="font-body text-[11px] text-text-muted">
+                  Déjalo vacío si vas a escribir el compose directamente en el
+                  editor del proyecto.
+                </p>
+              )}
             </div>
           )}
 
-          {usaRepo && (
+          {mostrarRama && (
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="rama"
