@@ -386,7 +386,6 @@ export function EliminarProyectoButton({
     if (result?.error) {
       setError(result.error);
       setLoading(false);
-      setConfirm(false);
     } else {
       router.push("/proyectos");
     }

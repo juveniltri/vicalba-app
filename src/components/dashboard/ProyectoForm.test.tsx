@@ -2,20 +2,27 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+  useRouter: () => ({ refresh: vi.fn(), push: mockPush }),
 }));
 
 vi.mock("@/app/(panel)/actions", () => ({
   crearProyectoAction: vi.fn().mockResolvedValue(undefined),
   editarProyectoAction: vi.fn().mockResolvedValue(undefined),
+  eliminarProyectoAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
   crearProyectoAction,
   editarProyectoAction,
+  eliminarProyectoAction,
 } from "@/app/(panel)/actions";
-import { ProyectoFormModal } from "./ProyectoForm";
+import {
+  ProyectoFormModal,
+  EditarProyectoButton,
+  EliminarProyectoButton,
+} from "./ProyectoForm";
 import type { ProyectoResumen } from "@/lib/schemas/dashboard";
 
 const onClose = vi.fn();
@@ -234,5 +241,90 @@ describe("ProyectoFormModal — editar proyecto", () => {
         undefined,
       );
     });
+  });
+});
+
+describe("EditarProyectoButton", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renderiza el botón Editar", () => {
+    render(<EditarProyectoButton proyecto={mockProyecto} />);
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+  });
+
+  it("click en Editar abre el modal de edición", () => {
+    render(<EditarProyectoButton proyecto={mockProyecto} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    // El formulario modal aparece con el nombre del proyecto
+    expect(screen.getByDisplayValue("web-app")).toBeInTheDocument();
+  });
+});
+
+describe("EliminarProyectoButton", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPush.mockReset();
+    vi.mocked(eliminarProyectoAction).mockResolvedValue(undefined);
+  });
+
+  it("renderiza el botón Eliminar proyecto", () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    expect(
+      screen.getByRole("button", { name: /eliminar proyecto/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("click muestra confirmación con el nombre del proyecto", () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    expect(screen.getByText(/web-app/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /confirmar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /cancelar/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("Cancelar vuelve al estado inicial", () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
+    expect(
+      screen.getByRole("button", { name: /eliminar proyecto/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /confirmar/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Confirmar llama eliminarProyectoAction con el id", async () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
+    await waitFor(() =>
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1"),
+    );
+  });
+
+  it("éxito redirige a /proyectos", async () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/proyectos"));
+  });
+
+  it("error muestra el mensaje y no redirige", async () => {
+    vi.mocked(eliminarProyectoAction).mockResolvedValueOnce({
+      error: "No se puede eliminar",
+    });
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/No se puede eliminar/)).toBeInTheDocument(),
+    );
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
