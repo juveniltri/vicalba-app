@@ -308,18 +308,24 @@ export const proyectosRouter = router({
       prisma.variableEntorno.findMany({ where: { proyectoId: input.id } }),
       prisma.volumen.findMany({ where: { proyectoId: input.id } }),
     ]);
+    // compose+content: build-time flag has no meaning (no docker build step),
+    // all vars must reach the --env-file for ${VAR} substitution in the YAML.
+    const isComposeDirecto =
+      proyecto.tipo === "compose" && !!proyecto.composeContent;
     const variables = variablesDB
-      .filter((v) => !v.enBuildTime)
+      .filter((v) => isComposeDirecto || !v.enBuildTime)
       .map((v) => ({
         clave: v.clave,
         valor: descifrar(v.valorCifrado, v.iv, v.authTag),
       }));
-    const variablesBuildTime = variablesDB
-      .filter((v) => v.enBuildTime)
-      .map((v) => ({
-        clave: v.clave,
-        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-      }));
+    const variablesBuildTime = isComposeDirecto
+      ? []
+      : variablesDB
+          .filter((v) => v.enBuildTime)
+          .map((v) => ({
+            clave: v.clave,
+            valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+          }));
     const volumenes = volumenesDB.map((v) => ({
       rutaHost: rutaHostVolumen(
         env.REPOS_DIR,
@@ -455,18 +461,22 @@ export const proyectosRouter = router({
       const variablesDB = await prisma.variableEntorno.findMany({
         where: { proyectoId: deploy.proyectoId },
       });
+      const isComposeDirectoRollback =
+        proyecto.tipo === "compose" && !!proyecto.composeContent;
       const variables = variablesDB
-        .filter((v) => !v.enBuildTime)
+        .filter((v) => isComposeDirectoRollback || !v.enBuildTime)
         .map((v) => ({
           clave: v.clave,
           valor: descifrar(v.valorCifrado, v.iv, v.authTag),
         }));
-      const variablesBuildTime = variablesDB
-        .filter((v) => v.enBuildTime)
-        .map((v) => ({
-          clave: v.clave,
-          valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-        }));
+      const variablesBuildTime = isComposeDirectoRollback
+        ? []
+        : variablesDB
+            .filter((v) => v.enBuildTime)
+            .map((v) => ({
+              clave: v.clave,
+              valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+            }));
 
       const credencial = proyecto.credencialId
         ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }

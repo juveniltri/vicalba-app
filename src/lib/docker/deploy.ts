@@ -8,6 +8,19 @@ import { conectarTraefikARed } from "./traefik";
 
 const execFileAsync = promisify(execFile);
 
+// docker compose does not substitute ${VAR} in YAML map keys (e.g. top-level
+// network names). Pre-substituting here ensures network/volume declarations
+// match the references inside service definitions.
+function substituirVarsEnCompose(
+  content: string,
+  vars: Array<{ clave: string; valor: string }>,
+): string {
+  return vars.reduce(
+    (acc, { clave, valor }) => acc.replaceAll(`\${${clave}}`, valor),
+    content,
+  );
+}
+
 async function ensureRepo(
   repoUrl: string,
   repoDir: string,
@@ -320,9 +333,15 @@ export async function deployProyecto(params: {
 
     if (tipo === "compose") {
       if (composeContent) {
-        // User-authored compose: write to panelDir so it stays separate from any repo clone
+        // User-authored compose: write to panelDir so it stays separate from any repo clone.
+        // Pre-substitute ${VAR} so network/volume map keys are resolved — docker compose
+        // does not interpolate variables in YAML map keys, only in values.
         const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
-        await writeFile(composePath, composeContent, { encoding: "utf-8" });
+        const processedContent = substituirVarsEnCompose(
+          composeContent,
+          runtimeVars,
+        );
+        await writeFile(composePath, processedContent, { encoding: "utf-8" });
         composeFile = composePath;
         if (runtimeVars.length > 0) {
           const envFilePath = `${panelDir}/${proyectoNombre}.env`;
