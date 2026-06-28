@@ -42,12 +42,11 @@ const credencialBase = {
 };
 
 describe("credenciales.listar", () => {
-  it("devuelve la lista sin clave privada", async () => {
+  it("devuelve la lista sin claves sensibles", async () => {
     vi.mocked(prisma.credencial.findMany).mockResolvedValue([
       {
         id: "cred1",
         nombre: "GitHub personal",
-        clavePublica: "ssh-rsa AAAA...",
         creadoEn: new Date(),
       },
     ] as never);
@@ -56,6 +55,7 @@ describe("credenciales.listar", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]).not.toHaveProperty("clavePrivadaCifrada");
+    expect(result[0]).not.toHaveProperty("clavePublica");
     expect(result[0]).not.toHaveProperty("iv");
   });
 });
