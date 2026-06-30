@@ -4,7 +4,10 @@ import dynamic from "next/dynamic";
 import { loader } from "@monaco-editor/react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { guardarComposeAction } from "@/app/(panel)/actions";
+import {
+  cargarComposeDesdeRepoAction,
+  guardarComposeAction,
+} from "@/app/(panel)/actions";
 import { extraerServicios } from "@/lib/compose";
 
 // Servir Monaco desde /monaco-editor/vs (copiado en prebuild) en vez de jsdelivr CDN.
@@ -31,9 +34,11 @@ const DEFAULT_COMPOSE = `services:
 export function ComposeEditor({
   proyectoId,
   composeContentInicial,
+  repositorioUrl,
 }: {
   proyectoId: string;
   composeContentInicial: string | null;
+  repositorioUrl?: string | null;
 }) {
   const router = useRouter();
   const [content, setContent] = useState(
@@ -42,8 +47,21 @@ export function ComposeEditor({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isLoading, startLoadTransition] = useTransition();
 
   const servicios = extraerServicios(content);
+
+  function handleReload() {
+    setError(null);
+    startLoadTransition(async () => {
+      const result = await cargarComposeDesdeRepoAction(proyectoId);
+      if ("error" in result) {
+        setError(result.error);
+      } else {
+        setContent(result.composeContent);
+      }
+    });
+  }
 
   function handleSave() {
     setError(null);
@@ -89,9 +107,19 @@ export function ComposeEditor({
           {saved && (
             <span className="text-xs text-green-400 font-mono">✓ Guardado</span>
           )}
+          {repositorioUrl && (
+            <button
+              onClick={handleReload}
+              disabled={isLoading || isPending}
+              title="Clonar/actualizar el repo y cargar su docker-compose.yml"
+              className="inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-elevated border border-border text-text-primary hover:bg-surface transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {isLoading ? "Cargando…" : "↺ Recargar del repo"}
+            </button>
+          )}
           <button
             onClick={handleSave}
-            disabled={isPending}
+            disabled={isPending || isLoading}
             className="inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             {isPending ? "Guardando…" : "Guardar compose"}

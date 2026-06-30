@@ -305,6 +305,7 @@ export default async function DetalleProyectoPage({
             <ComposeEditor
               proyectoId={id}
               composeContentInicial={proyecto.composeContent}
+              repositorioUrl={proyecto.repositorioUrl}
             />
           </Card>
         )}

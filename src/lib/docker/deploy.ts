@@ -21,7 +21,7 @@ function substituirVarsEnCompose(
   );
 }
 
-async function ensureRepo(
+export async function ensureRepo(
   repoUrl: string,
   repoDir: string,
   gitEnv: NodeJS.ProcessEnv,
@@ -39,6 +39,22 @@ async function ensureRepo(
     onLog?.("→ Clonando repositorio...");
     await execFileAsync("git", ["clone", repoUrl, repoDir], opts);
   }
+}
+
+export async function prepararRepo(
+  repoUrl: string,
+  repoDir: string,
+  rama: string,
+  gitEnv: NodeJS.ProcessEnv,
+): Promise<void> {
+  const opts = { env: gitEnv };
+  await ensureRepo(repoUrl, repoDir, gitEnv);
+  await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
+  await execFileAsync(
+    "git",
+    ["-C", repoDir, "checkout", "-B", rama, `origin/${rama}`],
+    opts,
+  );
 }
 
 async function conectarContenedoresARedCliente(

@@ -387,6 +387,17 @@ export async function guardarComposeAction(id: string, composeContent: string) {
   }
 }
 
+export async function cargarComposeDesdeRepoAction(
+  id: string,
+): Promise<{ composeContent: string } | { error: string }> {
+  try {
+    const api = await createServerCaller();
+    return await api.proyectos.cargarComposeDesdeRepo({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cargar compose del repo") };
+  }
+}
+
 export async function guardarTelegramAction(
   habilitado: boolean,
   botToken: string | undefined,

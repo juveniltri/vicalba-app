@@ -1,7 +1,9 @@
 // src/server/routers/proyectos.ts
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
+import { prepararRepo } from "@/lib/docker/deploy";
 import { descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
@@ -601,5 +603,65 @@ export const proyectosRouter = router({
         where: { id: input.id },
         data: { composeContent: input.composeContent },
       });
+    }),
+
+  cargarComposeDesdeRepo: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const proyecto = await findProyectoOrThrow(input.id);
+
+      if (!proyecto.repositorioUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "El proyecto no tiene repositorio configurado",
+        });
+      }
+
+      const { cliente, nombre, repositorioUrl, rama, credencialId } = proyecto;
+      const repoDir = `${env.REPOS_DIR}/${cliente.slug}/${nombre}`;
+      const panelDir = `${env.REPOS_DIR}/${cliente.slug}/.panel`;
+      const keyFilePath = `${panelDir}/${nombre}.deploy_key`;
+
+      await mkdir(panelDir, { recursive: true });
+
+      let gitEnv: NodeJS.ProcessEnv = { ...process.env };
+      let effectiveRepoUrl = repositorioUrl;
+
+      if (credencialId) {
+        const clavePrivada = await descifrarClavePrivada(credencialId);
+        const normalizedKey =
+          clavePrivada.replace(/\r\n/g, "\n").trimEnd() + "\n";
+        await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
+        gitEnv = {
+          ...process.env,
+          GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+        };
+        effectiveRepoUrl = repositorioUrl.replace(
+          /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,
+          "git@github.com:$1.git",
+        );
+      }
+
+      await prepararRepo(effectiveRepoUrl, repoDir, rama, gitEnv);
+
+      let rawContent: string;
+      try {
+        rawContent = await readFile(`${repoDir}/docker-compose.yml`, "utf-8");
+      } catch {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No se encontró docker-compose.yml en el repositorio",
+        });
+      }
+
+      // Replace build: . and context: . with relative path from panelDir to repoDir.
+      // docker compose resolves relative paths from the compose file's directory (.panel/),
+      // so ../{nombre} always points to the sibling repo directory.
+      const relativePath = `../${nombre}`;
+      const composeContent = rawContent
+        .replace(/^(\s*build:\s*)\.(\s*)$/gm, `$1${relativePath}$2`)
+        .replace(/^(\s*context:\s*)\.(\s*)$/gm, `$1${relativePath}$2`);
+
+      return { composeContent };
     }),
 });
