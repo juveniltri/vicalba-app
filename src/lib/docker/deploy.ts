@@ -359,29 +359,34 @@ export async function deployProyecto(params: {
         );
         await writeFile(composePath, processedContent, { encoding: "utf-8" });
         composeFile = composePath;
-        if (runtimeVars.length > 0) {
-          const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(envFilePath, envContent, {
-            encoding: "utf-8",
-            mode: 0o600,
-          });
-        }
+        // Always write .env — the compose may have `env_file: .env` directives that
+        // require the file to exist even when no vars are configured yet.
+        const envFilePath = `${panelDir}/${proyectoNombre}.env`;
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(envFilePath, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+        // Also write as plain .env so `env_file: .env` in service definitions resolves
+        // correctly relative to the compose file's directory (panelDir).
+        await writeFile(`${panelDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
       } else {
         composeFile = `${repoDir}/docker-compose.yml`;
-        // For repo-based compose files, write .env next to the compose file so
-        // docker compose auto-loads it for ${VAR} substitution on every up/restart.
-        if (runtimeVars.length > 0) {
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(`${repoDir}/.env`, envContent, {
-            encoding: "utf-8",
-            mode: 0o600,
-          });
-        }
+        // Always write .env next to the compose file — docker compose auto-loads it for
+        // ${VAR} substitution, and `env_file: .env` in service definitions requires it
+        // to exist even when no vars are configured yet.
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(`${repoDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
       }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
