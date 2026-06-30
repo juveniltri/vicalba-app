@@ -76,8 +76,12 @@ async function conectarContenedoresARedCliente(
           });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
-          // NOTE: "already exists" means the container is already on the network — safe to ignore
-          if (!msg.includes("already exists")) throw err;
+          // "already exists" → container already connected, safe to ignore.
+          // "network sandbox" → container network namespace not ready yet (race condition
+          // immediately after compose up); will be connected on the next deploy.
+          if (msg.includes("already exists") || msg.includes("network sandbox"))
+            return;
+          throw err;
         }
       }),
     );
