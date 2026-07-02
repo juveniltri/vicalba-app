@@ -387,6 +387,47 @@ export async function guardarComposeAction(id: string, composeContent: string) {
   }
 }
 
+export async function cargarVariablesAction(
+  proyectoId: string,
+): Promise<{ contenido: string } | { error: string }> {
+  try {
+    const api = await createServerCaller();
+    const vars = await api.variables.listarConValores({ proyectoId });
+    const contenido = vars
+      .map(({ clave, valor }) => `${clave}=${valor}`)
+      .join("\n");
+    return { contenido };
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cargar variables") };
+  }
+}
+
+export async function sincronizarVariablesAction(
+  proyectoId: string,
+  contenido: string,
+): Promise<
+  | { guardadas: number; eliminadas: number; invalidas: string[] }
+  | { error: string }
+> {
+  try {
+    const api = await createServerCaller();
+    return await api.variables.sincronizar({ proyectoId, contenido });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al sincronizar variables") };
+  }
+}
+
+export async function cargarComposeDesdeRepoAction(
+  id: string,
+): Promise<{ composeContent: string } | { error: string }> {
+  try {
+    const api = await createServerCaller();
+    return await api.proyectos.cargarComposeDesdeRepo({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cargar compose del repo") };
+  }
+}
+
 export async function guardarTelegramAction(
   habilitado: boolean,
   botToken: string | undefined,

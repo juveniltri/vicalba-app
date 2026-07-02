@@ -1,15 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { loader } from "@monaco-editor/react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  actualizarVariableAction,
-  crearVariableAction,
+  cargarVariablesAction,
   eliminarVariableAction,
-  importarVariablesAction,
-  revelarVariableAction,
+  sincronizarVariablesAction,
   toggleBuildTimeAction,
 } from "@/app/(panel)/actions";
+
+loader.config({ paths: { vs: "/monaco-editor/vs" } });
+
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-text-muted text-sm font-mono">
+      Cargando editor…
+    </div>
+  ),
+});
 
 type VariableResumen = {
   id: string;
@@ -26,428 +37,239 @@ export function VariablesPanel({
   variablesIniciales: VariableResumen[];
 }) {
   const router = useRouter();
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newClave, setNewClave] = useState("");
-  const [newValor, setNewValor] = useState("");
-  const [newEnBuildTime, setNewEnBuildTime] = useState(false);
-  const [showImportForm, setShowImportForm] = useState(false);
-  const [importContenido, setImportContenido] = useState("");
-  const [importResult, setImportResult] = useState<{
-    creadas: number;
-    actualizadas: number;
-    invalidas: string[];
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"list" | "editor">("list");
+  const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [saved, setSaved] = useState(false);
+  const [invalidas, setInvalidas] = useState<string[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [isLoading, startLoadTransition] = useTransition();
 
-  useEffect(() => {
-    const timers = timersRef.current;
-    return () => {
-      Object.values(timers).forEach(clearTimeout);
-    };
-  }, []);
-
-  async function handleRevelar(id: string) {
-    const result = await revelarVariableAction(id);
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    setRevealed((prev) => ({ ...prev, [id]: result.valor }));
-    if (timersRef.current[id]) clearTimeout(timersRef.current[id]);
-    timersRef.current[id] = setTimeout(() => {
-      setRevealed((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    }, 30_000);
+  function handleAbrirEditor() {
+    setError(null);
+    startLoadTransition(async () => {
+      const result = await cargarVariablesAction(proyectoId);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      setContent(result.contenido);
+      setMode("editor");
+    });
   }
 
-  async function handleGuardarEdicion(id: string) {
-    setLoading(true);
+  function handleGuardar() {
     setError(null);
-    const result = await actualizarVariableAction(id, editValue);
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    setEditingId(null);
-    setEditValue("");
-    router.refresh();
-    setLoading(false);
+    setInvalidas([]);
+    startTransition(async () => {
+      const result = await sincronizarVariablesAction(proyectoId, content);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      if (result.invalidas.length > 0) setInvalidas(result.invalidas);
+      setSaved(true);
+      setMode("list");
+      router.refresh();
+      setTimeout(() => setSaved(false), 3000);
+    });
   }
 
-  async function handleConfirmarEliminar(id: string) {
-    setLoading(true);
+  function handleCancelar() {
+    setMode("list");
+    setContent("");
     setError(null);
-    const result = await eliminarVariableAction(id);
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    setConfirmDeleteId(null);
-    router.refresh();
-    setLoading(false);
+    setInvalidas([]);
   }
 
-  async function handleCrear(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const result = await crearVariableAction(
-      proyectoId,
-      newClave,
-      newValor,
-      newEnBuildTime,
+  async function handleToggle(id: string, current: boolean) {
+    startLoadTransition(async () => {
+      await toggleBuildTimeAction(id, !current);
+      router.refresh();
+    });
+  }
+
+  async function handleEliminar(id: string) {
+    startLoadTransition(async () => {
+      await eliminarVariableAction(id);
+      setConfirmDeleteId(null);
+      router.refresh();
+    });
+  }
+
+  if (mode === "editor") {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-text-muted font-mono">
+            Formato .env — una variable por línea. Al guardar se sincronizan:
+            las claves eliminadas se borran.
+          </p>
+          <div className="flex items-center gap-2">
+            {error && (
+              <span className="text-xs text-red-400 font-mono">{error}</span>
+            )}
+            <button
+              onClick={handleCancelar}
+              disabled={isPending}
+              className="inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-elevated border border-border text-text-primary hover:bg-surface transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={isPending}
+              className="inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {isPending ? "Guardando…" : "Guardar variables"}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-[var(--radius-md)] border border-border overflow-hidden bg-[#1e1e1e]">
+          <MonacoEditor
+            height="360px"
+            language="ini"
+            value={content}
+            onChange={(val) => setContent(val ?? "")}
+            theme="vs-dark"
+            options={{
+              minimap: { enabled: false },
+              fontSize: 13,
+              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+              lineNumbers: "on",
+              wordWrap: "off",
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+              padding: { top: 12, bottom: 12 },
+            }}
+          />
+        </div>
+
+        {invalidas.length > 0 && (
+          <p className="text-xs text-red-400 font-mono">
+            Claves ignoradas (formato inválido): {invalidas.join(", ")}
+          </p>
+        )}
+      </div>
     );
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    setNewClave("");
-    setNewValor("");
-    setNewEnBuildTime(false);
-    setShowAddForm(false);
-    router.refresh();
-    setLoading(false);
-  }
-
-  async function handleImportar(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setImportResult(null);
-    const result = await importarVariablesAction(proyectoId, importContenido);
-    if ("error" in result) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    setImportResult(result);
-    setImportContenido("");
-    router.refresh();
-    setLoading(false);
-  }
-
-  async function handleToggleBuildTime(id: string, current: boolean) {
-    setLoading(true);
-    setError(null);
-    const result = await toggleBuildTimeAction(id, !current);
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    router.refresh();
-    setLoading(false);
   }
 
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <p role="alert" className="font-body text-xs text-state-error">
+        <p role="alert" className="text-xs text-red-400 font-mono">
           {error}
         </p>
       )}
 
-      {variablesIniciales.length === 0 && !showAddForm ? (
+      {variablesIniciales.length === 0 ? (
         <p className="font-body text-xs text-text-muted">
           Sin variables configuradas.
         </p>
       ) : (
-        <div className="border border-border rounded-[var(--radius-md)] overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-surface">
-                <Th>Clave</Th>
-                <Th>Valor</Th>
-                <Th>Build time</Th>
-                <Th>Acciones</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {variablesIniciales.map((v) => (
-                <tr
-                  key={v.id}
-                  className="border-b border-border last:border-0 hover:bg-surface/50 transition-colors duration-[var(--duration-fast)]"
+        <div className="flex flex-col divide-y divide-border border border-border rounded-[var(--radius-md)] overflow-hidden">
+          {variablesIniciales.map((v) => (
+            <div
+              key={v.id}
+              className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface/50 transition-colors"
+            >
+              <span className="font-mono text-xs text-text-primary flex-1 truncate">
+                {v.clave}=<span className="text-text-muted">••••••••</span>
+              </span>
+
+              <label
+                className="flex items-center gap-1.5 cursor-pointer shrink-0"
+                title="Build time"
+              >
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={v.enBuildTime}
+                  aria-label={`Build time ${v.enBuildTime ? "activado" : "desactivado"}`}
+                  disabled={isLoading}
+                  onClick={() => handleToggle(v.id, v.enBuildTime)}
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors disabled:opacity-40 ${
+                    v.enBuildTime ? "bg-primary-500" : "bg-border"
+                  }`}
                 >
-                  <td className="px-4 py-3 font-body text-sm text-text-primary">
-                    {v.clave}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={v.enBuildTime}
-                      aria-label={`Build time ${v.enBuildTime ? "activado" : "desactivado"}`}
-                      disabled={loading}
-                      onClick={() => handleToggleBuildTime(v.id, v.enBuildTime)}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--duration-fast)] disabled:opacity-40 ${
-                        v.enBuildTime ? "bg-primary-500" : "bg-border"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-[var(--duration-fast)] ${
-                          v.enBuildTime ? "translate-x-4" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    {editingId === v.id ? (
-                      <input
-                        aria-label="Nuevo valor"
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="font-body text-xs bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1 text-text-primary focus:outline-none focus:border-primary-300 w-full"
-                      />
-                    ) : (
-                      <span className="font-body text-xs text-text-muted">
-                        {revealed[v.id] ?? "••••••••"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {editingId === v.id ? (
-                      <div className="flex items-center gap-2">
-                        <Btn
-                          onClick={() => handleGuardarEdicion(v.id)}
-                          disabled={loading}
-                          aria-label="Guardar"
-                        >
-                          Guardar
-                        </Btn>
-                        <Btn
-                          onClick={() => {
-                            setEditingId(null);
-                            setEditValue("");
-                          }}
-                          aria-label="Cancelar"
-                        >
-                          Cancelar
-                        </Btn>
-                      </div>
-                    ) : confirmDeleteId === v.id ? (
-                      <div className="flex items-center gap-2">
-                        <span className="font-body text-xs text-state-error">
-                          ¿Eliminar?
-                        </span>
-                        <Btn
-                          onClick={() => handleConfirmarEliminar(v.id)}
-                          disabled={loading}
-                          aria-label="Confirmar"
-                        >
-                          Confirmar
-                        </Btn>
-                        <Btn
-                          onClick={() => setConfirmDeleteId(null)}
-                          aria-label="Cancelar"
-                        >
-                          Cancelar
-                        </Btn>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Btn
-                          onClick={() => handleRevelar(v.id)}
-                          aria-label="Revelar"
-                        >
-                          Revelar
-                        </Btn>
-                        <Btn
-                          onClick={() => {
-                            setEditingId(v.id);
-                            setEditValue("");
-                          }}
-                          aria-label="Editar"
-                        >
-                          Editar
-                        </Btn>
-                        <Btn
-                          onClick={() => setConfirmDeleteId(v.id)}
-                          aria-label="Eliminar"
-                        >
-                          Eliminar
-                        </Btn>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <span
+                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                      v.enBuildTime ? "translate-x-3.5" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <span className="font-body text-xs text-text-muted">build</span>
+              </label>
+
+              {confirmDeleteId === v.id ? (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-body text-xs text-red-400">
+                    ¿Eliminar?
+                  </span>
+                  <SmallBtn
+                    onClick={() => handleEliminar(v.id)}
+                    disabled={isLoading}
+                  >
+                    Sí
+                  </SmallBtn>
+                  <SmallBtn onClick={() => setConfirmDeleteId(null)}>
+                    No
+                  </SmallBtn>
+                </div>
+              ) : (
+                <SmallBtn
+                  onClick={() => setConfirmDeleteId(v.id)}
+                  disabled={isLoading}
+                  className="shrink-0"
+                >
+                  ×
+                </SmallBtn>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {showAddForm ? (
-        <form onSubmit={handleCrear} className="flex flex-col gap-2 pt-1">
-          <div className="flex gap-2">
-            <input
-              aria-label="Clave"
-              type="text"
-              placeholder="NOMBRE_VARIABLE"
-              value={newClave}
-              onChange={(e) => setNewClave(e.target.value.toUpperCase())}
-              required
-              className="font-body text-xs bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1 text-text-primary focus:outline-none focus:border-primary-300 flex-1"
-            />
-            <input
-              aria-label="Valor"
-              type="text"
-              placeholder="valor del secret"
-              value={newValor}
-              onChange={(e) => setNewValor(e.target.value)}
-              required
-              className="font-body text-xs bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1 text-text-primary focus:outline-none focus:border-primary-300 flex-1"
-            />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer self-start">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={newEnBuildTime}
-              onClick={() => setNewEnBuildTime((v) => !v)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--duration-fast)] ${
-                newEnBuildTime ? "bg-primary-500" : "bg-border"
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-[var(--duration-fast)] ${
-                  newEnBuildTime ? "translate-x-4" : "translate-x-1"
-                }`}
-              />
-            </button>
-            <span className="font-body text-xs text-text-muted">
-              Disponible en build time
-            </span>
-          </label>
-          <div className="flex gap-2">
-            <Btn primary disabled={loading} aria-label="Guardar">
-              {loading ? "…" : "Guardar"}
-            </Btn>
-            <Btn
-              onClick={() => {
-                setShowAddForm(false);
-                setNewClave("");
-                setNewValor("");
-                setNewEnBuildTime(false);
-              }}
-              aria-label="Cancelar"
-            >
-              Cancelar
-            </Btn>
-          </div>
-        </form>
-      ) : showImportForm ? (
-        <form onSubmit={handleImportar} className="flex flex-col gap-2 pt-1">
-          <textarea
-            aria-label="Contenido"
-            rows={8}
-            placeholder={
-              "# Pega aquí el contenido de tu .env\nDATABASE_URL=postgres://...\nAPI_KEY=secreto"
-            }
-            value={importContenido}
-            onChange={(e) => setImportContenido(e.target.value)}
-            required
-            className="font-mono text-xs bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary focus:outline-none focus:border-primary-300 resize-y"
-          />
-          {importResult && (
-            <div className="font-body text-xs text-text-muted flex flex-col gap-0.5">
-              <span>
-                {importResult.creadas} creadas, {importResult.actualizadas}{" "}
-                actualizadas
-              </span>
-              {importResult.invalidas.length > 0 && (
-                <span className="text-state-error">
-                  Claves ignoradas (formato inválido):{" "}
-                  {importResult.invalidas.join(", ")}
-                </span>
-              )}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <Btn primary disabled={loading} aria-label="Importar">
-              {loading ? "…" : "Importar"}
-            </Btn>
-            <Btn
-              onClick={() => {
-                setShowImportForm(false);
-                setImportContenido("");
-                setImportResult(null);
-              }}
-              aria-label="Cancelar"
-            >
-              Cancelar
-            </Btn>
-          </div>
-        </form>
-      ) : (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAddForm(true)}
-            className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors duration-[var(--duration-fast)]"
-          >
-            + Añadir variable
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowImportForm(true);
-              setImportResult(null);
-            }}
-            className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors duration-[var(--duration-fast)]"
-          >
-            Importar .env
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        {saved && (
+          <span className="text-xs text-green-400 font-mono">✓ Guardado</span>
+        )}
+        {invalidas.length > 0 && (
+          <span className="text-xs text-red-400 font-mono">
+            Ignoradas: {invalidas.join(", ")}
+          </span>
+        )}
+        <button
+          onClick={handleAbrirEditor}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1.5 font-display text-xs font-semibold px-4 py-1.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:pointer-events-none"
+        >
+          {isLoading ? "Cargando…" : "Editar variables"}
+        </button>
+      </div>
     </div>
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="px-4 py-3 text-left font-body text-xs text-text-muted uppercase tracking-wider">
-      {children}
-    </th>
-  );
-}
-
-function Btn({
+function SmallBtn({
   children,
   onClick,
   disabled = false,
-  primary = false,
-  "aria-label": ariaLabel,
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  primary?: boolean;
-  "aria-label"?: string;
+  className?: string;
 }) {
   return (
     <button
-      type={onClick ? "button" : "submit"}
+      type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={ariaLabel}
-      className={`font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border transition-colors duration-[var(--duration-fast)] disabled:opacity-40 ${
-        primary
-          ? "bg-primary-500 border-primary-500 text-white hover:bg-primary-700"
-          : "border-border text-text-muted hover:border-primary-300"
-      }`}
+      className={`font-body text-xs px-2 py-0.5 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors disabled:opacity-40 ${className}`}
     >
       {children}
     </button>
