@@ -654,13 +654,21 @@ export const proyectosRouter = router({
         });
       }
 
-      // Replace build: . and context: . with relative path from panelDir to repoDir.
-      // docker compose resolves relative paths from the compose file's directory (.panel/),
-      // so ../{nombre} always points to the sibling repo directory.
+      // Replace build: . (or ./subdir) and context: . (or ./subdir) with the equivalent
+      // path relative from panelDir to repoDir. docker compose resolves relative paths
+      // from the compose file's directory (.panel/), so ../{nombre}[/subdir] always
+      // points to the sibling repo directory (or a subdirectory within it, e.g. a
+      // frontend built from ./frontend in the original repo-root compose).
       const relativePath = `../${nombre}`;
+      const sustituirRelativo = (
+        _match: string,
+        prefijo: string,
+        subruta: string | undefined,
+        sufijo: string,
+      ) => `${prefijo}${relativePath}${subruta ?? ""}${sufijo}`;
       const composeContent = rawContent
-        .replace(/^(\s*build:\s*)\.(\s*)$/gm, `$1${relativePath}$2`)
-        .replace(/^(\s*context:\s*)\.(\s*)$/gm, `$1${relativePath}$2`);
+        .replace(/^(\s*build:\s*)\.(\/\S*)?(\s*)$/gm, sustituirRelativo)
+        .replace(/^(\s*context:\s*)\.(\/\S*)?(\s*)$/gm, sustituirRelativo);
 
       return { composeContent };
     }),

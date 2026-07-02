@@ -2388,6 +2388,34 @@ describe("proyectos.cargarComposeDesdeRepo", () => {
     expect(result.composeContent).toContain("context: ../web-app");
   });
 
+  it("sustituye build/context con subdirectorio (./frontend) preservando la subruta", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      credencialId: null,
+    } as never);
+    vi.mocked(readFile).mockResolvedValue(
+      [
+        "services:",
+        "  web:",
+        "    build: .",
+        "  frontend:",
+        "    build: ./frontend",
+        "  other:",
+        "    build:",
+        "      context: ./apps/other",
+      ].join("\n") as never,
+    );
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.cargarComposeDesdeRepo({
+      id: "p1",
+    });
+
+    expect(result.composeContent).toContain("build: ../web-app");
+    expect(result.composeContent).toContain("build: ../web-app/frontend");
+    expect(result.composeContent).toContain("context: ../web-app/apps/other");
+  });
+
   it("usa clave SSH de la credencial y convierte la URL a formato git@ cuando el proyecto tiene credencialId", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
