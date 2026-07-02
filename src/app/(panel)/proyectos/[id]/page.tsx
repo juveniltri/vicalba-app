@@ -26,6 +26,7 @@ import {
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
+import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
 import {
   deployProyectoAction,
   detenerAction,
@@ -107,53 +108,53 @@ export default async function DetalleProyectoPage({
 
         {/* Barra de acciones */}
         <div className="flex items-center gap-2 flex-wrap">
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await iniciarAction(id);
+              const result = await iniciarAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Iniciar"
+            pendingLabel="Iniciando…"
+            successMessage="Proyecto iniciado"
+            disabled={!canAct || proyecto.estado === "running"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "running"}
-              className={ghostBtn}
-            >
-              <IconCheck className="w-[13px] h-[13px]" /> Iniciar
-            </button>
-          </form>
+            <IconCheck className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await detenerAction(id);
+              const result = await detenerAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Detener"
+            pendingLabel="Deteniendo…"
+            successMessage="Proyecto detenido"
+            disabled={!canAct || proyecto.estado === "stopped"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "stopped"}
-              className={ghostBtn}
-            >
-              <IconStop className="w-[13px] h-[13px]" /> Detener
-            </button>
-          </form>
+            <IconStop className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await restartAction(id);
+              const result = await restartAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Reiniciar"
+            pendingLabel="Reiniciando…"
+            successMessage="Proyecto reiniciado"
+            disabled={!canAct || proyecto.estado === "stopped"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "stopped"}
-              className={ghostBtn}
-            >
-              <IconRedeploy className="w-[13px] h-[13px]" /> Reiniciar
-            </button>
-          </form>
+            <IconRedeploy className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
           <form
             action={async () => {
