@@ -10,7 +10,6 @@ import {
 type Credencial = {
   id: string;
   nombre: string;
-  clavePublica: string;
   creadoEn: Date;
 };
 
@@ -78,7 +77,7 @@ export function GestionCredenciales({
             <thead>
               <tr className="border-b border-border bg-surface">
                 <Th>Nombre</Th>
-                <Th>Clave pública</Th>
+                <Th>Clave SSH</Th>
                 <Th>Acciones</Th>
               </tr>
             </thead>
@@ -91,8 +90,8 @@ export function GestionCredenciales({
                   <td className="px-4 py-3 font-body text-sm text-text-primary">
                     {c.nombre}
                   </td>
-                  <td className="px-4 py-3 font-body text-xs text-text-muted font-mono truncate max-w-[200px]">
-                    {c.clavePublica.slice(0, 40)}…
+                  <td className="px-4 py-3 font-body text-xs text-text-muted font-mono tracking-widest">
+                    ••••••••••••••••••••
                   </td>
                   <td className="px-4 py-3">
                     {confirmDeleteId === c.id ? (

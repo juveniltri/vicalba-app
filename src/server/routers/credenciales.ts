@@ -33,7 +33,7 @@ export async function descifrarClavePrivada(
 export const credencialesRouter = router({
   listar: protectedProcedure.query(async () => {
     return prisma.credencial.findMany({
-      select: { id: true, nombre: true, clavePublica: true, creadoEn: true },
+      select: { id: true, nombre: true, creadoEn: true },
       orderBy: { nombre: "asc" },
     });
   }),
@@ -60,7 +60,6 @@ export const credencialesRouter = router({
           select: {
             id: true,
             nombre: true,
-            clavePublica: true,
             creadoEn: true,
           },
         });

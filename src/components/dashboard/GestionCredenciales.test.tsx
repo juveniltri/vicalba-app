@@ -19,13 +19,11 @@ const credencialesBase = [
   {
     id: "c1",
     nombre: "GitHub producción",
-    clavePublica: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...",
     creadoEn: new Date(),
   },
   {
     id: "c2",
     nombre: "GitLab staging",
-    clavePublica: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...",
     creadoEn: new Date(),
   },
 ];
@@ -35,6 +33,12 @@ describe("GestionCredenciales — renderizado", () => {
     render(<GestionCredenciales credencialesIniciales={credencialesBase} />);
     expect(screen.getByText("GitHub producción")).toBeInTheDocument();
     expect(screen.getByText("GitLab staging")).toBeInTheDocument();
+  });
+
+  it("enmascara la clave SSH con puntos en lugar de mostrarla", () => {
+    render(<GestionCredenciales credencialesIniciales={credencialesBase} />);
+    const celdas = screen.getAllByText(/^•+$/);
+    expect(celdas.length).toBeGreaterThan(0);
   });
 
   it("muestra mensaje vacío si no hay credenciales", () => {

@@ -5,44 +5,70 @@ import { VariablesPanel } from "./VariablesPanel";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
+vi.mock("@monaco-editor/react", () => ({
+  default: ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <textarea
+      data-testid="monaco-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+  loader: { config: vi.fn() },
+}));
+
+vi.mock("next/dynamic", () => ({
+  default: (fn: () => Promise<{ default: unknown }>) => {
+    let Comp: React.ComponentType | null = null;
+    fn().then((m) => {
+      Comp = m.default as React.ComponentType;
+    });
+    return function DynamicWrapper(props: Record<string, unknown>) {
+      if (!Comp) return null;
+      return <Comp {...props} />;
+    };
+  },
+}));
+
 vi.mock("@/app/(panel)/actions", () => ({
-  crearVariableAction: vi.fn().mockResolvedValue(undefined),
-  actualizarVariableAction: vi.fn().mockResolvedValue(undefined),
+  cargarVariablesAction: vi
+    .fn()
+    .mockResolvedValue({
+      contenido: "DATABASE_URL=postgres://secret\nJWT_SECRET=abc123",
+    }),
+  sincronizarVariablesAction: vi
+    .fn()
+    .mockResolvedValue({ guardadas: 2, eliminadas: 0, invalidas: [] }),
   eliminarVariableAction: vi.fn().mockResolvedValue(undefined),
-  revelarVariableAction: vi
-    .fn()
-    .mockResolvedValue({ valor: "postgres://secret" }),
-  importarVariablesAction: vi
-    .fn()
-    .mockResolvedValue({ creadas: 2, actualizadas: 0, invalidas: [] }),
+  toggleBuildTimeAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
-  crearVariableAction,
-  actualizarVariableAction,
+  cargarVariablesAction,
+  sincronizarVariablesAction,
   eliminarVariableAction,
-  revelarVariableAction,
-  importarVariablesAction,
+  toggleBuildTimeAction,
 } from "@/app/(panel)/actions";
 
 const variablesBase = [
-  { id: "v1", clave: "DATABASE_URL", creadoEn: new Date() },
-  { id: "v2", clave: "JWT_SECRET", creadoEn: new Date() },
+  { id: "v1", clave: "DATABASE_URL", enBuildTime: false, creadoEn: new Date() },
+  { id: "v2", clave: "JWT_SECRET", enBuildTime: true, creadoEn: new Date() },
 ];
 
-describe("VariablesPanel — renderizado", () => {
-  it("muestra las claves de las variables", () => {
-    render(
-      <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
-    );
-    expect(screen.getByText("DATABASE_URL")).toBeInTheDocument();
-    expect(screen.getByText("JWT_SECRET")).toBeInTheDocument();
-  });
+describe("VariablesPanel — lista", () => {
+  beforeEach(() => vi.clearAllMocks());
 
-  it("muestra los valores enmascarados", () => {
+  it("muestra las claves enmascaradas en una línea por variable", () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
+    expect(screen.getByText(/DATABASE_URL/)).toBeInTheDocument();
+    expect(screen.getByText(/JWT_SECRET/)).toBeInTheDocument();
     const masks = screen.getAllByText("••••••••");
     expect(masks).toHaveLength(2);
   });
@@ -51,20 +77,26 @@ describe("VariablesPanel — renderizado", () => {
     render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
     expect(screen.getByText(/sin variables/i)).toBeInTheDocument();
   });
+
+  it("muestra el botón Editar variables", () => {
+    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+    expect(
+      screen.getByRole("button", { name: /editar variables/i }),
+    ).toBeInTheDocument();
+  });
 });
 
-describe("VariablesPanel — revelar", () => {
+describe("VariablesPanel — toggle build time", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("llama a revelarVariableAction y muestra el valor en claro", async () => {
+  it("llama a toggleBuildTimeAction al cambiar el toggle", async () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const revelarBtns = screen.getAllByRole("button", { name: /revelar/i });
-    fireEvent.click(revelarBtns[0]);
+    const toggles = screen.getAllByRole("switch");
+    fireEvent.click(toggles[0]);
     await waitFor(() => {
-      expect(revelarVariableAction).toHaveBeenCalledWith("v1");
-      expect(screen.getByText("postgres://secret")).toBeInTheDocument();
+      expect(toggleBuildTimeAction).toHaveBeenCalledWith("v1", true);
     });
   });
 });
@@ -72,164 +104,104 @@ describe("VariablesPanel — revelar", () => {
 describe("VariablesPanel — eliminar con confirmación", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("muestra confirmación antes de eliminar", async () => {
+  it("muestra confirmación al pulsar ×", () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const eliminarBtns = screen.getAllByRole("button", { name: /eliminar/i });
-    fireEvent.click(eliminarBtns[0]);
-    expect(
-      screen.getByRole("button", { name: /confirmar/i }),
-    ).toBeInTheDocument();
+    const deleteBtns = screen.getAllByRole("button", { name: "×" });
+    fireEvent.click(deleteBtns[0]);
+    expect(screen.getByText(/¿Eliminar\?/i)).toBeInTheDocument();
     expect(eliminarVariableAction).not.toHaveBeenCalled();
   });
 
-  it("cancela la eliminación al pulsar cancelar", async () => {
+  it("cancela la eliminación al pulsar No", () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const eliminarBtns = screen.getAllByRole("button", { name: /eliminar/i });
-    fireEvent.click(eliminarBtns[0]);
-    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
+    const deleteBtns = screen.getAllByRole("button", { name: "×" });
+    fireEvent.click(deleteBtns[0]);
+    fireEvent.click(screen.getByRole("button", { name: "No" }));
     expect(eliminarVariableAction).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole("button", { name: /confirmar/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/¿Eliminar\?/i)).not.toBeInTheDocument();
   });
 
-  it("llama a eliminarVariableAction al confirmar", async () => {
+  it("llama a eliminarVariableAction al confirmar con Sí", async () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const eliminarBtns = screen.getAllByRole("button", { name: /eliminar/i });
-    fireEvent.click(eliminarBtns[0]);
-    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
+    const deleteBtns = screen.getAllByRole("button", { name: "×" });
+    fireEvent.click(deleteBtns[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Sí" }));
     await waitFor(() => {
       expect(eliminarVariableAction).toHaveBeenCalledWith("v1");
     });
   });
 });
 
-describe("VariablesPanel — editar con confirmación", () => {
+describe("VariablesPanel — editor Monaco", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("muestra input de edición al pulsar editar", () => {
+  it("abre el editor al pulsar Editar variables", async () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const editarBtns = screen.getAllByRole("button", { name: /editar/i });
-    fireEvent.click(editarBtns[0]);
-    expect(
-      screen.getByRole("textbox", { name: /nuevo valor/i }),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /editar variables/i }));
+    await waitFor(() => {
+      expect(cargarVariablesAction).toHaveBeenCalledWith("p1");
+    });
   });
 
-  it("llama a actualizarVariableAction al guardar", async () => {
+  it("llama a sincronizarVariablesAction al guardar", async () => {
     render(
       <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
     );
-    const editarBtns = screen.getAllByRole("button", { name: /editar/i });
-    fireEvent.click(editarBtns[0]);
-    const input = screen.getByRole("textbox", { name: /nuevo valor/i });
-    fireEvent.change(input, { target: { value: "nuevo-valor" } });
-    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /editar variables/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /guardar variables/i }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /guardar variables/i }));
     await waitFor(() => {
-      expect(actualizarVariableAction).toHaveBeenCalledWith(
-        "v1",
-        "nuevo-valor",
-      );
-    });
-  });
-});
-
-describe("VariablesPanel — añadir variable", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("muestra formulario al pulsar Añadir variable", () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /añadir variable/i }));
-    expect(screen.getByRole("textbox", { name: /clave/i })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /valor/i })).toBeInTheDocument();
-  });
-
-  it("llama a crearVariableAction con los datos del formulario", async () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /añadir variable/i }));
-    fireEvent.change(screen.getByRole("textbox", { name: /clave/i }), {
-      target: { value: "API_KEY" },
-    });
-    fireEvent.change(screen.getByRole("textbox", { name: /valor/i }), {
-      target: { value: "mi-api-key" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
-    await waitFor(() => {
-      expect(crearVariableAction).toHaveBeenCalledWith(
+      expect(sincronizarVariablesAction).toHaveBeenCalledWith(
         "p1",
-        "API_KEY",
-        "mi-api-key",
-        false,
+        "DATABASE_URL=postgres://secret\nJWT_SECRET=abc123",
       );
     });
   });
-});
 
-describe("VariablesPanel — importar .env", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("muestra botón Importar .env", () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
+  it("vuelve a la lista al pulsar Cancelar", async () => {
+    render(
+      <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /editar variables/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /cancelar/i }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
     expect(
-      screen.getByRole("button", { name: /importar \.env/i }),
+      screen.getByRole("button", { name: /editar variables/i }),
     ).toBeInTheDocument();
   });
 
-  it("muestra textarea al pulsar Importar .env", () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
-    expect(
-      screen.getByRole("textbox", { name: /contenido/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("llama a importarVariablesAction con el contenido del textarea", async () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
-    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
-      target: { value: "API_KEY=abc\nDB_URL=postgres://localhost" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
-    await waitFor(() => {
-      expect(importarVariablesAction).toHaveBeenCalledWith(
-        "p1",
-        "API_KEY=abc\nDB_URL=postgres://localhost",
-      );
-    });
-  });
-
-  it("muestra el resumen tras importar correctamente", async () => {
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
-    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
-      target: { value: "API_KEY=abc" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
-    await waitFor(() => {
-      expect(screen.getByText(/2 creadas/i)).toBeInTheDocument();
-    });
-  });
-
-  it("muestra las claves inválidas en el resumen", async () => {
-    vi.mocked(importarVariablesAction).mockResolvedValueOnce({
-      creadas: 1,
-      actualizadas: 0,
+  it("muestra claves inválidas tras guardar", async () => {
+    vi.mocked(sincronizarVariablesAction).mockResolvedValueOnce({
+      guardadas: 1,
+      eliminadas: 0,
       invalidas: ["lowercase_key"],
     });
-    render(<VariablesPanel proyectoId="p1" variablesIniciales={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: /importar \.env/i }));
-    fireEvent.change(screen.getByRole("textbox", { name: /contenido/i }), {
-      target: { value: "VALID=x\nlowercase_key=y" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /importar/i }));
+    render(
+      <VariablesPanel proyectoId="p1" variablesIniciales={variablesBase} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /editar variables/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /guardar variables/i }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /guardar variables/i }));
     await waitFor(() => {
       expect(screen.getByText(/lowercase_key/i)).toBeInTheDocument();
     });

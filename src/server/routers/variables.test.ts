@@ -45,6 +45,7 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       upsert: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -461,5 +462,122 @@ describe("variables.toggleBuildTime", () => {
         enBuildTime: true,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("variables.listarConValores", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve claves con valores descifrados", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      { ...mockVariable, clave: "API_KEY" },
+      { ...mockVariable, clave: "DATABASE_URL" },
+    ] as never);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.listarConValores({
+      proyectoId: "p1",
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ clave: "API_KEY", valor: "valor-descifrado" });
+    expect(descifrar).toHaveBeenCalledTimes(2);
+  });
+
+  it("devuelve array vacío si no hay variables", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.listarConValores({
+      proyectoId: "p1",
+    });
+    expect(result).toEqual([]);
+  });
+});
+
+describe("variables.sincronizar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.variableEntorno.deleteMany).mockResolvedValue({
+      count: 0,
+    } as never);
+    vi.mocked(prisma.variableEntorno.upsert).mockResolvedValue({
+      id: "v1",
+    } as never);
+  });
+
+  it("hace upsert de las variables válidas y elimina las ausentes", async () => {
+    vi.mocked(prisma.variableEntorno.deleteMany).mockResolvedValue({
+      count: 1,
+    } as never);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.sincronizar({
+      proyectoId: "p1",
+      contenido: "API_KEY=secreto\nDATABASE_URL=postgres://localhost/db",
+    });
+    expect(prisma.variableEntorno.deleteMany).toHaveBeenCalledWith({
+      where: {
+        proyectoId: "p1",
+        clave: { notIn: ["API_KEY", "DATABASE_URL"] },
+      },
+    });
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ guardadas: 2, eliminadas: 1, invalidas: [] });
+  });
+
+  it("elimina todas las variables si el contenido está vacío", async () => {
+    vi.mocked(prisma.variableEntorno.deleteMany).mockResolvedValue({
+      count: 3,
+    } as never);
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.sincronizar({
+      proyectoId: "p1",
+      contenido: "",
+    });
+    expect(prisma.variableEntorno.deleteMany).toHaveBeenCalledWith({
+      where: { proyectoId: "p1", clave: { notIn: [] } },
+    });
+    expect(prisma.variableEntorno.upsert).not.toHaveBeenCalled();
+    expect(result).toEqual({ guardadas: 0, eliminadas: 3, invalidas: [] });
+  });
+
+  it("ignora comentarios y devuelve inválidas", async () => {
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.sincronizar({
+      proyectoId: "p1",
+      contenido: "# comentario\nVALID_KEY=ok\nnombre_invalido=x",
+    });
+    expect(result.guardadas).toBe(1);
+    expect(result.invalidas).toEqual(["nombre_invalido"]);
+  });
+
+  it("preserva líneas con = en el valor (DATABASE_URL con credenciales)", async () => {
+    const ctx = await createContext();
+    const result = await createCaller(ctx).variables.sincronizar({
+      proyectoId: "p1",
+      contenido: "DATABASE_URL=postgres://user:pass@host/db?sslmode=require",
+    });
+    expect(result.guardadas).toBe(1);
+    expect(prisma.variableEntorno.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          clave: "DATABASE_URL",
+        }),
+      }),
+    );
+  });
+
+  it("lanza BAD_REQUEST si una línea válida contiene un retorno de carro suelto en el valor", async () => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).variables.sincronizar({
+        proyectoId: "p1",
+        // "\r" a mitad de línea sobrevive al split("\n") + trim() de parsearDotEnv,
+        // así que llega íntegro a valorSchema y debe rechazarse ahí.
+        contenido: "API_KEY=abc\rdef",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(prisma.variableEntorno.upsert).not.toHaveBeenCalled();
   });
 });

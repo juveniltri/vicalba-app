@@ -2,13 +2,27 @@ import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { encontrarServicioPorPuerto } from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
 import { conectarTraefikARed } from "./traefik";
 
 const execFileAsync = promisify(execFile);
 
-async function ensureRepo(
+// docker compose does not substitute ${VAR} in YAML map keys (e.g. top-level
+// network names). Pre-substituting here ensures network/volume declarations
+// match the references inside service definitions.
+function substituirVarsEnCompose(
+  content: string,
+  vars: Array<{ clave: string; valor: string }>,
+): string {
+  return vars.reduce(
+    (acc, { clave, valor }) => acc.replaceAll(`\${${clave}}`, valor),
+    content,
+  );
+}
+
+export async function ensureRepo(
   repoUrl: string,
   repoDir: string,
   gitEnv: NodeJS.ProcessEnv,
@@ -28,9 +42,27 @@ async function ensureRepo(
   }
 }
 
+export async function prepararRepo(
+  repoUrl: string,
+  repoDir: string,
+  rama: string,
+  gitEnv: NodeJS.ProcessEnv,
+): Promise<void> {
+  const opts = { env: gitEnv };
+  await ensureRepo(repoUrl, repoDir, gitEnv);
+  await execFileAsync("git", ["-C", repoDir, "fetch", "origin"], opts);
+  await execFileAsync(
+    "git",
+    ["-C", repoDir, "checkout", "-B", rama, `origin/${rama}`],
+    opts,
+  );
+}
+
 async function conectarContenedoresARedCliente(
   projectSlug: string,
   clienteSlug: string,
+  puerto: number,
+  servicio?: string,
 ): Promise<void> {
   try {
     const redNombre = `cliente-${clienteSlug}-network`;
@@ -38,8 +70,32 @@ async function conectarContenedoresARedCliente(
       all: false,
       filters: { label: [`com.docker.compose.project=${projectSlug}`] },
     });
+    // Un proyecto compose puede tener varios contenedores (db, redis, workers...).
+    // Traefik enruta por alias de red, así que solo el que sirve el puerto configurado
+    // debe recibirlo — si todos comparten alias, Docker resuelve el DNS de forma no
+    // determinista entre ellos.
+    // 1) Si conocemos el nombre del servicio (por el compose YAML), es la señal fiable:
+    //    varios servicios pueden compartir imagen (worker/beat con el mismo Dockerfile
+    //    EXPOSE que web) y entonces todos aparentan exponer el mismo puerto.
+    // 2) Si no, se cae al puerto expuesto por Docker.
+    // 3) Si ninguno aplica (compose sin expose/ports explícito), se conectan todos como
+    //    antes para no romper el deploy.
+    const porServicio = servicio
+      ? containers.filter(
+          (c) => c.Labels?.["com.docker.compose.service"] === servicio,
+        )
+      : [];
+    const conPuertoExpuesto = containers.filter((c) =>
+      c.Ports?.some((p) => p.PrivatePort === puerto),
+    );
+    const destino =
+      porServicio.length > 0
+        ? porServicio
+        : conPuertoExpuesto.length > 0
+          ? conPuertoExpuesto
+          : containers;
     await Promise.all(
-      containers.map(async (c) => {
+      destino.map(async (c) => {
         try {
           await docker.getNetwork(redNombre).connect({
             Container: c.Id,
@@ -47,8 +103,12 @@ async function conectarContenedoresARedCliente(
           });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
-          // NOTE: "already exists" means the container is already on the network — safe to ignore
-          if (!msg.includes("already exists")) throw err;
+          // "already exists" → container already connected, safe to ignore.
+          // "network sandbox" → container network namespace not ready yet (race condition
+          // immediately after compose up); will be connected on the next deploy.
+          if (msg.includes("already exists") || msg.includes("network sandbox"))
+            return;
+          throw err;
         }
       }),
     );
@@ -320,33 +380,44 @@ export async function deployProyecto(params: {
 
     if (tipo === "compose") {
       if (composeContent) {
-        // User-authored compose: write to panelDir so it stays separate from any repo clone
+        // User-authored compose: write to panelDir so it stays separate from any repo clone.
+        // Pre-substitute ${VAR} so network/volume map keys are resolved — docker compose
+        // does not interpolate variables in YAML map keys, only in values.
         const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
-        await writeFile(composePath, composeContent, { encoding: "utf-8" });
+        const processedContent = substituirVarsEnCompose(
+          composeContent,
+          runtimeVars,
+        );
+        await writeFile(composePath, processedContent, { encoding: "utf-8" });
         composeFile = composePath;
-        if (runtimeVars.length > 0) {
-          const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(envFilePath, envContent, {
-            encoding: "utf-8",
-            mode: 0o600,
-          });
-        }
+        // Always write .env — the compose may have `env_file: .env` directives that
+        // require the file to exist even when no vars are configured yet.
+        const envFilePath = `${panelDir}/${proyectoNombre}.env`;
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(envFilePath, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+        // Also write as plain .env so `env_file: .env` in service definitions resolves
+        // correctly relative to the compose file's directory (panelDir).
+        await writeFile(`${panelDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
       } else {
         composeFile = `${repoDir}/docker-compose.yml`;
-        // For repo-based compose files, write .env next to the compose file so
-        // docker compose auto-loads it for ${VAR} substitution on every up/restart.
-        if (runtimeVars.length > 0) {
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(`${repoDir}/.env`, envContent, {
-            encoding: "utf-8",
-            mode: 0o600,
-          });
-        }
+        // Always write .env next to the compose file — docker compose auto-loads it for
+        // ${VAR} substitution, and `env_file: .env` in service definitions requires it
+        // to exist even when no vars are configured yet.
+        const envContent = runtimeVars
+          .map(({ clave, valor }) => `${clave}=${valor}`)
+          .join("\n");
+        await writeFile(`${repoDir}/.env`, envContent, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
       }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
@@ -415,6 +486,17 @@ export async function deployProyecto(params: {
       composeFile = composePath;
     }
 
+    // dockerfile/nodejs/image generan siempre un único servicio "app"; en compose
+    // (repo o composeContent) hay que averiguar cuál de los servicios del YAML es
+    // el que sirve el puerto configurado.
+    const servicioObjetivo =
+      tipo === "compose"
+        ? encontrarServicioPorPuerto(
+            await readFile(composeFile, "utf-8"),
+            puerto,
+          )
+        : "app";
+
     const envFileArgs =
       tipo === "compose" && composeContent && runtimeVars.length > 0
         ? ["--env-file", `${panelDir}/${proyectoNombre}.env`]
@@ -447,7 +529,12 @@ export async function deployProyecto(params: {
     if (tipo !== "image") {
       await asegurarRedCliente(clienteSlug);
       await conectarTraefikARed(clienteSlug);
-      await conectarContenedoresARedCliente(projectSlug, clienteSlug);
+      await conectarContenedoresARedCliente(
+        projectSlug,
+        clienteSlug,
+        puerto,
+        servicioObjetivo,
+      );
     }
 
     onLog?.("✓ Deploy completado");

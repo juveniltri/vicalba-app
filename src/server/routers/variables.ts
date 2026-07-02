@@ -171,4 +171,68 @@ export const variablesRouter = router({
       valor: descifrar(variable.valorCifrado, variable.iv, variable.authTag),
     };
   }),
+
+  listarConValores: protectedProcedure
+    .input(z.object({ proyectoId: z.string() }))
+    .mutation(async ({ input }) => {
+      const vars = await prisma.variableEntorno.findMany({
+        where: { proyectoId: input.proyectoId },
+        select: {
+          clave: true,
+          valorCifrado: true,
+          iv: true,
+          authTag: true,
+        },
+        orderBy: { clave: "asc" },
+      });
+      return vars.map(({ clave, valorCifrado, iv, authTag }) => ({
+        clave,
+        valor: descifrar(valorCifrado, iv, authTag),
+      }));
+    }),
+
+  sincronizar: protectedProcedure
+    .input(z.object({ proyectoId: z.string(), contenido: z.string() }))
+    .mutation(async ({ input }) => {
+      const { proyectoId, contenido } = input;
+      const parsed = parsearDotEnv(contenido);
+      const validas = parsed.filter((e) => e.valida);
+      const invalidas = parsed.filter((e) => !e.valida).map((e) => e.clave);
+
+      for (const { clave, valor } of validas) {
+        const result = valorSchema.safeParse(valor);
+        if (!result.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Valor inválido para ${clave}: ${result.error.message}`,
+          });
+        }
+      }
+
+      const clavesNuevas = validas.map((e) => e.clave);
+
+      const eliminadas = await prisma.variableEntorno.deleteMany({
+        where: { proyectoId, clave: { notIn: clavesNuevas } },
+      });
+
+      if (validas.length > 0) {
+        await Promise.all(
+          validas.map(({ clave, valor }) => {
+            const { valorCifrado, iv, authTag } = cifrar(valor);
+            return prisma.variableEntorno.upsert({
+              where: { proyectoId_clave: { proyectoId, clave } },
+              create: { proyectoId, clave, valorCifrado, iv, authTag },
+              update: { valorCifrado, iv, authTag },
+              select: { id: true },
+            });
+          }),
+        );
+      }
+
+      return {
+        guardadas: validas.length,
+        eliminadas: eliminadas.count,
+        invalidas,
+      };
+    }),
 });
