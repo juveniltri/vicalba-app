@@ -9,6 +9,7 @@ const {
   mockListContainers,
   mockConnect,
   mockGetNetwork,
+  mockReadFile,
 } = vi.hoisted(() => {
   const execFileMock = vi.fn();
   // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
@@ -50,6 +51,7 @@ const {
     mockWriteFile: vi.fn().mockResolvedValue(undefined),
     mockMkdir: vi.fn().mockResolvedValue(undefined),
     mockUnlink: vi.fn().mockResolvedValue(undefined),
+    mockReadFile: vi.fn().mockResolvedValue(""),
     mockListContainers: vi.fn().mockResolvedValue([]),
     mockConnect: vi.fn().mockResolvedValue(undefined),
     mockGetNetwork: vi.fn(),
@@ -64,6 +66,7 @@ vi.mock("node:fs/promises", () => ({
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
   unlink: mockUnlink,
+  readFile: mockReadFile,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -166,6 +169,54 @@ describe("deployProyecto", () => {
       { Id: "c-db", Names: ["/db"], Ports: [{ PrivatePort: 5432 }] },
       { Id: "c-web", Names: ["/web"], Ports: [{ PrivatePort: 8000 }] },
       { Id: "c-worker", Names: ["/worker"], Ports: [] },
+    ]);
+
+    await deployProyecto({ ...baseParams, puerto: 8000 });
+
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-web",
+      EndpointConfig: { Aliases: ["acme-web-app"] },
+    });
+  });
+
+  it("distingue por nombre de servicio cuando varios contenedores comparten imagen y puerto expuesto", async () => {
+    // web/worker/beat construidos del mismo Dockerfile (EXPOSE 8000) reportan el mismo
+    // puerto en Docker aunque solo "web" sirva HTTP — el YAML es la señal fiable.
+    mockReadFile.mockResolvedValueOnce(
+      [
+        "services:",
+        "  db:",
+        "    image: postgres:16",
+        "  web:",
+        "    build: ../crm",
+        "    expose:",
+        '      - "8000"',
+        "  worker:",
+        "    build: ../crm",
+        "    command: celery worker",
+        "  beat:",
+        "    build: ../crm",
+        "    command: celery beat",
+      ].join("\n"),
+    );
+    mockListContainers.mockResolvedValue([
+      { Id: "c-db", Labels: { "com.docker.compose.service": "db" } },
+      {
+        Id: "c-web",
+        Labels: { "com.docker.compose.service": "web" },
+        Ports: [{ PrivatePort: 8000 }],
+      },
+      {
+        Id: "c-worker",
+        Labels: { "com.docker.compose.service": "worker" },
+        Ports: [{ PrivatePort: 8000 }],
+      },
+      {
+        Id: "c-beat",
+        Labels: { "com.docker.compose.service": "beat" },
+        Ports: [{ PrivatePort: 8000 }],
+      },
     ]);
 
     await deployProyecto({ ...baseParams, puerto: 8000 });

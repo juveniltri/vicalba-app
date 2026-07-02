@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { encontrarServicioPorPuerto } from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
 import { conectarTraefikARed } from "./traefik";
@@ -61,6 +62,7 @@ async function conectarContenedoresARedCliente(
   projectSlug: string,
   clienteSlug: string,
   puerto: number,
+  servicio?: string,
 ): Promise<void> {
   try {
     const redNombre = `cliente-${clienteSlug}-network`;
@@ -69,15 +71,29 @@ async function conectarContenedoresARedCliente(
       filters: { label: [`com.docker.compose.project=${projectSlug}`] },
     });
     // Un proyecto compose puede tener varios contenedores (db, redis, workers...).
-    // Traefik enruta por alias de red, así que solo el que expone el puerto configurado
+    // Traefik enruta por alias de red, así que solo el que sirve el puerto configurado
     // debe recibirlo — si todos comparten alias, Docker resuelve el DNS de forma no
-    // determinista entre ellos. Si ninguno declara el puerto (compose sin expose/ports
-    // explícito), se cae al comportamiento anterior para no romper el deploy.
+    // determinista entre ellos.
+    // 1) Si conocemos el nombre del servicio (por el compose YAML), es la señal fiable:
+    //    varios servicios pueden compartir imagen (worker/beat con el mismo Dockerfile
+    //    EXPOSE que web) y entonces todos aparentan exponer el mismo puerto.
+    // 2) Si no, se cae al puerto expuesto por Docker.
+    // 3) Si ninguno aplica (compose sin expose/ports explícito), se conectan todos como
+    //    antes para no romper el deploy.
+    const porServicio = servicio
+      ? containers.filter(
+          (c) => c.Labels?.["com.docker.compose.service"] === servicio,
+        )
+      : [];
     const conPuertoExpuesto = containers.filter((c) =>
       c.Ports?.some((p) => p.PrivatePort === puerto),
     );
     const destino =
-      conPuertoExpuesto.length > 0 ? conPuertoExpuesto : containers;
+      porServicio.length > 0
+        ? porServicio
+        : conPuertoExpuesto.length > 0
+          ? conPuertoExpuesto
+          : containers;
     await Promise.all(
       destino.map(async (c) => {
         try {
@@ -470,6 +486,17 @@ export async function deployProyecto(params: {
       composeFile = composePath;
     }
 
+    // dockerfile/nodejs/image generan siempre un único servicio "app"; en compose
+    // (repo o composeContent) hay que averiguar cuál de los servicios del YAML es
+    // el que sirve el puerto configurado.
+    const servicioObjetivo =
+      tipo === "compose"
+        ? encontrarServicioPorPuerto(
+            await readFile(composeFile, "utf-8"),
+            puerto,
+          )
+        : "app";
+
     const envFileArgs =
       tipo === "compose" && composeContent && runtimeVars.length > 0
         ? ["--env-file", `${panelDir}/${proyectoNombre}.env`]
@@ -502,7 +529,12 @@ export async function deployProyecto(params: {
     if (tipo !== "image") {
       await asegurarRedCliente(clienteSlug);
       await conectarTraefikARed(clienteSlug);
-      await conectarContenedoresARedCliente(projectSlug, clienteSlug, puerto);
+      await conectarContenedoresARedCliente(
+        projectSlug,
+        clienteSlug,
+        puerto,
+        servicioObjetivo,
+      );
     }
 
     onLog?.("✓ Deploy completado");
