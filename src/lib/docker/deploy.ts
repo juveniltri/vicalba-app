@@ -60,6 +60,7 @@ export async function prepararRepo(
 async function conectarContenedoresARedCliente(
   projectSlug: string,
   clienteSlug: string,
+  puerto: number,
 ): Promise<void> {
   try {
     const redNombre = `cliente-${clienteSlug}-network`;
@@ -67,8 +68,18 @@ async function conectarContenedoresARedCliente(
       all: false,
       filters: { label: [`com.docker.compose.project=${projectSlug}`] },
     });
+    // Un proyecto compose puede tener varios contenedores (db, redis, workers...).
+    // Traefik enruta por alias de red, así que solo el que expone el puerto configurado
+    // debe recibirlo — si todos comparten alias, Docker resuelve el DNS de forma no
+    // determinista entre ellos. Si ninguno declara el puerto (compose sin expose/ports
+    // explícito), se cae al comportamiento anterior para no romper el deploy.
+    const conPuertoExpuesto = containers.filter((c) =>
+      c.Ports?.some((p) => p.PrivatePort === puerto),
+    );
+    const destino =
+      conPuertoExpuesto.length > 0 ? conPuertoExpuesto : containers;
     await Promise.all(
-      containers.map(async (c) => {
+      destino.map(async (c) => {
         try {
           await docker.getNetwork(redNombre).connect({
             Container: c.Id,
@@ -491,7 +502,7 @@ export async function deployProyecto(params: {
     if (tipo !== "image") {
       await asegurarRedCliente(clienteSlug);
       await conectarTraefikARed(clienteSlug);
-      await conectarContenedoresARedCliente(projectSlug, clienteSlug);
+      await conectarContenedoresARedCliente(projectSlug, clienteSlug, puerto);
     }
 
     onLog?.("✓ Deploy completado");

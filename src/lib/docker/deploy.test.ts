@@ -160,6 +160,33 @@ describe("deployProyecto", () => {
 
     await expect(deployProyecto(baseParams)).resolves.toBeDefined();
   });
+
+  it("solo alía al contenedor que expone el puerto configurado, no a todo el stack", async () => {
+    mockListContainers.mockResolvedValue([
+      { Id: "c-db", Names: ["/db"], Ports: [{ PrivatePort: 5432 }] },
+      { Id: "c-web", Names: ["/web"], Ports: [{ PrivatePort: 8000 }] },
+      { Id: "c-worker", Names: ["/worker"], Ports: [] },
+    ]);
+
+    await deployProyecto({ ...baseParams, puerto: 8000 });
+
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-web",
+      EndpointConfig: { Aliases: ["acme-web-app"] },
+    });
+  });
+
+  it("si ningún contenedor declara el puerto, cae al comportamiento anterior (todos)", async () => {
+    mockListContainers.mockResolvedValue([
+      { Id: "c-db", Names: ["/db"], Ports: [{ PrivatePort: 5432 }] },
+      { Id: "c-worker", Names: ["/worker"], Ports: [] },
+    ]);
+
+    await deployProyecto({ ...baseParams, puerto: 8000 });
+
+    expect(mockConnect).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("deployProyecto con variables de entorno", () => {
