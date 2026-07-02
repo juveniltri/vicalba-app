@@ -61,6 +61,16 @@ vi.mock("@/lib/docker/deploys", () => ({
   ejecutarDeploy: vi.fn().mockResolvedValue({ resultado: "exito", output: "" }),
 }));
 
+vi.mock("@/lib/docker/deploy", () => ({
+  prepararRepo: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  readFile: vi.fn(),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/docker/networks", () => ({
   asegurarRedCliente: vi.fn().mockResolvedValue(undefined),
   eliminarRedCliente: vi.fn().mockResolvedValue(undefined),
@@ -102,6 +112,8 @@ import {
   eliminarConfigTraefik,
 } from "@/lib/traefik/config";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
+import { prepararRepo } from "@/lib/docker/deploy";
+import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
 import {
@@ -1718,6 +1730,39 @@ describe("proyectos.rollback", () => {
       );
     });
   });
+
+  it("no separa variables build-time en rollback de proyecto compose con composeContent", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      tipo: "compose" as const,
+      composeContent: "services:\n  app:\n    image: nginx\n",
+    } as never);
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        clave: "BUILD_VAR",
+        valorCifrado: "cifrado-build",
+        iv: "iv-build",
+        authTag: "tag-build",
+        enBuildTime: true,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    await vi.waitFor(() => {
+      expect(ejecutarDeploy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variables: [{ clave: "BUILD_VAR", valor: "valor-descifrado" }],
+          variablesBuildTime: [],
+        }),
+      );
+    });
+  });
 });
 
 describe("proyectos.asignarCredencial", () => {
@@ -2277,5 +2322,116 @@ describe("proyectos.deploy — composeContent", () => {
     await expect(
       createCaller(ctx).proyectos.deploy({ id: "p1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+describe("proyectos.cargarComposeDesdeRepo", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.cargarComposeDesdeRepo({ id: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lanza BAD_REQUEST si el proyecto no tiene repositorio configurado", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: null,
+    } as never);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.cargarComposeDesdeRepo({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("clona/actualiza el repo y sustituye build/context por ruta relativa, sin credencial", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      credencialId: null,
+    } as never);
+    vi.mocked(readFile).mockResolvedValue(
+      [
+        "services:",
+        "  app:",
+        "    build: .",
+        "    image: myapp",
+        "  other:",
+        "    build:",
+        "      context: .",
+      ].join("\n") as never,
+    );
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.cargarComposeDesdeRepo({
+      id: "p1",
+    });
+
+    expect(prepararRepo).toHaveBeenCalledWith(
+      "https://github.com/org/web-app",
+      "/var/vicalba/repos/cliente-uno/web-app",
+      "main",
+      expect.any(Object),
+    );
+    expect(readFile).toHaveBeenCalledWith(
+      "/var/vicalba/repos/cliente-uno/web-app/docker-compose.yml",
+      "utf-8",
+    );
+    expect(result.composeContent).toContain("build: ../web-app");
+    expect(result.composeContent).toContain("context: ../web-app");
+  });
+
+  it("usa clave SSH de la credencial y convierte la URL a formato git@ cuando el proyecto tiene credencialId", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      credencialId: "cred-1",
+    } as never);
+    vi.mocked(prisma.credencial.findUnique).mockResolvedValue({
+      id: "cred-1",
+      nombre: "GitHub key",
+      clavePublica: "ssh-rsa AAAA...",
+      clavePrivadaCifrada: "enc-key",
+      iv: "iv-hex",
+      authTag: "auth-hex",
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    } as never);
+    vi.mocked(readFile).mockResolvedValue(
+      "services:\n  app:\n    image: x\n" as never,
+    );
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.cargarComposeDesdeRepo({ id: "p1" });
+
+    expect(prepararRepo).toHaveBeenCalledWith(
+      "git@github.com:org/web-app.git",
+      "/var/vicalba/repos/cliente-uno/web-app",
+      "main",
+      expect.objectContaining({
+        GIT_SSH_COMMAND: expect.stringContaining(
+          "/var/vicalba/repos/cliente-uno/.panel/web-app.deploy_key",
+        ),
+      }),
+    );
+  });
+
+  it("lanza NOT_FOUND si no encuentra docker-compose.yml en el repositorio", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      credencialId: null,
+    } as never);
+    vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.cargarComposeDesdeRepo({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

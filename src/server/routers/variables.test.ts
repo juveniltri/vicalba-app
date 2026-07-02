@@ -567,4 +567,17 @@ describe("variables.sincronizar", () => {
       }),
     );
   });
+
+  it("lanza BAD_REQUEST si una línea válida contiene un retorno de carro suelto en el valor", async () => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).variables.sincronizar({
+        proyectoId: "p1",
+        // "\r" a mitad de línea sobrevive al split("\n") + trim() de parsearDotEnv,
+        // así que llega íntegro a valorSchema y debe rechazarse ahí.
+        contenido: "API_KEY=abc\rdef",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(prisma.variableEntorno.upsert).not.toHaveBeenCalled();
+  });
 });
