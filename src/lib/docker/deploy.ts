@@ -151,6 +151,9 @@ function generarDockerfileNodejs(
     return [
       "FROM node:20-alpine AS builder",
       "WORKDIR /app",
+      // python3/make/g++: dependencias nativas (better-sqlite3, sharp, bcrypt...) sin
+      // binario prebuilt para node:20-alpine caen a node-gyp, que necesita este toolchain.
+      "RUN apk add --no-cache python3 make g++",
       "COPY . .",
       "RUN npm ci",
       `RUN ${buildCmd} && rm -f .env.local`,
@@ -167,6 +170,7 @@ function generarDockerfileNodejs(
   return [
     "FROM node:20-alpine",
     "WORKDIR /app",
+    "RUN apk add --no-cache python3 make g++",
     "COPY . .",
     "RUN npm ci",
     `RUN ${buildCmd}`,
