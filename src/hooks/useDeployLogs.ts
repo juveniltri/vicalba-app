@@ -12,6 +12,15 @@ export function useDeployLogs(proyectoId: string | null, active: boolean) {
   const [done, setDone] = useState<"exito" | "error" | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
+  // Reset del estado al cambiar de proyecto (no al terminar un deploy):
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [prevProyectoId, setPrevProyectoId] = useState(proyectoId);
+  if (proyectoId !== prevProyectoId) {
+    setPrevProyectoId(proyectoId);
+    setLines([]);
+    setDone(null);
+  }
+
   useEffect(() => {
     if (!proyectoId || !active) return;
 
@@ -22,6 +31,7 @@ export function useDeployLogs(proyectoId: string | null, active: boolean) {
       // El servidor reenvía todo el backlog en cada (re)conexión, así que
       // arrancamos de cero para no duplicar líneas ya mostradas.
       setLines([]);
+      setDone(null);
     };
 
     es.onmessage = (event: MessageEvent<string>) => {
@@ -48,8 +58,6 @@ export function useDeployLogs(proyectoId: string | null, active: boolean) {
     return () => {
       es.close();
       esRef.current = null;
-      setLines([]);
-      setDone(null);
     };
   }, [proyectoId, active]);
 

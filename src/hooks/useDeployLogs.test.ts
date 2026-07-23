@@ -127,4 +127,41 @@ describe("useDeployLogs", () => {
     unmount();
     expect(mockEs.close).toHaveBeenCalled();
   });
+
+  it("mantiene lines y done cuando active pasa a false tras completarse el deploy", () => {
+    const { result, rerender } = renderHook(
+      ({ active }) => useDeployLogs("p1", active),
+      { initialProps: { active: true } },
+    );
+    act(() => {
+      mockEs.onmessage?.({ data: JSON.stringify({ line: "construyendo…" }) });
+      mockEs.onmessage?.({
+        data: JSON.stringify({ tipo: "done", resultado: "exito" }),
+      });
+    });
+    expect(result.current.lines).toEqual(["construyendo…"]);
+    expect(result.current.done).toBe("exito");
+
+    rerender({ active: false });
+
+    expect(result.current.lines).toEqual(["construyendo…"]);
+    expect(result.current.done).toBe("exito");
+  });
+
+  it("resetea lines y done cuando cambia el proyectoId", () => {
+    const { result, rerender } = renderHook(
+      ({ proyectoId }: { proyectoId: string }) =>
+        useDeployLogs(proyectoId, true),
+      { initialProps: { proyectoId: "p1" } },
+    );
+    act(() => {
+      mockEs.onmessage?.({ data: JSON.stringify({ line: "línea de p1" }) });
+    });
+    expect(result.current.lines).toEqual(["línea de p1"]);
+
+    rerender({ proyectoId: "p2" });
+
+    expect(result.current.lines).toEqual([]);
+    expect(result.current.done).toBeNull();
+  });
 });
