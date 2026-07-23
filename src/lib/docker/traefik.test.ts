@@ -197,4 +197,20 @@ describe("leerFicheroTraefik", () => {
       /No such file or directory/,
     );
   });
+
+  it("no se cuelga indefinidamente si el exec de Docker nunca responde (timeout)", async () => {
+    vi.useFakeTimers();
+    try {
+      mockListContainers.mockResolvedValue([mockTraefik]);
+      // Simula un exec que nunca resuelve (daemon colgado, socket saturado, etc.)
+      mockExecStart.mockReturnValue(new Promise(() => {}));
+
+      const promise = leerFicheroTraefik("/letsencrypt/acme.json");
+      const assertion = expect(promise).rejects.toThrow(/tiempo|timeout/i);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

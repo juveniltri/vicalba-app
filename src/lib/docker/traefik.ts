@@ -14,12 +14,30 @@ async function encontrarContenedorTraefik() {
   );
 }
 
+const TIMEOUT_MS = 5_000;
+
 // Traefik fuerza permisos 600 en su fichero de certificados (propiedad de su
 // propio usuario, normalmente root), así que el panel —que corre como usuario
 // no-root— no puede leerlo aunque comparta el volumen. Lo leemos vía `docker
 // exec` en el propio contenedor de Traefik, reutilizando el acceso al socket
 // Docker que el panel ya tiene para gestionar el resto de contenedores.
+//
+// leerEstadoSSL se llama una vez POR PROYECTO CON DOMINIO en el listado del
+// dashboard (justo donde redirige el login) — si el exec se queda colgado
+// (daemon saturado, socket sin responder), no puede bloquear el panel entero.
 export async function leerFicheroTraefik(ruta: string): Promise<string> {
+  return Promise.race([
+    leerFicheroTraefikSinTimeout(ruta),
+    new Promise<string>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Tiempo de espera agotado leyendo ${ruta}`)),
+        TIMEOUT_MS,
+      ),
+    ),
+  ]);
+}
+
+async function leerFicheroTraefikSinTimeout(ruta: string): Promise<string> {
   const traefik = await encontrarContenedorTraefik();
   if (!traefik) {
     throw new Error(
