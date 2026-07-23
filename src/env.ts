@@ -33,7 +33,9 @@ const serverSchema = z.object({
   // Deploy — directorio local donde se clonan los repos de los proyectos
   REPOS_DIR: z.string().default("/var/vicalba/repos"),
   TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
-  ACME_JSON_PATH: z.string().default("/var/vicalba/traefik/acme.json"),
+  // Ruta dentro del contenedor Traefik (coincide con `storage` en traefik.yml) —
+  // se lee vía `docker exec` en ese contenedor, no como fichero local del panel.
+  ACME_JSON_PATH: z.string().default("/letsencrypt/acme.json"),
 
   // Panel — dominio público del panel (usado en next.config.ts para redirects HTTPS)
   PANEL_DOMAIN: z.string().optional(),
@@ -65,7 +67,7 @@ const buildTimeDummy = {
   TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
   REPOS_DIR: "/var/vicalba/repos",
   TRAEFIK_CONTAINER_NAME: "traefik",
-  ACME_JSON_PATH: "/var/vicalba/traefik/acme.json",
+  ACME_JSON_PATH: "/letsencrypt/acme.json",
   LOG_LEVEL: "info" as const,
 };
 

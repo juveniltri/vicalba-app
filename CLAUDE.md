@@ -179,9 +179,14 @@ mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
 
 Los certificados de Let's Encrypt los guarda Traefik en el volumen Docker con
 nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
-bind-mounted — Docker lo crea solo al arrancar. El panel monta ese mismo volumen
-en modo lectura (`ACME_JSON_PATH=/letsencrypt/acme.json` en `docker-compose.yml`)
-para que `leerEstadoSSL` pueda leer el estado real de los certificados.
+bind-mounted — Docker lo crea solo al arrancar. Traefik fuerza permisos 600 en
+ese fichero (propiedad de su propio usuario), así que el panel —que corre como
+usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
+`leerEstadoSSL` no lee el fichero directamente: usa `leerFicheroTraefik`
+(`src/lib/docker/traefik.ts`), que hace `docker exec cat <ruta>` en el propio
+contenedor Traefik vía el socket Docker que el panel ya tiene montado.
+`ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
+del contenedor Traefik, debe coincidir con `storage` en `traefik/traefik.yml`.
 
 ### Primera vez
 

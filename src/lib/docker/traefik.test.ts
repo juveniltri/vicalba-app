@@ -5,17 +5,29 @@ const {
   mockGetNetwork,
   mockNetworkConnect,
   mockNetworkDisconnect,
+  mockGetContainer,
+  mockExec,
+  mockExecStart,
+  mockExecInspect,
+  mockDemuxStream,
 } = vi.hoisted(() => ({
   mockListContainers: vi.fn(),
   mockGetNetwork: vi.fn(),
   mockNetworkConnect: vi.fn(),
   mockNetworkDisconnect: vi.fn(),
+  mockGetContainer: vi.fn(),
+  mockExec: vi.fn(),
+  mockExecStart: vi.fn(),
+  mockExecInspect: vi.fn(),
+  mockDemuxStream: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
   docker: {
     listContainers: mockListContainers,
     getNetwork: mockGetNetwork,
+    getContainer: mockGetContainer,
+    modem: { demuxStream: mockDemuxStream },
   },
 }));
 
@@ -23,11 +35,15 @@ vi.mock("@/env", () => ({
   env: {
     TRAEFIK_CONTAINER_NAME: "traefik",
     DOCKER_SOCKET_PATH: "/var/run/docker.sock",
-    ACME_JSON_PATH: "/var/vicalba/traefik/acme.json",
+    ACME_JSON_PATH: "/letsencrypt/acme.json",
   },
 }));
 
-import { conectarTraefikARed, desconectarTraefikDeRed } from "./traefik";
+import {
+  conectarTraefikARed,
+  desconectarTraefikDeRed,
+  leerFicheroTraefik,
+} from "./traefik";
 
 const mockTraefik = { Id: "abc123", Names: ["/traefik"] };
 
@@ -120,5 +136,65 @@ describe("desconectarTraefikDeRed", () => {
 
     await expect(desconectarTraefikDeRed("acme")).resolves.not.toThrow();
     expect(mockNetworkDisconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe("leerFicheroTraefik", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetContainer.mockReturnValue({ exec: mockExec });
+    mockExec.mockResolvedValue({
+      start: mockExecStart,
+      inspect: mockExecInspect,
+    });
+    mockExecStart.mockResolvedValue({});
+  });
+
+  function mockSalida(stdout: string, stderr = "") {
+    mockDemuxStream.mockImplementation(
+      (
+        _raw: unknown,
+        out: { end: (chunk?: Buffer) => void },
+        err: { end: (chunk?: Buffer) => void },
+      ) => {
+        out.end(stdout ? Buffer.from(stdout) : undefined);
+        err.end(stderr ? Buffer.from(stderr) : undefined);
+      },
+    );
+  }
+
+  it("ejecuta `cat <ruta>` en el contenedor Traefik y devuelve el stdout", async () => {
+    mockListContainers.mockResolvedValue([mockTraefik]);
+    mockExecInspect.mockResolvedValue({ ExitCode: 0 });
+    mockSalida('{"letsencrypt":{}}');
+
+    const content = await leerFicheroTraefik("/letsencrypt/acme.json");
+
+    expect(mockGetContainer).toHaveBeenCalledWith("abc123");
+    expect(mockExec).toHaveBeenCalledWith({
+      Cmd: ["cat", "/letsencrypt/acme.json"],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    expect(content).toBe('{"letsencrypt":{}}');
+  });
+
+  it("lanza un error si el contenedor Traefik no existe", async () => {
+    mockListContainers.mockResolvedValue([]);
+
+    await expect(leerFicheroTraefik("/letsencrypt/acme.json")).rejects.toThrow(
+      /no encontrado/,
+    );
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("lanza un error con el stderr si el comando falla (ExitCode != 0)", async () => {
+    mockListContainers.mockResolvedValue([mockTraefik]);
+    mockExecInspect.mockResolvedValue({ ExitCode: 1 });
+    mockSalida("", "cat: /letsencrypt/acme.json: No such file or directory");
+
+    await expect(leerFicheroTraefik("/letsencrypt/acme.json")).rejects.toThrow(
+      /No such file or directory/,
+    );
   });
 });
