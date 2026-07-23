@@ -18,6 +18,12 @@ export function useDeployLogs(proyectoId: string | null, active: boolean) {
     const es = new EventSource(`/api/projects/${proyectoId}/deploy-logs`);
     esRef.current = es;
 
+    es.onopen = () => {
+      // El servidor reenvía todo el backlog en cada (re)conexión, así que
+      // arrancamos de cero para no duplicar líneas ya mostradas.
+      setLines([]);
+    };
+
     es.onmessage = (event: MessageEvent<string>) => {
       const data = JSON.parse(event.data) as SseEvent;
       if ("line" in data) {
@@ -32,7 +38,11 @@ export function useDeployLogs(proyectoId: string | null, active: boolean) {
     };
 
     es.onerror = () => {
-      es.close();
+      // En errores transitorios, EventSource reintenta la conexión de forma
+      // nativa; solo cerramos si el navegador ya ha dado la conexión por muerta.
+      if (es.readyState === EventSource.CLOSED) {
+        es.close();
+      }
     };
 
     return () => {

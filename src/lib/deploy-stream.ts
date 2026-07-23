@@ -7,22 +7,35 @@ interface DeployEmitter extends EventEmitter {
   emit(event: "done", resultado: "exito" | "error"): boolean;
 }
 
-const emitters = new Map<string, DeployEmitter>();
-
-export function getOrCreateDeployEmitter(proyectoId: string): DeployEmitter {
-  if (!emitters.has(proyectoId)) {
-    emitters.set(proyectoId, new EventEmitter() as DeployEmitter);
-  }
-  return emitters.get(proyectoId)!;
+interface DeployStreamState {
+  emitter: DeployEmitter;
+  lines: string[];
+  done: "exito" | "error" | null;
 }
 
-export function getDeployEmitter(
+const streams = new Map<string, DeployStreamState>();
+
+export function getOrCreateDeployEmitter(proyectoId: string): DeployEmitter {
+  let state = streams.get(proyectoId);
+  if (!state) {
+    const emitter = new EventEmitter() as DeployEmitter;
+    state = { emitter, lines: [], done: null };
+    streams.set(proyectoId, state);
+    emitter.on("line", (line) => state!.lines.push(line));
+    emitter.on("done", (resultado) => {
+      state!.done = resultado;
+    });
+  }
+  return state.emitter;
+}
+
+export function getDeploySnapshot(
   proyectoId: string,
-): DeployEmitter | undefined {
-  return emitters.get(proyectoId);
+): DeployStreamState | undefined {
+  return streams.get(proyectoId);
 }
 
 export function clearDeployEmitter(proyectoId: string): void {
-  emitters.get(proyectoId)?.removeAllListeners();
-  emitters.delete(proyectoId);
+  streams.get(proyectoId)?.emitter.removeAllListeners();
+  streams.delete(proyectoId);
 }
