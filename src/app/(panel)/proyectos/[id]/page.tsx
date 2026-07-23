@@ -74,10 +74,11 @@ export default async function DetalleProyectoPage({
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
+  const sslPendiente = !!proyecto.dominio && !estadoSSL?.activo;
 
   return (
     <div className="px-10 pt-8 pb-16">
-      <DeployPoller isDeploying={isDeploying} />
+      <DeployPoller isDeploying={isDeploying} sslPendiente={sslPendiente} />
 
       {/* ── Cabecera ───────────────────────────────────────────── */}
       <div className="mb-8">
