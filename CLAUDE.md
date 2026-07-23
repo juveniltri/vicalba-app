@@ -173,11 +173,15 @@ npm run db:reset         # reset + migrate + seed
 ```bash
 # Crear directorios persistentes
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
-touch /var/vicalba/traefik/acme.json
-chmod 600 /var/vicalba/traefik/acme.json
 
 # Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
 ```
+
+Los certificados de Let's Encrypt los guarda Traefik en el volumen Docker con
+nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
+bind-mounted — Docker lo crea solo al arrancar. El panel monta ese mismo volumen
+en modo lectura (`ACME_JSON_PATH=/letsencrypt/acme.json` en `docker-compose.yml`)
+para que `leerEstadoSSL` pueda leer el estado real de los certificados.
 
 ### Primera vez
 

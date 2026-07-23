@@ -63,12 +63,17 @@ services:
       DOCKER_SOCKET_PATH: /var/run/docker.sock
       TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
       REPOS_DIR: /var/vicalba/repos
+      # Traefik guarda los certificados en el volumen con nombre `letsencrypt`,
+      # no en /var/vicalba/traefik/acme.json — debe coincidir con `storage` en traefik.yml.
+      ACME_JSON_PATH: /letsencrypt/acme.json
       NODE_ENV: production
     volumes:
       # Acceso al daemon Docker del host para gestionar contenedores de clientes
       - /var/run/docker.sock:/var/run/docker.sock
       # Config dinámica de Traefik — compartida con el contenedor traefik
       - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      # Estado de certificados SSL de Traefik — solo lectura, para leerEstadoSSL
+      - letsencrypt:/letsencrypt:ro
       # Repositorios clonados para los deploys
       - /var/vicalba/repos:/var/vicalba/repos
       # Métricas del host — solo lectura
