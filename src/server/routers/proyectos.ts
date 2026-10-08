@@ -558,7 +558,9 @@ export const proyectosRouter = router({
         nombre: cliente.nombre,
         proyectos: await Promise.all(
           cliente.proyectos.map(async (p) => {
-            const ssl = p.dominio ? await leerEstadoSSL(p.dominio) : null;
+            // HACK: comprobación SSL desactivada temporalmente — leerEstadoSSL
+            // (docker exec por proyecto) relentizaba el dashboard. Reactivar
+            // cuando se resuelva el rendimiento (ver leerFicheroTraefik).
             return {
               id: p.id,
               nombre: p.nombre,
@@ -574,7 +576,7 @@ export const proyectosRouter = router({
               dockerfilePath: p.dockerfilePath,
               buildCommand: p.buildCommand,
               startCommand: p.startCommand,
-              sslActivo: ssl ? ssl.activo : null,
+              sslActivo: null,
               ultimoDeploy:
                 p.ultimoDeployEn && p.ultimoDeployRama
                   ? {

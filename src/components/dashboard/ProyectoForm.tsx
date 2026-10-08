@@ -7,6 +7,7 @@ import {
   editarProyectoAction,
   eliminarProyectoAction,
 } from "@/app/(panel)/actions";
+import { Listbox } from "@/components/ui/Listbox";
 
 type TipoProyecto = "compose" | "dockerfile" | "image" | "nodejs";
 
@@ -158,18 +159,12 @@ export function ProyectoFormModal({
             <label htmlFor="tipo" className="font-body text-xs text-text-muted">
               Tipo
             </label>
-            <select
+            <Listbox
               id="tipo"
               value={tipo}
-              onChange={(e) => setTipo(e.target.value as TipoProyecto)}
-              className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary focus:outline-none focus:border-primary-300"
-            >
-              {TIPOS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+              options={TIPOS}
+              onChange={setTipo}
+            />
           </div>
 
           {tipo === "image" && (

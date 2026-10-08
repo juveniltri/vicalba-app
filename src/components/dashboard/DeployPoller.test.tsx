@@ -38,4 +38,46 @@ describe("DeployPoller", () => {
     vi.advanceTimersByTime(6000);
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
+
+  it("sigue refrescando tras terminar el deploy si sslPendiente sigue true", () => {
+    const { rerender } = render(
+      <DeployPoller isDeploying={true} sslPendiente={true} />,
+    );
+    vi.advanceTimersByTime(3000);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+    rerender(<DeployPoller isDeploying={false} sslPendiente={true} />);
+    vi.advanceTimersByTime(6000);
+    expect(mockRefresh).toHaveBeenCalledTimes(3);
+  });
+
+  it("deja de refrescar en cuanto sslPendiente pasa a false", () => {
+    const { rerender } = render(
+      <DeployPoller isDeploying={true} sslPendiente={true} />,
+    );
+    rerender(<DeployPoller isDeploying={false} sslPendiente={true} />);
+    vi.advanceTimersByTime(3000);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+    rerender(<DeployPoller isDeploying={false} sslPendiente={false} />);
+    vi.advanceTimersByTime(6000);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("deja de refrescar al agotar la ventana de gracia aunque sslPendiente siga true", () => {
+    const { rerender } = render(
+      <DeployPoller isDeploying={true} sslPendiente={true} />,
+    );
+    rerender(<DeployPoller isDeploying={false} sslPendiente={true} />);
+    vi.advanceTimersByTime(60_000);
+    const callsAtWindowEnd = mockRefresh.mock.calls.length;
+    vi.advanceTimersByTime(6000);
+    expect(mockRefresh).toHaveBeenCalledTimes(callsAtWindowEnd);
+  });
+
+  it("si nunca estuvo deploying, sslPendiente=true no genera polling", () => {
+    render(<DeployPoller isDeploying={false} sslPendiente={true} />);
+    vi.advanceTimersByTime(9000);
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
 });
