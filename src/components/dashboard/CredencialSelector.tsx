@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { asignarCredencialAction } from "@/app/(panel)/actions";
+import { Listbox } from "@/components/ui/Listbox";
 
 type CredencialOpcion = { id: string; nombre: string };
 
@@ -49,19 +50,15 @@ export function CredencialSelector({
         <p className="font-body text-xs text-state-running">{mensaje}</p>
       )}
       <div className="flex items-center gap-3">
-        <select
-          aria-label="Credencial SSH"
+        <Listbox
+          ariaLabel="Credencial SSH"
           value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
-        >
-          <option value="">Sin credencial</option>
-          {credenciales.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "Sin credencial" },
+            ...credenciales.map((c) => ({ value: c.id, label: c.nombre })),
+          ]}
+          onChange={setSelectedId}
+        />
         <button
           type="button"
           onClick={handleGuardar}

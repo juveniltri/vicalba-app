@@ -14,7 +14,6 @@ import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { AbrirUrlBoton } from "@/components/dashboard/AbrirUrlBoton";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
-import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
@@ -61,16 +60,15 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales, volumenes, estadoSSL] =
-    await Promise.all([
-      api.variables.listar({ proyectoId: id }),
-      api.proyectos.listarDeploys({ proyectoId: id }),
-      api.credenciales.listar(),
-      api.volumenes.listar({ proyectoId: id }),
-      proyecto.dominio
-        ? api.proyectos.estadoSSL({ dominio: proyecto.dominio })
-        : Promise.resolve(null),
-    ]);
+  // HACK: comprobación SSL desactivada temporalmente — leerEstadoSSL (docker
+  // exec por proyecto) relentizaba el panel. Reactivar cuando se resuelva el
+  // rendimiento (ver leerFicheroTraefik en src/lib/docker/traefik.ts).
+  const [variables, deploys, credenciales, volumenes] = await Promise.all([
+    api.variables.listar({ proyectoId: id }),
+    api.proyectos.listarDeploys({ proyectoId: id }),
+    api.credenciales.listar(),
+    api.volumenes.listar({ proyectoId: id }),
+  ]);
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
@@ -99,10 +97,7 @@ export default async function DetalleProyectoPage({
           </h1>
           <StatusBadge estado={proyecto.estado} />
           {proyecto.dominio && (
-            <AbrirUrlBoton
-              dominio={proyecto.dominio}
-              sslActivo={estadoSSL?.activo ?? null}
-            />
+            <AbrirUrlBoton dominio={proyecto.dominio} sslActivo={null} />
           )}
         </div>
 
@@ -235,7 +230,6 @@ export default async function DetalleProyectoPage({
                   <span className="font-body text-sm text-text-primary font-mono bg-elevated border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
                     {proyecto.dominio}
                   </span>
-                  {estadoSSL && <SSLBadge estado={estadoSSL} />}
                 </div>
               ) : (
                 <span className="font-body text-sm text-text-muted">—</span>

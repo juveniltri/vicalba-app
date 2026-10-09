@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getDeployEmitter } from "@/lib/deploy-stream";
+import { getDeploySnapshot } from "@/lib/deploy-stream";
 import { auth } from "@/lib/auth";
 
 export async function GET(
@@ -14,10 +14,28 @@ export async function GET(
 
   const stream = new ReadableStream({
     start(controller) {
-      const emitter = getDeployEmitter(id);
-      if (!emitter) {
+      const snapshot = getDeploySnapshot(id);
+      if (!snapshot) {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ tipo: "sin_deploy" })}\n\n`),
+        );
+        controller.close();
+        return;
+      }
+
+      const { emitter, lines, done } = snapshot;
+
+      for (const line of lines) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ line })}\n\n`),
+        );
+      }
+
+      if (done) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ tipo: "done", resultado: done })}\n\n`,
+          ),
         );
         controller.close();
         return;
