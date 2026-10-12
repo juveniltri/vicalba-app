@@ -21,6 +21,12 @@ enum ResultadoDeploy {
   error
 }
 
+enum OrigenDeploy {
+  manual
+  webhook
+  rollback
+}
+
 enum TipoProyecto {
   compose
   dockerfile
@@ -119,6 +125,7 @@ model Deploy {
   rama         String
   sha          String?
   resultado    ResultadoDeploy @default(en_curso)
+  origen       OrigenDeploy    @default(manual)
   output       String?
   iniciadoEn   DateTime        @default(now())
   finalizadoEn DateTime?
@@ -147,4 +154,12 @@ model ConfiguracionNotificacion {
   telegramBotTokenIv       String?
   telegramBotTokenTag      String?
   telegramChatId           String?
+
+  // Last delivery attempt per channel; error null means it succeeded.
+  webhookUltimoEnvioEn  DateTime?
+  webhookUltimoError    String?
+  emailUltimoEnvioEn    DateTime?
+  emailUltimoError      String?
+  telegramUltimoEnvioEn DateTime?
+  telegramUltimoError   String?
 }

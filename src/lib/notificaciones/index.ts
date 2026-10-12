@@ -158,19 +158,31 @@ export async function enviarNotificacion(
       });
     }
 
+    if (promesas.length === 0) return;
+
     const resultados = await Promise.allSettled(promesas.map((p) => p.envio));
+    const ahora = new Date();
+    const estado: Record<string, Date | string | null> = {};
     resultados.forEach((r, i) => {
-      if (r.status === "rejected") {
+      const canal = promesas[i].canal;
+      const error =
+        r.status === "rejected"
+          ? r.reason instanceof Error
+            ? r.reason.message
+            : String(r.reason)
+          : null;
+      estado[`${canal}UltimoEnvioEn`] = ahora;
+      estado[`${canal}UltimoError`] = error;
+      if (error) {
         log.error(
-          {
-            canal: promesas[i].canal,
-            proyecto: payload.proyectoNombre,
-            err:
-              r.reason instanceof Error ? r.reason.message : String(r.reason),
-          },
+          { canal, proyecto: payload.proyectoNombre, err: error },
           "Notificación de deploy fallida",
         );
       }
+    });
+    await prisma.configuracionNotificacion.update({
+      where: { id: "default" },
+      data: estado,
     });
   } catch (err) {
     log.error(

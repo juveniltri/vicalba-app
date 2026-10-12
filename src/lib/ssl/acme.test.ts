@@ -11,7 +11,7 @@ vi.mock("@/env", () => ({
   env: { ACME_JSON_PATH: "/letsencrypt/acme.json" },
 }));
 
-import { leerEstadoSSL } from "./acme";
+import { leerCertificados, leerEstadoSSL } from "./acme";
 
 const acmeConCerts = JSON.stringify({
   letsencrypt: {
@@ -120,5 +120,73 @@ describe("leerEstadoSSL", () => {
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: true });
+  });
+});
+
+// Certificado autofirmado real (CN=app.ejemplo.com), caduca 2026-11-11T23:12:51Z
+const CERT_B64 =
+  "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tDQpNSUlCaURDQ0FTK2dBd0lCQWdJVVJNaU93eDM3bXZjL0lmVGIvOVBNR2dCZ0lGNHdDZ1lJS29aSXpqMEVBd0l3DQpHakVZTUJZR0ExVUVBd3dQWVhCd0xtVnFaVzF3Ykc4dVkyOXRNQjRYRFRJMk1UQXhNakl6TVRJMU1Wb1hEVEkyDQpNVEV4TVRJek1USTFNVm93R2pFWU1CWUdBMVVFQXd3UFlYQndMbVZxWlcxd2JHOHVZMjl0TUZrd0V3WUhLb1pJDQp6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUVqUjkxaU1DWldFbUlmYkcxQTNudFY5Y3dJcVArT2FlYkpYU1d1bnliDQpyeHpKdnl3RmZGc014SWNENDc0SGxCRi9ydzg2Nm4wb1dOQWI5ckF5and3Vjc2TlRNRkV3SFFZRFZSME9CQllFDQpGQnBSRkYzdDZ3RC9wZ3R5SXI1aWJRQ2lKWEdrTUI4R0ExVWRJd1FZTUJhQUZCcFJGRjN0NndEL3BndHlJcjVpDQpiUUNpSlhHa01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0NnWUlLb1pJemowRUF3SURSd0F3UkFJZ1o1bzJpQW5LDQpwa1RpYlR4RzBlY252MDZhMWovZGlnZEFqaTF5cUtjZFpzTUNJR1lXZUxVYzJOSWMwTlh5bHYwNmZRaVc4akNRDQpkb0dHclRrdjRBYUY1VVBuDQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tDQo=";
+
+describe("leerCertificados", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("devuelve la fecha de caducidad de cada dominio leyendo acme.json una sola vez", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(
+      JSON.stringify({
+        letsencrypt: {
+          Certificates: [
+            {
+              domain: { main: "app.ejemplo.com", sans: ["www.ejemplo.com"] },
+              certificate: CERT_B64,
+            },
+          ],
+        },
+      }),
+    );
+
+    const certs = await leerCertificados();
+
+    expect(certs).toEqual({
+      "app.ejemplo.com": { caducaEn: "2026-11-11T23:12:51.000Z" },
+      "www.ejemplo.com": { caducaEn: "2026-11-11T23:12:51.000Z" },
+    });
+    expect(mockLeerFicheroTraefik).toHaveBeenCalledOnce();
+  });
+
+  it("marca caducaEn null si el certificado no se puede leer", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeTraefikReal);
+
+    await expect(leerCertificados()).resolves.toEqual({
+      "app.ejemplo.com": { caducaEn: null },
+    });
+  });
+
+  it("acepta certificados sin sans ni contenido (caducaEn null)", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
+
+    await expect(leerCertificados()).resolves.toEqual({
+      "app.ejemplo.com": { caducaEn: null },
+      "otro.ejemplo.com": { caducaEn: null },
+    });
+  });
+
+  it("ignora resolvers sin certificados", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(
+      JSON.stringify({ letsencrypt: { Account: {} } }),
+    );
+
+    await expect(leerCertificados()).resolves.toEqual({});
+  });
+
+  it("devuelve un objeto vacío si no se puede leer acme.json", async () => {
+    mockLeerFicheroTraefik.mockRejectedValue(new Error("no such container"));
+
+    await expect(leerCertificados()).resolves.toEqual({});
+  });
+
+  it("devuelve un objeto vacío si acme.json no tiene el formato esperado", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(JSON.stringify({ x: 1 }));
+
+    await expect(leerCertificados()).resolves.toEqual({});
   });
 });

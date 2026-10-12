@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  mockUpdate,
   mockFindUnique,
   mockEnviarWebhook,
   mockEnviarEmail,
@@ -9,6 +10,7 @@ const {
   mockLogError,
   mockLogWarn,
 } = vi.hoisted(() => ({
+  mockUpdate: vi.fn().mockResolvedValue({}),
   mockLogError: vi.fn(),
   mockLogWarn: vi.fn(),
   mockFindUnique: vi.fn(),
@@ -20,7 +22,10 @@ const {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    configuracionNotificacion: { findUnique: mockFindUnique },
+    configuracionNotificacion: {
+      findUnique: mockFindUnique,
+      update: mockUpdate,
+    },
   },
 }));
 vi.mock("./webhook", () => ({ enviarWebhook: mockEnviarWebhook }));
@@ -174,6 +179,40 @@ describe("enviarNotificacion", () => {
       expect.objectContaining({ canal: "webhook", err: "503" }),
       expect.any(String),
     );
+  });
+
+  it("guarda el resultado del último envío de cada canal usado", async () => {
+    mockFindUnique.mockResolvedValue({
+      ...configBase,
+      webhookHabilitado: true,
+      webhookUrl: "https://hooks.ejemplo.com/notify",
+      telegramHabilitado: true,
+      telegramBotTokenCifrado: "enc-tok",
+      telegramBotTokenIv: "iv-tok",
+      telegramBotTokenTag: "tag-tok",
+      telegramChatId: "chat",
+    });
+    mockEnviarWebhook.mockRejectedValue(new Error("404 Not Found"));
+
+    await enviarNotificacion(payload);
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "default" },
+      data: {
+        webhookUltimoEnvioEn: expect.any(Date),
+        webhookUltimoError: "404 Not Found",
+        telegramUltimoEnvioEn: expect.any(Date),
+        telegramUltimoError: null,
+      },
+    });
+  });
+
+  it("no toca el estado de los canales si no se ha enviado nada", async () => {
+    mockFindUnique.mockResolvedValue(configBase);
+
+    await enviarNotificacion(payload);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("un canal fallido no cancela los otros (Promise.allSettled)", async () => {

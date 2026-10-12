@@ -60,6 +60,11 @@ export function suscribirDeployLogs(
   };
 }
 
+export function ultimasLineas(proyectoId: string, n: number): string[] {
+  const lineas = streams.get(proyectoId)?.lineas ?? [];
+  return lineas.filter((l) => l.trim()).slice(-n);
+}
+
 export function clearDeployEmitter(
   proyectoId: string,
   soloSiEs?: DeployEmitter,

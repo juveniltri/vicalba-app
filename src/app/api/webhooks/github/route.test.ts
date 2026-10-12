@@ -70,6 +70,7 @@ describe("POST /api/webhooks/github", () => {
     expect(lanzarDeploy).toHaveBeenCalledWith(proyectoCrm, {
       rama: "main",
       sha: "e881352abcdef",
+      origen: "webhook",
     });
   });
 

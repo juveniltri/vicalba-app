@@ -78,11 +78,44 @@ describe("enviarTelegram", () => {
     expect(body.text).toContain("✅");
   });
 
-  it("no lanza si fetch falla", async () => {
+  it("propaga el error de red para registrarlo como fallo del canal", async () => {
     mockFetch.mockRejectedValue(new Error("network error"));
 
     await expect(
       enviarTelegram("bot-token-123", "chat-456", payload),
-    ).resolves.not.toThrow();
+    ).rejects.toThrow("network error");
+  });
+
+  it("falla con la descripción de Telegram sin exponer el token", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ ok: false, description: "Unauthorized" }),
+    });
+
+    const error = await enviarTelegram(
+      "bot-token-123",
+      "chat-456",
+      payload,
+    ).catch((e: Error) => e);
+
+    expect((error as Error).message).toBe(
+      "Telegram respondió 401: Unauthorized",
+    );
+    expect((error as Error).message).not.toContain("bot-token-123");
+  });
+
+  it("usa solo el código si Telegram no devuelve JSON", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new SyntaxError("Unexpected token <");
+      },
+    });
+
+    await expect(
+      enviarTelegram("bot-token-123", "chat-456", payload),
+    ).rejects.toThrow("Telegram respondió 502");
   });
 });

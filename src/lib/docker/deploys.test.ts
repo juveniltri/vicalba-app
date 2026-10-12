@@ -39,8 +39,22 @@ describe("ejecutarDeploy", () => {
     mockDeployProyecto.mockResolvedValue({ output: "", sha: "sha1" });
     await ejecutarDeploy(baseParams);
     expect(mockDeployCreate).toHaveBeenCalledWith({
-      data: { proyectoId: "p1", rama: "main", resultado: "en_curso" },
+      data: {
+        proyectoId: "p1",
+        rama: "main",
+        resultado: "en_curso",
+        origen: "manual",
+      },
     });
+  });
+
+  it("registra el origen del deploy y no lo pasa al proceso de deploy", async () => {
+    mockDeployProyecto.mockResolvedValue({ output: "", sha: "sha1" });
+    await ejecutarDeploy({ ...baseParams, origen: "webhook" });
+    expect(mockDeployCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ origen: "webhook" }),
+    });
+    expect(mockDeployProyecto.mock.calls[0][0]).not.toHaveProperty("origen");
   });
 
   it("en éxito actualiza el registro con resultado exito, output, sha y finalizadoEn", async () => {
