@@ -63,6 +63,6 @@ export async function ejecutarDeploy(params: {
   } finally {
     emitter.emit("done", resultado);
     // Keep emitter alive briefly so late SSE subscribers receive the done event
-    setTimeout(() => clearDeployEmitter(proyectoId), 30_000);
+    setTimeout(() => clearDeployEmitter(proyectoId, emitter), 30_000);
   }
 }

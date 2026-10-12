@@ -7,35 +7,65 @@ interface DeployEmitter extends EventEmitter {
   emit(event: "done", resultado: "exito" | "error"): boolean;
 }
 
-interface DeployStreamState {
+interface DeployStream {
   emitter: DeployEmitter;
-  lines: string[];
-  done: "exito" | "error" | null;
+  lineas: string[];
+  resultado: "exito" | "error" | null;
 }
 
-const streams = new Map<string, DeployStreamState>();
+// NOTE: Next.js bundles each route separately, so a module-level Map would not be
+// shared between the deploy trigger (server action / tRPC) and the SSE route.
+const globalForDeployStream = globalThis as unknown as {
+  deployStreams?: Map<string, DeployStream>;
+};
+const streams = (globalForDeployStream.deployStreams ??= new Map<
+  string,
+  DeployStream
+>());
 
 export function getOrCreateDeployEmitter(proyectoId: string): DeployEmitter {
-  let state = streams.get(proyectoId);
-  if (!state) {
-    const emitter = new EventEmitter() as DeployEmitter;
-    state = { emitter, lines: [], done: null };
-    streams.set(proyectoId, state);
-    emitter.on("line", (line) => state!.lines.push(line));
-    emitter.on("done", (resultado) => {
-      state!.done = resultado;
-    });
-  }
-  return state.emitter;
+  const existente = streams.get(proyectoId);
+  if (existente && !existente.resultado) return existente.emitter;
+  existente?.emitter.removeAllListeners();
+
+  const stream: DeployStream = {
+    emitter: new EventEmitter() as DeployEmitter,
+    lineas: [],
+    resultado: null,
+  };
+  stream.emitter.on("line", (line) => stream.lineas.push(line));
+  stream.emitter.on("done", (resultado) => (stream.resultado = resultado));
+  streams.set(proyectoId, stream);
+  return stream.emitter;
 }
 
-export function getDeploySnapshot(
+export function suscribirDeployLogs(
   proyectoId: string,
-): DeployStreamState | undefined {
-  return streams.get(proyectoId);
+  onLine: (line: string) => void,
+  onDone: (resultado: "exito" | "error") => void,
+): (() => void) | null {
+  const stream = streams.get(proyectoId);
+  if (!stream) return null;
+
+  stream.lineas.forEach((line) => onLine(line));
+  if (stream.resultado) {
+    onDone(stream.resultado);
+    return () => {};
+  }
+  stream.emitter.on("line", onLine);
+  stream.emitter.on("done", onDone);
+  return () => {
+    stream.emitter.off("line", onLine);
+    stream.emitter.off("done", onDone);
+  };
 }
 
-export function clearDeployEmitter(proyectoId: string): void {
-  streams.get(proyectoId)?.emitter.removeAllListeners();
+export function clearDeployEmitter(
+  proyectoId: string,
+  soloSiEs?: DeployEmitter,
+): void {
+  const stream = streams.get(proyectoId);
+  if (soloSiEs && stream?.emitter !== soloSiEs) return;
+  stream?.emitter.removeAllListeners();
   streams.delete(proyectoId);
 }

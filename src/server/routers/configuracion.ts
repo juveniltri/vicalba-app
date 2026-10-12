@@ -1,5 +1,6 @@
 import { cifrar } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import { enviarEmailDePrueba } from "@/lib/notificaciones";
 import { protectedProcedure, router } from "@/server/trpc";
 import { z } from "zod";
 
@@ -95,4 +96,6 @@ export const configuracionRouter = router({
         update: data,
       });
     }),
+
+  probarEmail: protectedProcedure.mutation(() => enviarEmailDePrueba()),
 });

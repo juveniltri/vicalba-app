@@ -60,12 +60,14 @@ vi.mock("@/lib/ssl/acme", () => ({
 }));
 vi.mock("@/lib/notificaciones", () => ({
   enviarNotificacion: vi.fn(),
+  enviarEmailDePrueba: vi.fn(),
 }));
 vi.mock("@/lib/docker/deploys", () => ({
   ejecutarDeploy: vi.fn(),
 }));
 
 import { auth } from "@/lib/auth";
+import { enviarEmailDePrueba } from "@/lib/notificaciones";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -291,5 +293,34 @@ describe("configuracion.guardar — telegram", () => {
       "telegramBotTokenCifrado",
     );
     expect(updateArg.update.telegramChatId).toBeNull();
+  });
+});
+
+describe("configuracion.probarEmail", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve el resultado del envío de prueba", async () => {
+    vi.mocked(enviarEmailDePrueba).mockResolvedValue({
+      ok: false,
+      error: "connect ETIMEDOUT",
+    });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).configuracion.probarEmail();
+
+    expect(result).toEqual({ ok: false, error: "connect ETIMEDOUT" });
+  });
+
+  it("requiere autenticación", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).configuracion.probarEmail(),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(enviarEmailDePrueba).not.toHaveBeenCalled();
   });
 });

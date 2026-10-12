@@ -4,6 +4,7 @@ import {
   guardarEmailAction,
   guardarTelegramAction,
   guardarWebhookAction,
+  probarEmailAction,
 } from "@/app/(panel)/actions";
 import { useState, useTransition } from "react";
 
@@ -52,17 +53,30 @@ export function ConfiguracionNotificaciones({
   const [chatId, setChatId] = useState(config?.telegramChatId ?? "");
 
   const [isPending, startTransition] = useTransition();
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<{
+    texto: string;
+    error: boolean;
+  } | null>(null);
 
-  const mostrarMensaje = (txt: string) => {
-    setMensaje(txt);
+  const mostrarMensaje = (texto: string) => {
+    setMensaje({ texto, error: false });
     setTimeout(() => setMensaje(null), 3000);
   };
+
+  // Errors stay until the next action: SMTP messages are long and need reading.
+  const mostrarError = (texto: string) => setMensaje({ texto, error: true });
 
   return (
     <div className="flex flex-col gap-4">
       {mensaje && (
-        <p className="font-body text-xs text-state-running">{mensaje}</p>
+        <p
+          role={mensaje.error ? "alert" : "status"}
+          className={`font-body text-xs break-words ${
+            mensaje.error ? "text-state-error" : "text-state-running"
+          }`}
+        >
+          {mensaje.texto}
+        </p>
       )}
 
       {/* Webhook */}
@@ -216,7 +230,7 @@ export function ConfiguracionNotificaciones({
         <button
           onClick={() =>
             startTransition(async () => {
-              await guardarEmailAction(emailHabilitado, {
+              const res = await guardarEmailAction(emailHabilitado, {
                 smtpHost: smtpHost || undefined,
                 smtpPort: smtpPort ? parseInt(smtpPort) : undefined,
                 smtpUser: smtpUser || undefined,
@@ -224,13 +238,27 @@ export function ConfiguracionNotificaciones({
                 remitente: remitente || undefined,
                 destinatario: destinatario || undefined,
               });
-              mostrarMensaje("Email guardado");
+              if (res?.error) mostrarError(res.error);
+              else mostrarMensaje("Email guardado");
             })
           }
           disabled={isPending}
           className="font-body text-xs text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:bg-background disabled:opacity-50"
         >
           Guardar
+        </button>
+        <button
+          onClick={() =>
+            startTransition(async () => {
+              const res = await probarEmailAction();
+              if (res.ok) mostrarMensaje("Correo de prueba enviado");
+              else mostrarError(`No se pudo enviar: ${res.error}`);
+            })
+          }
+          disabled={isPending}
+          className="ml-2 font-body text-xs text-text-muted bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:text-text-primary hover:bg-background disabled:opacity-50"
+        >
+          Enviar prueba
         </button>
       </div>
 

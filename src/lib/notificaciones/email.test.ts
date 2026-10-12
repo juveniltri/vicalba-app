@@ -39,11 +39,30 @@ describe("enviarEmail", () => {
   it("crea transporte nodemailer con los parámetros SMTP correctos", async () => {
     await enviarEmail(smtpConfig, payload);
 
-    expect(mockCreateTransport).toHaveBeenCalledWith({
-      host: "smtp.ejemplo.com",
-      port: 587,
-      auth: { user: "user@ejemplo.com", pass: "supersecret" },
-    });
+    expect(mockCreateTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: "smtp.ejemplo.com",
+        port: 587,
+        secure: false,
+        auth: { user: "user@ejemplo.com", pass: "supersecret" },
+      }),
+    );
+  });
+
+  it("usa TLS implícito (secure) en el puerto 465", async () => {
+    await enviarEmail({ ...smtpConfig, smtpPort: 465 }, payload);
+
+    expect(mockCreateTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ port: 465, secure: true }),
+    );
+  });
+
+  it("falla rápido si el servidor SMTP no responde (puerto bloqueado)", async () => {
+    await enviarEmail(smtpConfig, payload);
+
+    expect(mockCreateTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionTimeout: 10_000 }),
+    );
   });
 
   it("incluye resultado y nombre del proyecto en el asunto", async () => {
@@ -72,9 +91,11 @@ describe("enviarEmail", () => {
     expect(mailOptions.text).toContain("SHA: —");
   });
 
-  it("no lanza si nodemailer falla", async () => {
-    mockSendMail.mockRejectedValue(new Error("SMTP error"));
+  it("propaga el error del SMTP para poder registrarlo y mostrarlo", async () => {
+    mockSendMail.mockRejectedValue(new Error("535 Authentication failed"));
 
-    await expect(enviarEmail(smtpConfig, payload)).resolves.not.toThrow();
+    await expect(enviarEmail(smtpConfig, payload)).rejects.toThrow(
+      "535 Authentication failed",
+    );
   });
 });

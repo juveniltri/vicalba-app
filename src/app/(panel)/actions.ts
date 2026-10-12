@@ -311,6 +311,20 @@ export async function guardarEmailAction(
   }
 }
 
+export async function probarEmailAction(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  try {
+    const api = await createServerCaller();
+    return await api.configuracion.probarEmail();
+  } catch (err) {
+    return {
+      ok: false,
+      error: parseTRPCError(err, "Error al enviar el correo de prueba"),
+    };
+  }
+}
+
 export async function crearVolumenAction(
   proyectoId: string,
   nombre: string,

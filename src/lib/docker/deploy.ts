@@ -151,6 +151,9 @@ function generarDockerfileNodejs(
     return [
       "FROM node:20-alpine AS builder",
       "WORKDIR /app",
+      // python3/make/g++: dependencias nativas (better-sqlite3, sharp, bcrypt...) sin
+      // binario prebuilt para node:20-alpine caen a node-gyp, que necesita este toolchain.
+      "RUN apk add --no-cache python3 make g++",
       "COPY . .",
       "RUN npm ci",
       `RUN ${buildCmd} && rm -f .env.local`,
@@ -167,6 +170,7 @@ function generarDockerfileNodejs(
   return [
     "FROM node:20-alpine",
     "WORKDIR /app",
+    "RUN apk add --no-cache python3 make g++",
     "COPY . .",
     "RUN npm ci",
     `RUN ${buildCmd}`,
@@ -175,17 +179,31 @@ function generarDockerfileNodejs(
   ].join("\n");
 }
 
-function serializarEnvironment(
+function serializarEnvFile(
+  variables: Array<{ clave: string; valor: string }>,
+): string {
+  return variables.map(({ clave, valor }) => `${clave}=${valor}`).join("\n");
+}
+
+function serializarMapaYaml(
+  cabecera: string,
+  indent: string,
   variables: Array<{ clave: string; valor: string }>,
 ): string[] {
   if (!variables.length) return [];
   return [
-    "    environment:",
+    cabecera,
     ...variables.map(
       ({ clave, valor }) =>
-        `      ${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+        `${indent}${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
     ),
   ];
+}
+
+function serializarEnvironment(
+  variables: Array<{ clave: string; valor: string }>,
+): string[] {
+  return serializarMapaYaml("    environment:", "      ", variables);
 }
 
 function serializarVolumes(
@@ -205,6 +223,7 @@ function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
+  buildArgs?: Array<{ clave: string; valor: string }>;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
@@ -214,6 +233,7 @@ function generarDockerComposeConBuild(params: {
     "    build:",
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
+    ...serializarMapaYaml("      args:", "        ", params.buildArgs ?? []),
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
@@ -377,6 +397,14 @@ export async function deployProyecto(params: {
     let composeFile: string;
 
     const runtimeVars = variables ?? [];
+    // The panel's commit hash wins over any user-defined var with the same name.
+    const buildVars = [
+      ...(variablesBuildTime ?? []).filter((v) => v.clave !== "GIT_SHA_SHORT"),
+      ...(capturedSha
+        ? [{ clave: "GIT_SHA_SHORT", valor: capturedSha.slice(0, 7) }]
+        : []),
+    ];
+    const esComposeDesdeRepo = tipo === "compose" && !composeContent;
 
     if (tipo === "compose") {
       if (composeContent) {
@@ -392,11 +420,8 @@ export async function deployProyecto(params: {
         composeFile = composePath;
         // Always write .env — the compose may have `env_file: .env` directives that
         // require the file to exist even when no vars are configured yet.
-        const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-        const envContent = runtimeVars
-          .map(({ clave, valor }) => `${clave}=${valor}`)
-          .join("\n");
-        await writeFile(envFilePath, envContent, {
+        const envContent = serializarEnvFile(runtimeVars);
+        await writeFile(`${panelDir}/${proyectoNombre}.env`, envContent, {
           encoding: "utf-8",
           mode: 0o600,
         });
@@ -410,14 +435,13 @@ export async function deployProyecto(params: {
         composeFile = `${repoDir}/docker-compose.yml`;
         // Always write .env next to the compose file — docker compose auto-loads it for
         // ${VAR} substitution, and `env_file: .env` in service definitions requires it
-        // to exist even when no vars are configured yet.
-        const envContent = runtimeVars
-          .map(({ clave, valor }) => `${clave}=${valor}`)
-          .join("\n");
-        await writeFile(`${repoDir}/.env`, envContent, {
-          encoding: "utf-8",
-          mode: 0o600,
-        });
+        // to exist even when no vars are configured yet. Build-time vars are only
+        // present during the build; the finally below restores runtime-only content.
+        await writeFile(
+          `${repoDir}/.env`,
+          serializarEnvFile([...runtimeVars, ...buildVars]),
+          { encoding: "utf-8", mode: 0o600 },
+        );
       }
     } else if (tipo === "dockerfile") {
       const dfPath = dockerfilePath?.trim() || "Dockerfile";
@@ -431,6 +455,7 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfAbsoluto,
           puerto,
+          buildArgs: buildVars,
           variables: runtimeVars,
           volumenes,
         }),
@@ -523,6 +548,12 @@ export async function deployProyecto(params: {
     } finally {
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
+      }
+      if (esComposeDesdeRepo && buildVars.length > 0) {
+        await writeFile(`${repoDir}/.env`, serializarEnvFile(runtimeVars), {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
       }
     }
 
