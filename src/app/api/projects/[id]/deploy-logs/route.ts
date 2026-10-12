@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getDeploySnapshot } from "@/lib/deploy-stream";
+import { suscribirDeployLogs } from "@/lib/deploy-stream";
 import { auth } from "@/lib/auth";
 
 export async function GET(
@@ -12,54 +12,30 @@ export async function GET(
   const { id } = await params;
   const encoder = new TextEncoder();
 
+  let desuscribir: (() => void) | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
-      const snapshot = getDeploySnapshot(id);
-      if (!snapshot) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ tipo: "sin_deploy" })}\n\n`),
-        );
+      const enviar = (data: unknown) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+
+      desuscribir = suscribirDeployLogs(
+        id,
+        (line) => enviar({ line }),
+        (resultado) => {
+          enviar({ tipo: "done", resultado });
+          controller.close();
+          desuscribir?.();
+        },
+      );
+
+      if (!desuscribir) {
+        enviar({ tipo: "sin_deploy" });
         controller.close();
-        return;
       }
-
-      const { emitter, lines, done } = snapshot;
-
-      for (const line of lines) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ line })}\n\n`),
-        );
-      }
-
-      if (done) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ tipo: "done", resultado: done })}\n\n`,
-          ),
-        );
-        controller.close();
-        return;
-      }
-
-      const onLine = (line: string) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ line })}\n\n`),
-        );
-      };
-
-      const onDone = (resultado: "exito" | "error") => {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ tipo: "done", resultado })}\n\n`,
-          ),
-        );
-        controller.close();
-        emitter.off("line", onLine);
-        emitter.off("done", onDone);
-      };
-
-      emitter.on("line", onLine);
-      emitter.on("done", onDone);
+    },
+    cancel() {
+      desuscribir?.();
     },
   });
 

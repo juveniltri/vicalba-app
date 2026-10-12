@@ -69,6 +69,101 @@ async function findProyectoOrThrow(id: string) {
   return proyecto;
 }
 
+type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
+
+// Single entry point for every deploy trigger (button, rollback, GitHub webhook)
+// so all of them deploy with the same variables, volumes and compose content.
+export async function lanzarDeploy(
+  proyecto: ProyectoConCliente,
+  opts: { rama: string; sha?: string },
+) {
+  const [variablesDB, volumenesDB] = await Promise.all([
+    prisma.variableEntorno.findMany({ where: { proyectoId: proyecto.id } }),
+    prisma.volumen.findMany({ where: { proyectoId: proyecto.id } }),
+  ]);
+  // compose+content: build-time flag has no meaning (no docker build step),
+  // all vars must reach the --env-file for ${VAR} substitution in the YAML.
+  const isComposeDirecto =
+    proyecto.tipo === "compose" && !!proyecto.composeContent;
+  const descifrada = (v: (typeof variablesDB)[number]) => ({
+    clave: v.clave,
+    valor: descifrar(v.valorCifrado, v.iv, v.authTag),
+  });
+  const variables = variablesDB
+    .filter((v) => isComposeDirecto || !v.enBuildTime)
+    .map(descifrada);
+  const variablesBuildTime = isComposeDirecto
+    ? []
+    : variablesDB.filter((v) => v.enBuildTime).map(descifrada);
+  const volumenes = volumenesDB.map((v) => ({
+    rutaHost: rutaHostVolumen(
+      env.REPOS_DIR,
+      proyecto.cliente.slug,
+      proyecto.nombre,
+      v.nombre,
+    ),
+    rutaContenedor: v.rutaContenedor,
+  }));
+
+  const credencial = proyecto.credencialId
+    ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
+    : undefined;
+
+  const proyectoDeploying = await prisma.proyecto.update({
+    where: { id: proyecto.id },
+    data: { estado: "deploying" },
+  });
+
+  // HACK: fire-and-forget — Next.js corre en Node.js persistente (no serverless),
+  // el event loop mantiene viva la promesa hasta que el deploy termina.
+  void ejecutarDeploy({
+    proyectoId: proyecto.id,
+    tipo: proyecto.tipo,
+    repoUrl: proyecto.repositorioUrl,
+    rama: opts.rama,
+    sha: opts.sha,
+    clienteSlug: proyecto.cliente.slug,
+    proyectoNombre: proyecto.nombre,
+    composeContent: proyecto.composeContent,
+    variables,
+    variablesBuildTime,
+    credencial,
+    imagenUrl: proyecto.imagenUrl,
+    dockerfilePath: proyecto.dockerfilePath,
+    buildCommand: proyecto.buildCommand,
+    startCommand: proyecto.startCommand,
+    puerto: proyecto.puerto,
+    volumenes,
+  })
+    .then(async ({ resultado, output }) => {
+      await prisma.proyecto.update({
+        where: { id: proyecto.id },
+        data: {
+          estado: resultado === "exito" ? "running" : "error",
+          ...(resultado === "exito"
+            ? { ultimoDeployEn: new Date(), ultimoDeployRama: opts.rama }
+            : {}),
+        },
+      });
+      void enviarNotificacion({
+        proyectoNombre: proyecto.nombre,
+        clienteSlug: proyecto.cliente.slug,
+        rama: opts.rama,
+        sha: opts.sha ?? null,
+        resultado,
+        output,
+      });
+    })
+    .catch(async () => {
+      await prisma.proyecto.update({
+        where: { id: proyecto.id },
+        data: { estado: "error" },
+      });
+    });
+
+  return proyectoDeploying;
+}
+
 export const proyectosRouter = router({
   obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
@@ -306,94 +401,7 @@ export const proyectosRouter = router({
         message: "El proyecto no tiene repositorio configurado",
       });
 
-    const [variablesDB, volumenesDB] = await Promise.all([
-      prisma.variableEntorno.findMany({ where: { proyectoId: input.id } }),
-      prisma.volumen.findMany({ where: { proyectoId: input.id } }),
-    ]);
-    // compose+content: build-time flag has no meaning (no docker build step),
-    // all vars must reach the --env-file for ${VAR} substitution in the YAML.
-    const isComposeDirecto =
-      proyecto.tipo === "compose" && !!proyecto.composeContent;
-    const variables = variablesDB
-      .filter((v) => isComposeDirecto || !v.enBuildTime)
-      .map((v) => ({
-        clave: v.clave,
-        valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-      }));
-    const variablesBuildTime = isComposeDirecto
-      ? []
-      : variablesDB
-          .filter((v) => v.enBuildTime)
-          .map((v) => ({
-            clave: v.clave,
-            valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-          }));
-    const volumenes = volumenesDB.map((v) => ({
-      rutaHost: rutaHostVolumen(
-        env.REPOS_DIR,
-        proyecto.cliente.slug,
-        proyecto.nombre,
-        v.nombre,
-      ),
-      rutaContenedor: v.rutaContenedor,
-    }));
-
-    const credencial = proyecto.credencialId
-      ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
-      : undefined;
-
-    const proyectoDeploying = await prisma.proyecto.update({
-      where: { id: input.id },
-      data: { estado: "deploying" },
-    });
-
-    // HACK: fire-and-forget — Next.js corre en Node.js persistente (no serverless),
-    // el event loop mantiene viva la promesa hasta que el deploy termina.
-    void ejecutarDeploy({
-      proyectoId: input.id,
-      tipo: proyecto.tipo,
-      repoUrl: proyecto.repositorioUrl,
-      rama: proyecto.rama,
-      clienteSlug: proyecto.cliente.slug,
-      proyectoNombre: proyecto.nombre,
-      composeContent: proyecto.composeContent,
-      variables,
-      variablesBuildTime,
-      credencial,
-      imagenUrl: proyecto.imagenUrl,
-      dockerfilePath: proyecto.dockerfilePath,
-      buildCommand: proyecto.buildCommand,
-      startCommand: proyecto.startCommand,
-      puerto: proyecto.puerto,
-      volumenes,
-    })
-      .then(async ({ resultado, output }) => {
-        await prisma.proyecto.update({
-          where: { id: input.id },
-          data: {
-            estado: resultado === "exito" ? "running" : "error",
-            ...(resultado === "exito"
-              ? { ultimoDeployEn: new Date(), ultimoDeployRama: proyecto.rama }
-              : {}),
-          },
-        });
-        void enviarNotificacion({
-          proyectoNombre: proyecto.nombre,
-          clienteSlug: proyecto.cliente.slug,
-          rama: proyecto.rama,
-          sha: null,
-          resultado,
-          output,
-        });
-      })
-      .catch(async () => {
-        await prisma.proyecto.update({
-          where: { id: input.id },
-          data: { estado: "error" },
-        });
-      });
-
-    return proyectoDeploying;
+    return lanzarDeploy(proyecto, { rama: proyecto.rama });
   }),
 
   asignarCredencial: protectedProcedure
@@ -460,79 +468,7 @@ export const proyectosRouter = router({
           message: "El proyecto ya está en proceso de deploy",
         });
 
-      const variablesDB = await prisma.variableEntorno.findMany({
-        where: { proyectoId: deploy.proyectoId },
-      });
-      const isComposeDirectoRollback =
-        proyecto.tipo === "compose" && !!proyecto.composeContent;
-      const variables = variablesDB
-        .filter((v) => isComposeDirectoRollback || !v.enBuildTime)
-        .map((v) => ({
-          clave: v.clave,
-          valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-        }));
-      const variablesBuildTime = isComposeDirectoRollback
-        ? []
-        : variablesDB
-            .filter((v) => v.enBuildTime)
-            .map((v) => ({
-              clave: v.clave,
-              valor: descifrar(v.valorCifrado, v.iv, v.authTag),
-            }));
-
-      const credencial = proyecto.credencialId
-        ? { clavePrivada: await descifrarClavePrivada(proyecto.credencialId) }
-        : undefined;
-
-      const proyectoDeploying = await prisma.proyecto.update({
-        where: { id: deploy.proyectoId },
-        data: { estado: "deploying" },
-      });
-
-      void ejecutarDeploy({
-        proyectoId: deploy.proyectoId,
-        tipo: proyecto.tipo,
-        repoUrl: proyecto.repositorioUrl,
-        rama: deploy.rama,
-        sha: deploy.sha,
-        clienteSlug: proyecto.cliente.slug,
-        proyectoNombre: proyecto.nombre,
-        variables,
-        variablesBuildTime,
-        credencial,
-        imagenUrl: proyecto.imagenUrl,
-        dockerfilePath: proyecto.dockerfilePath,
-        buildCommand: proyecto.buildCommand,
-        startCommand: proyecto.startCommand,
-        puerto: proyecto.puerto,
-      })
-        .then(async ({ resultado, output }) => {
-          await prisma.proyecto.update({
-            where: { id: deploy.proyectoId },
-            data: {
-              estado: resultado === "exito" ? "running" : "error",
-              ...(resultado === "exito"
-                ? { ultimoDeployEn: new Date(), ultimoDeployRama: deploy.rama }
-                : {}),
-            },
-          });
-          void enviarNotificacion({
-            proyectoNombre: proyecto.nombre,
-            clienteSlug: proyecto.cliente.slug,
-            rama: deploy.rama,
-            sha: deploy.sha,
-            resultado,
-            output,
-          });
-        })
-        .catch(async () => {
-          await prisma.proyecto.update({
-            where: { id: deploy.proyectoId },
-            data: { estado: "error" },
-          });
-        });
-
-      return proyectoDeploying;
+      return lanzarDeploy(proyecto, { rama: deploy.rama, sha: deploy.sha });
     }),
 
   estadoSSL: protectedProcedure

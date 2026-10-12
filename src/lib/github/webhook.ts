@@ -19,3 +19,18 @@ export function verificarFirmaGitHub(
     return false;
   }
 }
+
+function normalizarRepoUrl(url: string): string {
+  return url
+    .trim()
+    .toLowerCase()
+    .replace(/^(https?|ssh):\/\//, "")
+    .replace(/^git@([^:/]+):/, "$1/")
+    .replace(/^git@/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "");
+}
+
+export function mismoRepositorio(a: string, b: string): boolean {
+  return normalizarRepoUrl(a) === normalizarRepoUrl(b);
+}
