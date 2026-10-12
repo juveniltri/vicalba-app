@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { enviarEmail } from "./email";
 import { enviarTelegram } from "./telegram";
 import { enviarWebhook } from "./webhook";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "notificaciones" });
 
 export interface PayloadNotificacion {
   proyectoNombre: string;
@@ -11,6 +14,97 @@ export interface PayloadNotificacion {
   sha: string | null;
   resultado: "exito" | "error";
   output: string;
+}
+
+type ConfigNotificacion = NonNullable<
+  Awaited<ReturnType<typeof prisma.configuracionNotificacion.findUnique>>
+>;
+
+type ConfigEmailResuelta =
+  | { ok: true; smtp: Parameters<typeof enviarEmail>[0] }
+  | { ok: false; faltan: string[] };
+
+function resolverConfigEmail(config: ConfigNotificacion): ConfigEmailResuelta {
+  const {
+    emailSmtpHost: smtpHost,
+    emailSmtpPort: smtpPort,
+    emailSmtpUser: smtpUser,
+    emailSmtpPass,
+    emailSmtpPassIv,
+    emailSmtpPassTag,
+    emailRemitente: remitente,
+    emailDestinatario: destinatario,
+  } = config;
+
+  if (
+    !smtpHost ||
+    !smtpPort ||
+    !smtpUser ||
+    !emailSmtpPass ||
+    !emailSmtpPassIv ||
+    !emailSmtpPassTag ||
+    !remitente ||
+    !destinatario
+  ) {
+    const faltan = [
+      !smtpHost && "servidor SMTP",
+      !smtpPort && "puerto",
+      !smtpUser && "usuario SMTP",
+      ![emailSmtpPass, emailSmtpPassIv, emailSmtpPassTag].every(Boolean) &&
+        "contraseña SMTP",
+      !remitente && "remitente",
+      !destinatario && "destinatario",
+    ].filter((c): c is string => !!c);
+    return { ok: false, faltan };
+  }
+
+  return {
+    ok: true,
+    smtp: {
+      smtpHost,
+      smtpPort,
+      smtpUser,
+      smtpPass: descifrar(emailSmtpPass, emailSmtpPassIv, emailSmtpPassTag),
+      remitente,
+      destinatario,
+    },
+  };
+}
+
+export async function enviarEmailDePrueba(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const config = await prisma.configuracionNotificacion.findUnique({
+    where: { id: "default" },
+  });
+  if (!config) {
+    return { ok: false, error: "No hay configuración de email guardada" };
+  }
+
+  const email = resolverConfigEmail(config);
+  if (!email.ok) {
+    return {
+      ok: false,
+      error: `Configuración incompleta, falta: ${email.faltan.join(", ")}`,
+    };
+  }
+
+  try {
+    await enviarEmail(email.smtp, {
+      proyectoNombre: "prueba",
+      clienteSlug: "panel",
+      rama: "—",
+      sha: null,
+      resultado: "exito",
+      output: "Correo de prueba enviado desde el Panel.",
+    });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function enviarNotificacion(
@@ -22,41 +116,28 @@ export async function enviarNotificacion(
     });
     if (!config) return;
 
-    const promesas: Promise<void>[] = [];
+    const promesas: Array<{ canal: string; envio: Promise<void> }> = [];
 
     if (config.webhookHabilitado && config.webhookUrl) {
-      promesas.push(enviarWebhook(config.webhookUrl, payload));
+      promesas.push({
+        canal: "webhook",
+        envio: enviarWebhook(config.webhookUrl, payload),
+      });
     }
 
-    if (
-      config.emailHabilitado &&
-      config.emailSmtpHost &&
-      config.emailSmtpPort &&
-      config.emailSmtpUser &&
-      config.emailSmtpPass &&
-      config.emailSmtpPassIv &&
-      config.emailSmtpPassTag &&
-      config.emailRemitente &&
-      config.emailDestinatario
-    ) {
-      const smtpPass = descifrar(
-        config.emailSmtpPass,
-        config.emailSmtpPassIv,
-        config.emailSmtpPassTag,
-      );
-      promesas.push(
-        enviarEmail(
-          {
-            smtpHost: config.emailSmtpHost,
-            smtpPort: config.emailSmtpPort,
-            smtpUser: config.emailSmtpUser,
-            smtpPass,
-            remitente: config.emailRemitente,
-            destinatario: config.emailDestinatario,
-          },
-          payload,
-        ),
-      );
+    if (config.emailHabilitado) {
+      const email = resolverConfigEmail(config);
+      if (email.ok) {
+        promesas.push({
+          canal: "email",
+          envio: enviarEmail(email.smtp, payload),
+        });
+      } else {
+        log.warn(
+          { canal: "email", faltan: email.faltan },
+          "Email habilitado pero con configuración incompleta",
+        );
+      }
     }
 
     if (
@@ -71,11 +152,30 @@ export async function enviarNotificacion(
         config.telegramBotTokenIv,
         config.telegramBotTokenTag,
       );
-      promesas.push(enviarTelegram(botToken, config.telegramChatId, payload));
+      promesas.push({
+        canal: "telegram",
+        envio: enviarTelegram(botToken, config.telegramChatId, payload),
+      });
     }
 
-    await Promise.allSettled(promesas);
-  } catch {
-    // absorb
+    const resultados = await Promise.allSettled(promesas.map((p) => p.envio));
+    resultados.forEach((r, i) => {
+      if (r.status === "rejected") {
+        log.error(
+          {
+            canal: promesas[i].canal,
+            proyecto: payload.proyectoNombre,
+            err:
+              r.reason instanceof Error ? r.reason.message : String(r.reason),
+          },
+          "Notificación de deploy fallida",
+        );
+      }
+    });
+  } catch (err) {
+    log.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Error preparando notificaciones de deploy",
+    );
   }
 }

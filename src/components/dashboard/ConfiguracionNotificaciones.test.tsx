@@ -6,6 +6,7 @@ import {
   guardarEmailAction,
   guardarTelegramAction,
   guardarWebhookAction,
+  probarEmailAction,
 } from "@/app/(panel)/actions";
 import { ConfiguracionNotificaciones } from "./ConfiguracionNotificaciones";
 
@@ -13,6 +14,7 @@ vi.mock("@/app/(panel)/actions", () => ({
   guardarWebhookAction: vi.fn().mockResolvedValue(undefined),
   guardarEmailAction: vi.fn().mockResolvedValue(undefined),
   guardarTelegramAction: vi.fn().mockResolvedValue(undefined),
+  probarEmailAction: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 describe("ConfiguracionNotificaciones", () => {
@@ -79,6 +81,47 @@ describe("ConfiguracionNotificaciones", () => {
       false,
       expect.objectContaining({ smtpPort: 587 }),
     );
+  });
+
+  it("muestra el error si guardar el email falla en el servidor", async () => {
+    vi.mocked(guardarEmailAction).mockResolvedValueOnce({
+      error: "Datos inválidos",
+    });
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    const botones = screen.getAllByRole("button", { name: /guardar/i });
+    await userEvent.click(botones[1]);
+
+    expect(await screen.findByText("Datos inválidos")).toBeInTheDocument();
+    expect(screen.queryByText("Email guardado")).not.toBeInTheDocument();
+  });
+
+  it("Enviar prueba muestra el error real del servidor SMTP", async () => {
+    vi.mocked(probarEmailAction).mockResolvedValueOnce({
+      ok: false,
+      error: "connect ETIMEDOUT 1.2.3.4:465",
+    });
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /enviar prueba/i }),
+    );
+
+    expect(
+      await screen.findByText(/connect ETIMEDOUT 1\.2\.3\.4:465/),
+    ).toBeInTheDocument();
+  });
+
+  it("Enviar prueba confirma cuando el correo sale", async () => {
+    render(<ConfiguracionNotificaciones config={null} />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /enviar prueba/i }),
+    );
+
+    expect(
+      await screen.findByText(/correo de prueba enviado/i),
+    ).toBeInTheDocument();
   });
 
   it("el botón Guardar de telegram llama a guardarTelegramAction", async () => {
