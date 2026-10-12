@@ -1,9 +1,11 @@
 export function AbrirUrlBoton({
   dominio,
   sslActivo,
+  className = "text-text-muted hover:text-text-primary transition-colors duration-[var(--duration-fast)]",
 }: {
   dominio: string | null;
   sslActivo: boolean | null;
+  className?: string;
 }) {
   if (!dominio) return null;
   const href = sslActivo ? `https://${dominio}` : `http://${dominio}`;
@@ -13,7 +15,8 @@ export function AbrirUrlBoton({
       target="_blank"
       rel="noopener noreferrer"
       title="Abrir en el navegador"
-      className="text-text-muted hover:text-text-primary transition-colors duration-[var(--duration-fast)]"
+      aria-label={`Abrir ${dominio} en el navegador`}
+      className={className}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"

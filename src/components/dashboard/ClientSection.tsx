@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { eliminarClienteAction } from "@/app/(panel)/actions";
 import type { ClienteConProyectos } from "@/lib/schemas/dashboard";
 import { ClienteFormModal } from "./ClienteForm";
-import { ProjectCard } from "./ProjectCard";
+import { FilaProyecto } from "./FilaProyecto";
 import { ProyectoFormModal } from "./ProyectoForm";
 
 export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
@@ -29,26 +29,32 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
   }
 
   const ghostBtn =
-    "inline-flex items-center gap-1.5 font-display text-xs font-medium px-[11px] py-1.5 rounded-[var(--radius-md)] border border-border bg-transparent text-text-muted hover:text-text-primary hover:bg-elevated transition-colors disabled:opacity-40";
+    "inline-flex items-center gap-1.5 min-h-9 px-3 rounded-[var(--radius-md)] border border-border-strong bg-transparent font-body text-xs text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors disabled:opacity-40";
+  const n = cliente.proyectos.length;
 
   return (
-    <section aria-label={cliente.nombre}>
-      {/* Cabecera de cliente */}
-      <div className="flex items-center gap-3 mb-4">
-        <h2 className="font-display text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em] whitespace-nowrap">
+    <section
+      aria-label={cliente.nombre}
+      className="rounded-[var(--radius-lg)] bg-surface border border-border"
+    >
+      <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 border-b border-border">
+        <h2 className="font-display text-[15px] font-semibold">
           {cliente.nombre}
         </h2>
-        <div className="flex-1 h-px bg-border" />
+        <span className="font-body text-[11.5px] text-text-muted">
+          cliente-{cliente.slug}-network · {n} proyecto{n === 1 ? "" : "s"}
+        </span>
+        <span className="flex-1" />
 
         {confirmDelete ? (
           <div className="flex items-center gap-2">
-            <span className="font-body text-xs text-state-error">
+            <span className="font-body text-xs text-error-text">
               ¿Eliminar cliente?
             </span>
             <button
               onClick={handleEliminarCliente}
               disabled={deleteLoading}
-              className="font-display text-xs px-[11px] py-1.5 rounded-[var(--radius-md)] border border-state-error text-state-error hover:bg-state-error/10 disabled:opacity-40 transition-colors"
+              className="inline-flex items-center min-h-9 px-3 rounded-[var(--radius-md)] border border-error-border font-body text-xs text-error-text hover:bg-error-bg disabled:opacity-40 transition-colors"
             >
               {deleteLoading ? "…" : "Confirmar"}
             </button>
@@ -63,7 +69,7 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowNuevoProyecto(true)}
-              className={`${ghostBtn} text-[var(--color-accent)] border-[color-mix(in_oklab,var(--color-accent)_40%,var(--color-border))] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/8`}
+              className={`${ghostBtn} text-accent-text hover:text-accent-text`}
             >
               + Proyecto
             </button>
@@ -75,7 +81,7 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              className={`${ghostBtn} hover:text-state-error hover:border-state-error`}
+              className={`${ghostBtn} hover:text-error-text hover:border-error-border`}
             >
               Eliminar
             </button>
@@ -84,20 +90,38 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
       </div>
 
       {deleteError && (
-        <p role="alert" className="font-body text-xs text-state-error mb-3">
+        <p role="alert" className="px-5 pt-3 font-body text-xs text-error-text">
           {deleteError}
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-[18px] max-md:grid-cols-1">
-        {cliente.proyectos.map((proyecto) => (
-          <ProjectCard
-            key={proyecto.id}
-            p={proyecto}
-            clienteNombre={cliente.nombre}
-          />
-        ))}
-      </div>
+      {n === 0 ? (
+        <p className="px-5 py-5 font-body text-[12.5px] text-text-muted">
+          Sin proyectos todavía.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] border-collapse font-body text-[12.5px]">
+            <thead>
+              <tr className="text-left text-text-muted">
+                <th className="px-5 py-2.5 font-medium">Proyecto</th>
+                <th className="px-3 py-2.5 font-medium">Tipo</th>
+                <th className="px-3 py-2.5 font-medium">Dominio</th>
+                <th className="px-3 py-2.5 font-medium">Commit</th>
+                <th className="px-3 py-2.5 font-medium">Último deploy</th>
+                <th className="px-5 py-2.5 font-medium text-right">
+                  <span className="sr-only">Acciones</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {cliente.proyectos.map((proyecto) => (
+                <FilaProyecto key={proyecto.id} p={proyecto} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showEditCliente && (
         <ClienteFormModal

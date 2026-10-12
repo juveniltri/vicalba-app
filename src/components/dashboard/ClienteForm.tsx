@@ -1,5 +1,6 @@
 "use client";
 
+import { botonPrimario } from "@/components/layout/PageHeader";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearClienteAction, editarClienteAction } from "@/app/(panel)/actions";
@@ -114,10 +115,7 @@ export function NuevoClienteButton() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="font-body text-xs px-3 py-1.5 rounded-[var(--radius-sm)] border border-border text-text-primary hover:border-primary-300 transition-opacity duration-[var(--duration-fast)]"
-      >
+      <button onClick={() => setOpen(true)} className={botonPrimario}>
         Nuevo cliente
       </button>
       {open && <ClienteFormModal onClose={() => setOpen(false)} />}
