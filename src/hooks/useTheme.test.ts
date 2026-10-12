@@ -62,3 +62,34 @@ describe("useTheme — setTheme", () => {
     expect(localStorage.getItem("vicalba-theme")).toBe("dark");
   });
 });
+
+describe("useTheme — hidratación", () => {
+  it("no provoca error de hidratación cuando el script ya puso el tema claro", async () => {
+    const { createElement } = await import("react");
+    const { renderToString } = await import("react-dom/server");
+    const { hydrateRoot } = await import("react-dom/client");
+    const { act } = await import("@testing-library/react");
+
+    function Etiqueta() {
+      const { theme } = useTheme();
+      return createElement("span", null, theme);
+    }
+
+    document.documentElement.dataset.theme = "dark";
+    const html = renderToString(createElement(Etiqueta));
+    const contenedor = document.createElement("div");
+    contenedor.innerHTML = html;
+    document.body.appendChild(contenedor);
+
+    // The inline script in layout.tsx runs before hydration
+    document.documentElement.dataset.theme = "light";
+    const onRecoverableError = vi.fn();
+    await act(async () => {
+      hydrateRoot(contenedor, createElement(Etiqueta), { onRecoverableError });
+    });
+
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(contenedor.textContent).toBe("light");
+    contenedor.remove();
+  });
+});

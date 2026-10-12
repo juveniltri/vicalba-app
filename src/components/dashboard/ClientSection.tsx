@@ -100,7 +100,7 @@ export function ClientSection({ cliente }: { cliente: ClienteConProyectos }) {
           Sin proyectos todavía.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse font-body text-[12.5px]">
             <thead>
               <tr className="text-left text-text-muted">

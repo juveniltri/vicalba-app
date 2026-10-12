@@ -27,7 +27,7 @@ export function DeploysRecientes({ deploys }: { deploys: DeployReciente[] }) {
           Aún no hay deploys.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse font-body text-[12.5px]">
             <thead>
               <tr className="text-left text-text-muted">

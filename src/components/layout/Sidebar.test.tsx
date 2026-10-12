@@ -153,4 +153,19 @@ describe("Sidebar", () => {
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
     expect(screen.getByRole("button", { name: /buscar/i })).toBeInTheDocument();
   });
+
+  it("en móvil el menú se pliega y se despliega con su botón", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(<Sidebar proyectos={proyectos} usuario={usuario} />);
+    const boton = screen.getByRole("button", { name: "Menú" });
+    const panel = document.getElementById(boton.getAttribute("aria-controls")!);
+
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(panel).toHaveClass("hidden");
+
+    await userEvent.click(boton);
+
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    expect(panel).not.toHaveClass("hidden");
+  });
 });
