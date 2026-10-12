@@ -77,6 +77,22 @@ describe("suscribirDeployLogs", () => {
     expect(onLine).toHaveBeenCalledWith("en curso");
   });
 
+  it("mientras el deploy está en curso, todos comparten el mismo emitter", () => {
+    expect(getOrCreateDeployEmitter("p1")).toBe(getOrCreateDeployEmitter("p1"));
+  });
+
+  it("tras limpiar, el proyecto deja de tener deploy y los suscriptores no reciben más", () => {
+    const emitter = getOrCreateDeployEmitter("p1");
+    const onLine = vi.fn();
+    suscribirDeployLogs("p1", onLine, vi.fn());
+
+    clearDeployEmitter("p1");
+    emitter.emit("line", "no debería llegar");
+
+    expect(onLine).not.toHaveBeenCalled();
+    expect(suscribirDeployLogs("p1", vi.fn(), vi.fn())).toBeNull();
+  });
+
   it("devuelve null si no hay deploy en curso para el proyecto", () => {
     expect(suscribirDeployLogs("otro", vi.fn(), vi.fn())).toBeNull();
   });

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CredencialSelector } from "./CredencialSelector";
 
@@ -17,7 +18,8 @@ const credencialesBase = [
 ];
 
 describe("CredencialSelector — renderizado", () => {
-  it("muestra el select con opción Sin credencial", () => {
+  it("muestra el selector con opción Sin credencial", async () => {
+    const user = userEvent.setup();
     render(
       <CredencialSelector
         proyectoId="p1"
@@ -25,13 +27,14 @@ describe("CredencialSelector — renderizado", () => {
         credenciales={credencialesBase}
       />,
     );
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /credencial ssh/i }));
     expect(
       screen.getByRole("option", { name: "Sin credencial" }),
     ).toBeInTheDocument();
   });
 
-  it("muestra todas las credenciales disponibles", () => {
+  it("muestra todas las credenciales disponibles", async () => {
+    const user = userEvent.setup();
     render(
       <CredencialSelector
         proyectoId="p1"
@@ -39,6 +42,7 @@ describe("CredencialSelector — renderizado", () => {
         credenciales={credencialesBase}
       />,
     );
+    await user.click(screen.getByRole("button", { name: /credencial ssh/i }));
     expect(
       screen.getByRole("option", { name: "GitHub producción" }),
     ).toBeInTheDocument();
@@ -55,8 +59,9 @@ describe("CredencialSelector — renderizado", () => {
         credenciales={credencialesBase}
       />,
     );
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
-    expect(select.value).toBe("c2");
+    expect(
+      screen.getByRole("button", { name: /credencial ssh/i }),
+    ).toHaveTextContent("GitLab staging");
   });
 
   it("muestra enlace a configuración si no hay credenciales", () => {
@@ -77,6 +82,7 @@ describe("CredencialSelector — guardar", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("llama a asignarCredencialAction con la credencial seleccionada", async () => {
+    const user = userEvent.setup();
     render(
       <CredencialSelector
         proyectoId="p1"
@@ -84,9 +90,8 @@ describe("CredencialSelector — guardar", () => {
         credenciales={credencialesBase}
       />,
     );
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "c1" },
-    });
+    await user.click(screen.getByRole("button", { name: /credencial ssh/i }));
+    await user.click(screen.getByRole("option", { name: "GitHub producción" }));
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
     await waitFor(() => {
       expect(asignarCredencialAction).toHaveBeenCalledWith("p1", "c1");
@@ -94,6 +99,7 @@ describe("CredencialSelector — guardar", () => {
   });
 
   it("llama a asignarCredencialAction con null al seleccionar Sin credencial", async () => {
+    const user = userEvent.setup();
     render(
       <CredencialSelector
         proyectoId="p1"
@@ -101,9 +107,8 @@ describe("CredencialSelector — guardar", () => {
         credenciales={credencialesBase}
       />,
     );
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "" },
-    });
+    await user.click(screen.getByRole("button", { name: /credencial ssh/i }));
+    await user.click(screen.getByRole("option", { name: "Sin credencial" }));
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
     await waitFor(() => {
       expect(asignarCredencialAction).toHaveBeenCalledWith("p1", null);

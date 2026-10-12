@@ -1,7 +1,9 @@
 // src/server/routers/proyectos.ts
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { ejecutarDeploy } from "@/lib/docker/deploys";
+import { prepararRepo } from "@/lib/docker/deploy";
 import { descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
@@ -492,7 +494,9 @@ export const proyectosRouter = router({
         nombre: cliente.nombre,
         proyectos: await Promise.all(
           cliente.proyectos.map(async (p) => {
-            const ssl = p.dominio ? await leerEstadoSSL(p.dominio) : null;
+            // HACK: comprobación SSL desactivada temporalmente — leerEstadoSSL
+            // (docker exec por proyecto) relentizaba el dashboard. Reactivar
+            // cuando se resuelva el rendimiento (ver leerFicheroTraefik).
             return {
               id: p.id,
               nombre: p.nombre,
@@ -508,7 +512,7 @@ export const proyectosRouter = router({
               dockerfilePath: p.dockerfilePath,
               buildCommand: p.buildCommand,
               startCommand: p.startCommand,
-              sslActivo: ssl ? ssl.activo : null,
+              sslActivo: null,
               ultimoDeploy:
                 p.ultimoDeployEn && p.ultimoDeployRama
                   ? {
@@ -537,5 +541,73 @@ export const proyectosRouter = router({
         where: { id: input.id },
         data: { composeContent: input.composeContent },
       });
+    }),
+
+  cargarComposeDesdeRepo: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const proyecto = await findProyectoOrThrow(input.id);
+
+      if (!proyecto.repositorioUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "El proyecto no tiene repositorio configurado",
+        });
+      }
+
+      const { cliente, nombre, repositorioUrl, rama, credencialId } = proyecto;
+      const repoDir = `${env.REPOS_DIR}/${cliente.slug}/${nombre}`;
+      const panelDir = `${env.REPOS_DIR}/${cliente.slug}/.panel`;
+      const keyFilePath = `${panelDir}/${nombre}.deploy_key`;
+
+      await mkdir(panelDir, { recursive: true });
+
+      let gitEnv: NodeJS.ProcessEnv = { ...process.env };
+      let effectiveRepoUrl = repositorioUrl;
+
+      if (credencialId) {
+        const clavePrivada = await descifrarClavePrivada(credencialId);
+        const normalizedKey =
+          clavePrivada.replace(/\r\n/g, "\n").trimEnd() + "\n";
+        await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
+        gitEnv = {
+          ...process.env,
+          GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+        };
+        effectiveRepoUrl = repositorioUrl.replace(
+          /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,
+          "git@github.com:$1.git",
+        );
+      }
+
+      await prepararRepo(effectiveRepoUrl, repoDir, rama, gitEnv);
+
+      let rawContent: string;
+      try {
+        rawContent = await readFile(`${repoDir}/docker-compose.yml`, "utf-8");
+      } catch {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No se encontró docker-compose.yml en el repositorio",
+        });
+      }
+
+      // Replace build: . (or ./subdir) and context: . (or ./subdir) with the equivalent
+      // path relative from panelDir to repoDir. docker compose resolves relative paths
+      // from the compose file's directory (.panel/), so ../{nombre}[/subdir] always
+      // points to the sibling repo directory (or a subdirectory within it, e.g. a
+      // frontend built from ./frontend in the original repo-root compose).
+      const relativePath = `../${nombre}`;
+      const sustituirRelativo = (
+        _match: string,
+        prefijo: string,
+        subruta: string | undefined,
+        sufijo: string,
+      ) => `${prefijo}${relativePath}${subruta ?? ""}${sufijo}`;
+      const composeContent = rawContent
+        .replace(/^(\s*build:\s*)\.(\/\S*)?(\s*)$/gm, sustituirRelativo)
+        .replace(/^(\s*context:\s*)\.(\/\S*)?(\s*)$/gm, sustituirRelativo);
+
+      return { composeContent };
     }),
 });

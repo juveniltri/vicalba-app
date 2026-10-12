@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockReadFile } = vi.hoisted(() => ({
-  mockReadFile: vi.fn(),
+const { mockLeerFicheroTraefik } = vi.hoisted(() => ({
+  mockLeerFicheroTraefik: vi.fn(),
 }));
 
-vi.mock("node:fs/promises", () => ({ readFile: mockReadFile }));
+vi.mock("@/lib/docker/traefik", () => ({
+  leerFicheroTraefik: mockLeerFicheroTraefik,
+}));
 vi.mock("@/env", () => ({
-  env: { ACME_JSON_PATH: "/var/vicalba/traefik/acme.json" },
+  env: { ACME_JSON_PATH: "/letsencrypt/acme.json" },
 }));
 
 import { leerEstadoSSL } from "./acme";
@@ -39,33 +41,41 @@ describe("leerEstadoSSL", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("devuelve activo: true si el dominio tiene certificado", async () => {
-    mockReadFile.mockResolvedValue(acmeConCerts);
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: true });
   });
 
+  it("lee el fichero desde el contenedor Traefik usando ACME_JSON_PATH", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
+    await leerEstadoSSL("app.ejemplo.com");
+    expect(mockLeerFicheroTraefik).toHaveBeenCalledWith(
+      "/letsencrypt/acme.json",
+    );
+  });
+
   it("devuelve activo: false si el dominio no está en los certificados", async () => {
-    mockReadFile.mockResolvedValue(acmeConCerts);
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
     const result = await leerEstadoSSL("noexiste.com");
     expect(result).toEqual({ activo: false });
   });
 
-  it("devuelve activo: false si acme.json no existe", async () => {
-    mockReadFile.mockRejectedValue(
-      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+  it("devuelve activo: false si no se puede leer el fichero (exec falla, contenedor no encontrado, etc.)", async () => {
+    mockLeerFicheroTraefik.mockRejectedValue(
+      new Error("Contenedor Traefik no encontrado"),
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: false si acme.json está malformado", async () => {
-    mockReadFile.mockResolvedValue("{ invalid json }");
+    mockLeerFicheroTraefik.mockResolvedValue("{ invalid json }");
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: false si el JSON es válido pero no coincide con el schema", async () => {
-    mockReadFile.mockResolvedValue(
+    mockLeerFicheroTraefik.mockResolvedValue(
       JSON.stringify({ letsencrypt: "no-soy-objeto" }),
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
@@ -73,7 +83,7 @@ describe("leerEstadoSSL", () => {
   });
 
   it("devuelve activo: false si no hay Certificates en el resolver", async () => {
-    mockReadFile.mockResolvedValue(
+    mockLeerFicheroTraefik.mockResolvedValue(
       JSON.stringify({ letsencrypt: { Account: {} } }),
     );
     const result = await leerEstadoSSL("app.ejemplo.com");
@@ -81,19 +91,19 @@ describe("leerEstadoSSL", () => {
   });
 
   it("devuelve activo: true con la estructura real de Traefik (sans: null, campos extra)", async () => {
-    mockReadFile.mockResolvedValue(acmeTraefikReal);
+    mockLeerFicheroTraefik.mockResolvedValue(acmeTraefikReal);
     const result = await leerEstadoSSL("app.ejemplo.com");
     expect(result).toEqual({ activo: true });
   });
 
   it("devuelve activo: false si el dominio no está en la estructura real de Traefik", async () => {
-    mockReadFile.mockResolvedValue(acmeTraefikReal);
+    mockLeerFicheroTraefik.mockResolvedValue(acmeTraefikReal);
     const result = await leerEstadoSSL("otro.com");
     expect(result).toEqual({ activo: false });
   });
 
   it("devuelve activo: true con múltiples resolvers y el cert en el segundo", async () => {
-    mockReadFile.mockResolvedValue(
+    mockLeerFicheroTraefik.mockResolvedValue(
       JSON.stringify({
         myresolver: { Account: {} },
         letsencrypt: {

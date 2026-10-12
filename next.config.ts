@@ -37,6 +37,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // La compresión gzip por defecto de `next start` bufferiza la respuesta
+  // hasta tener suficiente contenido, rompiendo el streaming en tiempo real
+  // de los logs de deploy (SSE) en producción.
+  compress: false,
+
   // ssh2 usa módulos nativos (.node) que Turbopack no puede empaquetar en ESM.
   // Externalizarlos hace que Node.js los resuelva en runtime desde node_modules.
   serverExternalPackages: ["ssh2", "dockerode", "docker-modem"],

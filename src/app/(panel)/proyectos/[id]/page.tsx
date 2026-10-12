@@ -14,7 +14,6 @@ import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { AbrirUrlBoton } from "@/components/dashboard/AbrirUrlBoton";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
-import { SSLBadge } from "@/components/dashboard/SSLBadge";
 import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
@@ -26,6 +25,7 @@ import {
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
+import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
 import {
   deployProyectoAction,
   detenerAction,
@@ -60,16 +60,15 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales, volumenes, estadoSSL] =
-    await Promise.all([
-      api.variables.listar({ proyectoId: id }),
-      api.proyectos.listarDeploys({ proyectoId: id }),
-      api.credenciales.listar(),
-      api.volumenes.listar({ proyectoId: id }),
-      proyecto.dominio
-        ? api.proyectos.estadoSSL({ dominio: proyecto.dominio })
-        : Promise.resolve(null),
-    ]);
+  // HACK: comprobación SSL desactivada temporalmente — leerEstadoSSL (docker
+  // exec por proyecto) relentizaba el panel. Reactivar cuando se resuelva el
+  // rendimiento (ver leerFicheroTraefik en src/lib/docker/traefik.ts).
+  const [variables, deploys, credenciales, volumenes] = await Promise.all([
+    api.variables.listar({ proyectoId: id }),
+    api.proyectos.listarDeploys({ proyectoId: id }),
+    api.credenciales.listar(),
+    api.volumenes.listar({ proyectoId: id }),
+  ]);
 
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
@@ -98,62 +97,59 @@ export default async function DetalleProyectoPage({
           </h1>
           <StatusBadge estado={proyecto.estado} />
           {proyecto.dominio && (
-            <AbrirUrlBoton
-              dominio={proyecto.dominio}
-              sslActivo={estadoSSL?.activo ?? null}
-            />
+            <AbrirUrlBoton dominio={proyecto.dominio} sslActivo={null} />
           )}
         </div>
 
         {/* Barra de acciones */}
         <div className="flex items-center gap-2 flex-wrap">
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await iniciarAction(id);
+              const result = await iniciarAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Iniciar"
+            pendingLabel="Iniciando…"
+            successMessage="Proyecto iniciado"
+            disabled={!canAct || proyecto.estado === "running"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "running"}
-              className={ghostBtn}
-            >
-              <IconCheck className="w-[13px] h-[13px]" /> Iniciar
-            </button>
-          </form>
+            <IconCheck className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await detenerAction(id);
+              const result = await detenerAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Detener"
+            pendingLabel="Deteniendo…"
+            successMessage="Proyecto detenido"
+            disabled={!canAct || proyecto.estado === "stopped"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "stopped"}
-              className={ghostBtn}
-            >
-              <IconStop className="w-[13px] h-[13px]" /> Detener
-            </button>
-          </form>
+            <IconStop className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
-          <form
+          <ProjectActionButton
             action={async () => {
               "use server";
-              await restartAction(id);
+              const result = await restartAction(id);
               revalidatePath(`/proyectos/${id}`);
+              return result;
             }}
+            label="Reiniciar"
+            pendingLabel="Reiniciando…"
+            successMessage="Proyecto reiniciado"
+            disabled={!canAct || proyecto.estado === "stopped"}
+            className={ghostBtn}
           >
-            <button
-              type="submit"
-              disabled={!canAct || proyecto.estado === "stopped"}
-              className={ghostBtn}
-            >
-              <IconRedeploy className="w-[13px] h-[13px]" /> Reiniciar
-            </button>
-          </form>
+            <IconRedeploy className="w-[13px] h-[13px]" />
+          </ProjectActionButton>
 
           <form
             action={async () => {
@@ -234,7 +230,6 @@ export default async function DetalleProyectoPage({
                   <span className="font-body text-sm text-text-primary font-mono bg-elevated border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all">
                     {proyecto.dominio}
                   </span>
-                  {estadoSSL && <SSLBadge estado={estadoSSL} />}
                 </div>
               ) : (
                 <span className="font-body text-sm text-text-muted">—</span>
@@ -305,6 +300,7 @@ export default async function DetalleProyectoPage({
             <ComposeEditor
               proyectoId={id}
               composeContentInicial={proyecto.composeContent}
+              repositorioUrl={proyecto.repositorioUrl}
             />
           </Card>
         )}

@@ -173,11 +173,20 @@ npm run db:reset         # reset + migrate + seed
 ```bash
 # Crear directorios persistentes
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
-touch /var/vicalba/traefik/acme.json
-chmod 600 /var/vicalba/traefik/acme.json
 
 # Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
 ```
+
+Los certificados de Let's Encrypt los guarda Traefik en el volumen Docker con
+nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
+bind-mounted — Docker lo crea solo al arrancar. Traefik fuerza permisos 600 en
+ese fichero (propiedad de su propio usuario), así que el panel —que corre como
+usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
+`leerEstadoSSL` no lee el fichero directamente: usa `leerFicheroTraefik`
+(`src/lib/docker/traefik.ts`), que hace `docker exec cat <ruta>` en el propio
+contenedor Traefik vía el socket Docker que el panel ya tiene montado.
+`ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
+del contenedor Traefik, debe coincidir con `storage` en `traefik/traefik.yml`.
 
 ### Primera vez
 
@@ -291,6 +300,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - Compose editor (`feature/compose-editor`, PR #27 → develop): campo composeContent (Text) en Proyecto; editor Monaco lazy-loaded con YAML para proyectos tipo compose; deploy sin repositorio cuando hay composeContent (escribe en panelDir + --env-file); extraerServicios() parsea servicios del YAML en tiempo real; selector de servicio client-side en LogsPanel y LogsModal (aparece con >1 servicio); formulario mejorado (repo opcional para compose con hint, rama oculta sin repo); migración automática en arranque Docker ya existente; 585 tests
   - Fix CSP Monaco (develop): Monaco Editor servido desde /monaco-editor/vs (prebuild copia min/vs a public/); CSP no necesita cdn.jsdelivr.net; worker-src blob: para workers internos
   - Security review (develop): valorSchema con regex /^[^\r\n]\*$/ en router variables (crear + actualizar) — previene newline injection en --env-file de docker compose
+  - Compose env y UI fixes (`hotfix/compose-env-and-ui-fixes`): botón "↺ Recargar del repo" en ComposeEditor (clona/actualiza repo vía `prepararRepo`/`ensureRepo` exportado, procedure `cargarComposeDesdeRepo`, sustituye `build:`/`context: .` por ruta relativa `../{nombre}` para build context válido sin rutas absolutas); fix `.env` siempre escrito en deploy aunque no haya variables configuradas (modo repo: `repoDir/.env`; modo composeContent: `panelDir/{nombre}.env` + `panelDir/.env`) — evita error cuando el compose usa `env_file: .env`; VariablesPanel rediseñado con editor Monaco unificado en formato `.env` (botón "Editar variables" descifra y carga, guardar sincroniza con upsert/eliminación; lista muestra `KEY=••••••••` con toggle build-time y eliminar con confirmación), nuevas procedures `variables.listarConValores`/`variables.sincronizar` y server actions `cargarVariablesAction`/`sincronizarVariablesAction`; fix race condition Docker "network sandbox" en `conectarContenedoresARedCliente` (error ignorado como warning tras `docker compose up -d`, se reintenta en el próximo deploy); feedback visual en Iniciar/Detener/Reiniciar (componente `ProjectActionButton` con `useTransition` — botón deshabilitado y texto "Iniciando…/Deteniendo…/Reiniciando…" mientras la Server Action está en curso; `ToastProvider`/`useToast` propio en `src/components/ui/Toast.tsx`, sin dependencias nuevas, montado en el layout del panel — sustituye el descarte silencioso de errores de los Server Actions por un toast de éxito/error); cobertura 100% restaurada en `src/server/routers/**` (tests de `cargarComposeDesdeRepo`, rama `isComposeDirectoRollback` en `rollback`, rama de `\r` suelto en `variables.sincronizar`) (601 tests, en hotfix/compose-env-and-ui-fixes)
 - **En construcción:** —
 - **Bloqueado / pendiente:** —
 - **Próximo hito:** PR develop → master
