@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Copied from node_modules by the prebuild script (minified vendor code).
+    "public/monaco-editor/**",
   ]),
 ]);
 

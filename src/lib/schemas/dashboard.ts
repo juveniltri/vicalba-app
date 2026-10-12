@@ -6,3 +6,7 @@ type RouterOutput = inferRouterOutputs<AppRouter>;
 export type ClienteConProyectos = RouterOutput["proyectos"]["listar"][number];
 export type ProyectoResumen = ClienteConProyectos["proyectos"][number];
 export type EstadoServicio = ProyectoResumen["estado"];
+export type ActividadDashboard = RouterOutput["proyectos"]["actividad"];
+export type ProyectoAtencion = ActividadDashboard["atencion"][number];
+export type DeployReciente = ActividadDashboard["recientes"][number];
+export type ProyectoIndice = RouterOutput["proyectos"]["indice"][number];

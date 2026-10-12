@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatHace } from "./formatHace";
+import { diasHasta, formatHace, shaCorto } from "./formatHace";
 
 describe("formatHace", () => {
   afterEach(() => {
@@ -41,5 +41,27 @@ describe("formatHace", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00Z"));
     expect(formatHace(new Date("2026-06-02T12:00:00Z"))).toBe("hace 2d");
+  });
+});
+
+describe("shaCorto", () => {
+  it("devuelve los 7 primeros caracteres del commit", () => {
+    expect(shaCorto("e881352abcdef0123")).toBe("e881352");
+  });
+
+  it("devuelve null si no hay commit", () => {
+    expect(shaCorto(null)).toBeNull();
+  });
+});
+
+describe("diasHasta", () => {
+  const ahora = new Date("2026-10-13T12:00:00Z");
+
+  it("cuenta los días completos que faltan", () => {
+    expect(diasHasta("2026-10-22T11:00:00Z", ahora)).toBe(8);
+  });
+
+  it("devuelve un número negativo si la fecha ya pasó", () => {
+    expect(diasHasta("2026-10-10T12:00:00Z", ahora)).toBe(-3);
   });
 });

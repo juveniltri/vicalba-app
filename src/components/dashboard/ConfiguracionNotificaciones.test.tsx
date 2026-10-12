@@ -158,4 +158,68 @@ describe("ConfiguracionNotificaciones", () => {
 
     expect(screen.getByText("configurado")).toBeInTheDocument();
   });
+
+  describe("estado de cada canal", () => {
+    const configBase = {
+      webhookHabilitado: false,
+      webhookUrl: null,
+      emailHabilitado: true,
+      emailSmtpHost: "smtp.x.com",
+      emailSmtpPort: 465,
+      emailSmtpUser: "u",
+      emailRemitente: "a@x.com",
+      emailDestinatario: "b@x.com",
+      telegramHabilitado: true,
+      telegramBotTokenConfigurado: true,
+      telegramChatId: "1",
+    };
+    const hace2h = new Date(Date.now() - 2 * 3_600_000);
+
+    it("muestra el error del último envío fallido", () => {
+      render(
+        <ConfiguracionNotificaciones
+          config={{
+            ...configBase,
+            estadoCanales: {
+              email: {
+                ultimoEnvioEn: hace2h,
+                ultimoError: "connect ETIMEDOUT",
+              },
+              telegram: { ultimoEnvioEn: null, ultimoError: null },
+              webhook: { ultimoEnvioEn: null, ultimoError: null },
+            },
+          }}
+        />,
+      );
+
+      const email = screen.getByRole("region", { name: "Email" });
+      expect(email).toHaveTextContent("Último envío falló");
+      expect(email).toHaveTextContent("connect ETIMEDOUT");
+    });
+
+    it("indica que funciona si el último envío salió bien", () => {
+      render(
+        <ConfiguracionNotificaciones
+          config={{
+            ...configBase,
+            estadoCanales: {
+              email: { ultimoEnvioEn: null, ultimoError: null },
+              telegram: { ultimoEnvioEn: hace2h, ultimoError: null },
+              webhook: { ultimoEnvioEn: null, ultimoError: null },
+            },
+          }}
+        />,
+      );
+
+      expect(
+        screen.getByRole("region", { name: "Telegram" }),
+      ).toHaveTextContent("Funcionando · hace 2h");
+      expect(screen.getByRole("region", { name: "Email" })).toHaveTextContent(
+        "Sin envíos todavía",
+      );
+      expect(screen.getByRole("region", { name: "Webhook" })).toHaveTextContent(
+        "Desactivado",
+      );
+    });
+  });
 });

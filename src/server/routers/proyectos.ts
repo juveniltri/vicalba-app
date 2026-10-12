@@ -27,8 +27,9 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
-import { leerEstadoSSL } from "@/lib/ssl/acme";
+import { leerCertificados, leerEstadoSSL } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
+import { ultimasLineas } from "@/lib/deploy-stream";
 
 const proyectoInput = z.object({
   nombre: z
@@ -75,7 +76,11 @@ type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
 // so all of them deploy with the same variables, volumes and compose content.
 export async function lanzarDeploy(
   proyecto: ProyectoConCliente,
-  opts: { rama: string; sha?: string },
+  opts: {
+    rama: string;
+    sha?: string;
+    origen: "manual" | "webhook" | "rollback";
+  },
 ) {
   const [variablesDB, volumenesDB] = await Promise.all([
     prisma.variableEntorno.findMany({ where: { proyectoId: proyecto.id } }),
@@ -118,6 +123,7 @@ export async function lanzarDeploy(
   // el event loop mantiene viva la promesa hasta que el deploy termina.
   void ejecutarDeploy({
     proyectoId: proyecto.id,
+    origen: opts.origen,
     tipo: proyecto.tipo,
     repoUrl: proyecto.repositorioUrl,
     rama: opts.rama,
@@ -167,7 +173,13 @@ export async function lanzarDeploy(
 export const proyectosRouter = router({
   obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
+    const cert = proyecto.dominio
+      ? (await leerCertificados())[proyecto.dominio]
+      : undefined;
     return {
+      ssl: proyecto.dominio
+        ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
+        : null,
       id: proyecto.id,
       nombre: proyecto.nombre,
       clienteSlug: proyecto.cliente.slug,
@@ -401,7 +413,7 @@ export const proyectosRouter = router({
         message: "El proyecto no tiene repositorio configurado",
       });
 
-    return lanzarDeploy(proyecto, { rama: proyecto.rama });
+    return lanzarDeploy(proyecto, { rama: proyecto.rama, origen: "manual" });
   }),
 
   asignarCredencial: protectedProcedure
@@ -436,6 +448,7 @@ export const proyectosRouter = router({
           rama: true,
           sha: true,
           resultado: true,
+          origen: true,
           output: true,
           iniciadoEn: true,
           finalizadoEn: true,
@@ -468,8 +481,130 @@ export const proyectosRouter = router({
           message: "El proyecto ya está en proceso de deploy",
         });
 
-      return lanzarDeploy(proyecto, { rama: deploy.rama, sha: deploy.sha });
+      return lanzarDeploy(proyecto, {
+        rama: deploy.rama,
+        sha: deploy.sha,
+        origen: "rollback",
+      });
     }),
+
+  indice: protectedProcedure.query(async () => {
+    const proyectos = await prisma.proyecto.findMany({
+      orderBy: [{ cliente: { nombre: "asc" } }, { nombre: "asc" }],
+      select: {
+        id: true,
+        nombre: true,
+        estado: true,
+        dominio: true,
+        cliente: { select: { nombre: true, slug: true } },
+      },
+    });
+    return proyectos.map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      estado: p.estado,
+      dominio: p.dominio,
+      cliente: p.cliente.nombre,
+      clienteSlug: p.cliente.slug,
+    }));
+  }),
+
+  actividad: protectedProcedure.query(async () => {
+    const [deploys, enAtencion] = await Promise.all([
+      prisma.deploy.findMany({
+        orderBy: { iniciadoEn: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          proyectoId: true,
+          rama: true,
+          sha: true,
+          resultado: true,
+          origen: true,
+          iniciadoEn: true,
+          proyecto: {
+            select: { nombre: true, cliente: { select: { nombre: true } } },
+          },
+        },
+      }),
+      prisma.proyecto.findMany({
+        where: { estado: { in: ["error", "deploying"] } },
+        orderBy: { nombre: "asc" },
+        select: {
+          id: true,
+          nombre: true,
+          estado: true,
+          cliente: { select: { nombre: true } },
+          deploys: {
+            orderBy: { iniciadoEn: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              sha: true,
+              rama: true,
+              origen: true,
+              output: true,
+              iniciadoEn: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      recientes: deploys.map((d) => ({
+        id: d.id,
+        proyectoId: d.proyectoId,
+        proyecto: d.proyecto.nombre,
+        cliente: d.proyecto.cliente.nombre,
+        rama: d.rama,
+        sha: d.sha,
+        resultado: d.resultado,
+        origen: d.origen,
+        hace: formatHace(d.iniciadoEn),
+      })),
+      atencion: await Promise.all(
+        enAtencion.map(async (p) => {
+          const ultimo = p.deploys[0];
+          const ultimoBueno =
+            p.estado === "error"
+              ? await prisma.deploy.findFirst({
+                  where: {
+                    proyectoId: p.id,
+                    resultado: "exito",
+                    sha: { not: null },
+                  },
+                  orderBy: { iniciadoEn: "desc" },
+                  select: { id: true, sha: true },
+                })
+              : null;
+          // A running deploy has no stored output yet: read its live stream.
+          const lineas =
+            p.estado === "deploying"
+              ? ultimasLineas(p.id, 3)
+              : (ultimo?.output ?? "")
+                  .split("\n")
+                  .filter((l) => l.trim())
+                  .slice(-3);
+          return {
+            id: p.id,
+            nombre: p.nombre,
+            cliente: p.cliente.nombre,
+            estado: p.estado,
+            deployId: ultimo?.id ?? null,
+            sha: ultimo?.sha ?? null,
+            rama: ultimo?.rama ?? null,
+            origen: ultimo?.origen ?? null,
+            hace: ultimo ? formatHace(ultimo.iniciadoEn) : null,
+            lineas,
+            rollback: ultimoBueno?.sha
+              ? { deployId: ultimoBueno.id, sha: ultimoBueno.sha }
+              : null,
+          };
+        }),
+      ),
+    };
+  }),
 
   estadoSSL: protectedProcedure
     .input(z.object({ dominio: z.string() }))
@@ -478,14 +613,29 @@ export const proyectosRouter = router({
     }),
 
   listar: protectedProcedure.query(async () => {
-    const clientes = await prisma.cliente.findMany({
-      include: {
-        proyectos: {
-          orderBy: { nombre: "asc" },
+    const [clientes, certificados] = await Promise.all([
+      prisma.cliente.findMany({
+        include: {
+          proyectos: {
+            orderBy: { nombre: "asc" },
+            include: {
+              deploys: {
+                orderBy: { iniciadoEn: "desc" },
+                take: 1,
+                select: {
+                  sha: true,
+                  resultado: true,
+                  origen: true,
+                  iniciadoEn: true,
+                },
+              },
+            },
+          },
         },
-      },
-      orderBy: { nombre: "asc" },
-    });
+        orderBy: { nombre: "asc" },
+      }),
+      leerCertificados(),
+    ]);
 
     const result = await Promise.all(
       clientes.map(async (cliente) => ({
@@ -494,9 +644,11 @@ export const proyectosRouter = router({
         nombre: cliente.nombre,
         proyectos: await Promise.all(
           cliente.proyectos.map(async (p) => {
-            // HACK: comprobación SSL desactivada temporalmente — leerEstadoSSL
-            // (docker exec por proyecto) relentizaba el dashboard. Reactivar
-            // cuando se resuelva el rendimiento (ver leerFicheroTraefik).
+            const cert = p.dominio ? certificados[p.dominio] : undefined;
+            const ssl = p.dominio
+              ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
+              : null;
+            const ultimo = p.deploys?.[0];
             return {
               id: p.id,
               nombre: p.nombre,
@@ -512,12 +664,16 @@ export const proyectosRouter = router({
               dockerfilePath: p.dockerfilePath,
               buildCommand: p.buildCommand,
               startCommand: p.startCommand,
-              sslActivo: null,
+              sslActivo: ssl?.activo ?? null,
+              ssl,
               ultimoDeploy:
                 p.ultimoDeployEn && p.ultimoDeployRama
                   ? {
                       hace: formatHace(p.ultimoDeployEn),
                       rama: p.ultimoDeployRama,
+                      sha: ultimo?.sha ?? null,
+                      resultado: ultimo?.resultado ?? null,
+                      origen: ultimo?.origen ?? null,
                     }
                   : null,
             };

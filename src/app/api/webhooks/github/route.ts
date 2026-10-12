@@ -79,7 +79,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // GitHub gives up after 10s, so the deploy runs in the background.
   await Promise.all(
-    desplegables.map((p) => lanzarDeploy(p, { rama, sha: payload.after })),
+    desplegables.map((p) =>
+      lanzarDeploy(p, { rama, sha: payload.after, origen: "webhook" }),
+    ),
   );
 
   return NextResponse.json(
