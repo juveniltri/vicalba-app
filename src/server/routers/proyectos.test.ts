@@ -1313,6 +1313,20 @@ describe("proyectos.obtener", () => {
     });
   });
 
+  it("marca el certificado como ausente si el dominio no tiene ninguno", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+    vi.mocked(leerCertificados).mockResolvedValueOnce({});
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toEqual({ activo: false, caducaEn: null });
+  });
+
   it("no lee certificados si el proyecto no tiene dominio", async () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
