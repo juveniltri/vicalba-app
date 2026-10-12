@@ -482,6 +482,27 @@ export const proyectosRouter = router({
       });
     }),
 
+  indice: protectedProcedure.query(async () => {
+    const proyectos = await prisma.proyecto.findMany({
+      orderBy: [{ cliente: { nombre: "asc" } }, { nombre: "asc" }],
+      select: {
+        id: true,
+        nombre: true,
+        estado: true,
+        dominio: true,
+        cliente: { select: { nombre: true, slug: true } },
+      },
+    });
+    return proyectos.map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      estado: p.estado,
+      dominio: p.dominio,
+      cliente: p.cliente.nombre,
+      clienteSlug: p.cliente.slug,
+    }));
+  }),
+
   actividad: protectedProcedure.query(async () => {
     const [deploys, enAtencion] = await Promise.all([
       prisma.deploy.findMany({
@@ -536,29 +557,46 @@ export const proyectosRouter = router({
         origen: d.origen,
         hace: formatHace(d.iniciadoEn),
       })),
-      atencion: enAtencion.map((p) => {
-        const ultimo = p.deploys[0];
-        // A running deploy has no stored output yet: read its live stream.
-        const lineas =
-          p.estado === "deploying"
-            ? ultimasLineas(p.id, 3)
-            : (ultimo?.output ?? "")
-                .split("\n")
-                .filter((l) => l.trim())
-                .slice(-3);
-        return {
-          id: p.id,
-          nombre: p.nombre,
-          cliente: p.cliente.nombre,
-          estado: p.estado,
-          deployId: ultimo?.id ?? null,
-          sha: ultimo?.sha ?? null,
-          rama: ultimo?.rama ?? null,
-          origen: ultimo?.origen ?? null,
-          hace: ultimo ? formatHace(ultimo.iniciadoEn) : null,
-          lineas,
-        };
-      }),
+      atencion: await Promise.all(
+        enAtencion.map(async (p) => {
+          const ultimo = p.deploys[0];
+          const ultimoBueno =
+            p.estado === "error"
+              ? await prisma.deploy.findFirst({
+                  where: {
+                    proyectoId: p.id,
+                    resultado: "exito",
+                    sha: { not: null },
+                  },
+                  orderBy: { iniciadoEn: "desc" },
+                  select: { id: true, sha: true },
+                })
+              : null;
+          // A running deploy has no stored output yet: read its live stream.
+          const lineas =
+            p.estado === "deploying"
+              ? ultimasLineas(p.id, 3)
+              : (ultimo?.output ?? "")
+                  .split("\n")
+                  .filter((l) => l.trim())
+                  .slice(-3);
+          return {
+            id: p.id,
+            nombre: p.nombre,
+            cliente: p.cliente.nombre,
+            estado: p.estado,
+            deployId: ultimo?.id ?? null,
+            sha: ultimo?.sha ?? null,
+            rama: ultimo?.rama ?? null,
+            origen: ultimo?.origen ?? null,
+            hace: ultimo ? formatHace(ultimo.iniciadoEn) : null,
+            lineas,
+            rollback: ultimoBueno?.sha
+              ? { deployId: ultimoBueno.id, sha: ultimoBueno.sha }
+              : null,
+          };
+        }),
+      ),
     };
   }),
 

@@ -28,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
     volumen: {
       findMany: vi.fn().mockResolvedValue([]),
     },
-    deploy: { findMany: vi.fn(), findUnique: vi.fn() },
+    deploy: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     credencial: { findUnique: vi.fn() },
   },
 }));
@@ -2632,6 +2632,32 @@ describe("proyectos.actividad", () => {
     ]);
   });
 
+  it("ofrece rollback al último deploy correcto de un proyecto en error", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p9",
+        nombre: "api",
+        estado: "error",
+        cliente: { nombre: "acme" },
+        deploys: [],
+      },
+    ] as never);
+    vi.mocked(prisma.deploy.findFirst).mockResolvedValue({
+      id: "d5",
+      sha: "a3f9c21ff",
+    } as never);
+
+    const ctx = await createContext();
+    const { atencion } = await createCaller(ctx).proyectos.actividad();
+
+    expect(prisma.deploy.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { proyectoId: "p9", resultado: "exito", sha: { not: null } },
+      }),
+    );
+    expect(atencion[0].rollback).toEqual({ deployId: "d5", sha: "a3f9c21ff" });
+  });
+
   it("para un proyecto desplegando usa las líneas en vivo del deploy", async () => {
     getOrCreateDeployEmitter("p1").emit("line", "#12 RUN npm run build");
     vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
@@ -2679,5 +2705,39 @@ describe("proyectos.actividad", () => {
       sha: null,
       lineas: [],
     });
+  });
+});
+
+describe("proyectos.indice", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve id, nombre, cliente y estado de cada proyecto sin leer certificados", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p1",
+        nombre: "crm",
+        estado: "deploying",
+        dominio: "crm.ejemplo.com",
+        cliente: { nombre: "microcapilar", slug: "microcapilar" },
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const indice = await createCaller(ctx).proyectos.indice();
+
+    expect(indice).toEqual([
+      {
+        id: "p1",
+        nombre: "crm",
+        estado: "deploying",
+        dominio: "crm.ejemplo.com",
+        cliente: "microcapilar",
+        clienteSlug: "microcapilar",
+      },
+    ]);
+    expect(leerCertificados).not.toHaveBeenCalled();
   });
 });

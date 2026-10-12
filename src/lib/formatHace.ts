@@ -7,3 +7,11 @@ export function formatHace(date: Date): string {
   const days = Math.floor(hours / 24);
   return `hace ${days}d`;
 }
+
+export function shaCorto(sha: string | null | undefined): string | null {
+  return sha ? sha.slice(0, 7) : null;
+}
+
+export function diasHasta(fecha: string | Date, ahora = new Date()): number {
+  return Math.floor((new Date(fecha).getTime() - ahora.getTime()) / 86_400_000);
+}
