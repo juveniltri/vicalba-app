@@ -83,11 +83,10 @@
     "hono": "^4.12.26",
     "nodemailer": "^10.0.16",
     "prisma": {
-      "@prisma/config": {
-        "deepmerge-ts": "^8.0.2"
-      },
       "mysql2": "^3.24.5"
-    }
+    },
+    "deepmerge-ts": "^8.0.2",
+    "dompurify": "^3.4.17"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
