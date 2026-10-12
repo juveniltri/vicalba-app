@@ -1521,6 +1521,37 @@ describe("proyectos.rollback", () => {
     expect(rollbackCall).not.toHaveProperty("servicios");
   });
 
+  it("despliega con los mismos volúmenes y composeContent que un deploy normal", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      composeContent: "services:\n  web:\n    image: nginx\n",
+    } as never);
+    vi.mocked(prisma.volumen.findMany).mockResolvedValue([
+      {
+        id: "v1",
+        proyectoId: "p1",
+        nombre: "galeria",
+        rutaContenedor: "/app/public/galeria",
+        creadoEn: new Date(),
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        composeContent: "services:\n  web:\n    image: nginx\n",
+        volumenes: [
+          {
+            rutaHost: "/var/vicalba/repos/cliente-uno/web-app/volumes/galeria",
+            rutaContenedor: "/app/public/galeria",
+          },
+        ],
+      }),
+    );
+  });
+
   it("retorna deploying inmediatamente y actualiza a running en background", async () => {
     vi.mocked(prisma.proyecto.update)
       .mockResolvedValueOnce({ ...mockProyecto, estado: "deploying" } as never)
