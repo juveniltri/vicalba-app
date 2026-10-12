@@ -7,6 +7,7 @@ import {
   probarEmailAction,
 } from "@/app/(panel)/actions";
 import { useState, useTransition } from "react";
+import { formatHace } from "@/lib/formatHace";
 
 type ConfigData = {
   webhookHabilitado: boolean;
@@ -20,7 +21,59 @@ type ConfigData = {
   telegramHabilitado: boolean;
   telegramBotTokenConfigurado: boolean;
   telegramChatId: string | null;
+  estadoCanales?: Record<
+    "email" | "telegram" | "webhook",
+    { ultimoEnvioEn: Date | string | null; ultimoError: string | null }
+  >;
 } | null;
+
+function EstadoCanal({
+  habilitado,
+  estado,
+}: {
+  habilitado: boolean;
+  estado?: { ultimoEnvioEn: Date | string | null; ultimoError: string | null };
+}) {
+  const pastilla =
+    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[var(--radius-sm)] font-body text-[11px] font-semibold";
+  if (!habilitado)
+    return (
+      <span className={`${pastilla} bg-stopped-bg text-stopped-text`}>
+        Desactivado
+      </span>
+    );
+  if (!estado?.ultimoEnvioEn)
+    return (
+      <span className={`${pastilla} bg-stopped-bg text-stopped-text`}>
+        Sin envíos todavía
+      </span>
+    );
+  const hace = formatHace(new Date(estado.ultimoEnvioEn));
+  if (estado.ultimoError)
+    return (
+      <span className="flex basis-full flex-col gap-2 order-last">
+        <span className={`${pastilla} self-start bg-error-bg text-error-text`}>
+          <span
+            className="size-1.5 rounded-[2px] bg-state-error"
+            aria-hidden="true"
+          />
+          Último envío falló · {hace}
+        </span>
+        <span className="px-3 py-2 rounded-[var(--radius-md)] bg-error-bg border border-error-border font-body text-xs text-error-text break-words">
+          {estado.ultimoError}
+        </span>
+      </span>
+    );
+  return (
+    <span className={`${pastilla} bg-running-bg text-running-text`}>
+      <span
+        className="size-1.5 rounded-full bg-state-running"
+        aria-hidden="true"
+      />
+      Funcionando · {hace}
+    </span>
+  );
+}
 
 export function ConfiguracionNotificaciones({
   config,
@@ -72,7 +125,7 @@ export function ConfiguracionNotificaciones({
         <p
           role={mensaje.error ? "alert" : "status"}
           className={`font-body text-xs break-words ${
-            mensaje.error ? "text-state-error" : "text-state-running"
+            mensaje.error ? "text-error-text" : "text-running-text"
           }`}
         >
           {mensaje.texto}
@@ -80,8 +133,11 @@ export function ConfiguracionNotificaciones({
       )}
 
       {/* Webhook */}
-      <div className="border border-border rounded-[var(--radius-md)] p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <section
+        aria-labelledby="canal-webhook"
+        className={`rounded-[var(--radius-lg)] bg-surface border p-5 ${config?.estadoCanales?.webhook.ultimoError && webhookHabilitado ? "border-error-border" : "border-border"}`}
+      >
+        <div className="flex flex-wrap items-center gap-2.5 mb-3">
           <input
             id="webhook-toggle"
             type="checkbox"
@@ -91,11 +147,16 @@ export function ConfiguracionNotificaciones({
             className="cursor-pointer"
           />
           <label
+            id="canal-webhook"
             htmlFor="webhook-toggle"
-            className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest cursor-pointer"
+            className="font-display text-[15px] font-semibold cursor-pointer"
           >
             Webhook
           </label>
+          <EstadoCanal
+            habilitado={webhookHabilitado}
+            estado={config?.estadoCanales?.webhook}
+          />
         </div>
 
         {webhookHabilitado && (
@@ -113,7 +174,7 @@ export function ConfiguracionNotificaciones({
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
                 placeholder="https://hooks.ejemplo.com/notify"
-                className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
+                className="min-h-10 px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]"
               />
             </div>
           </div>
@@ -130,15 +191,18 @@ export function ConfiguracionNotificaciones({
             })
           }
           disabled={isPending}
-          className="font-body text-xs text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:bg-background disabled:opacity-50"
+          className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
         >
           Guardar
         </button>
-      </div>
+      </section>
 
       {/* Email */}
-      <div className="border border-border rounded-[var(--radius-md)] p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <section
+        aria-labelledby="canal-email"
+        className={`rounded-[var(--radius-lg)] bg-surface border p-5 ${config?.estadoCanales?.email.ultimoError && emailHabilitado ? "border-error-border" : "border-border"}`}
+      >
+        <div className="flex flex-wrap items-center gap-2.5 mb-3">
           <input
             id="email-toggle"
             type="checkbox"
@@ -148,11 +212,16 @@ export function ConfiguracionNotificaciones({
             className="cursor-pointer"
           />
           <label
+            id="canal-email"
             htmlFor="email-toggle"
-            className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest cursor-pointer"
+            className="font-display text-[15px] font-semibold cursor-pointer"
           >
             Email
           </label>
+          <EstadoCanal
+            habilitado={emailHabilitado}
+            estado={config?.estadoCanales?.email}
+          />
         </div>
 
         {emailHabilitado && (
@@ -220,7 +289,7 @@ export function ConfiguracionNotificaciones({
                   value={value}
                   onChange={(e) => setter(e.target.value)}
                   placeholder={placeholder}
-                  className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
+                  className="min-h-10 px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]"
                 />
               </div>
             ))}
@@ -243,7 +312,7 @@ export function ConfiguracionNotificaciones({
             })
           }
           disabled={isPending}
-          className="font-body text-xs text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:bg-background disabled:opacity-50"
+          className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
         >
           Guardar
         </button>
@@ -256,15 +325,18 @@ export function ConfiguracionNotificaciones({
             })
           }
           disabled={isPending}
-          className="ml-2 font-body text-xs text-text-muted bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:text-text-primary hover:bg-background disabled:opacity-50"
+          className="ml-2 inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] border border-border-strong bg-transparent font-body text-[12.5px] text-text-primary hover:bg-elevated disabled:opacity-50"
         >
           Enviar prueba
         </button>
-      </div>
+      </section>
 
       {/* Telegram */}
-      <div className="border border-border rounded-[var(--radius-md)] p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <section
+        aria-labelledby="canal-telegram"
+        className={`rounded-[var(--radius-lg)] bg-surface border p-5 ${config?.estadoCanales?.telegram.ultimoError && telegramHabilitado ? "border-error-border" : "border-border"}`}
+      >
+        <div className="flex flex-wrap items-center gap-2.5 mb-3">
           <input
             id="telegram-toggle"
             type="checkbox"
@@ -274,11 +346,16 @@ export function ConfiguracionNotificaciones({
             className="cursor-pointer"
           />
           <label
+            id="canal-telegram"
             htmlFor="telegram-toggle"
-            className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest cursor-pointer"
+            className="font-display text-[15px] font-semibold cursor-pointer"
           >
             Telegram
           </label>
+          <EstadoCanal
+            habilitado={telegramHabilitado}
+            estado={config?.estadoCanales?.telegram}
+          />
         </div>
 
         {telegramHabilitado && (
@@ -303,7 +380,7 @@ export function ConfiguracionNotificaciones({
                     ? "dejar vacío para mantener el actual"
                     : "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
                 }
-                className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
+                className="min-h-10 px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -319,7 +396,7 @@ export function ConfiguracionNotificaciones({
                 value={chatId}
                 onChange={(e) => setChatId(e.target.value)}
                 placeholder="-1001234567890"
-                className="font-body text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
+                className="min-h-10 px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]"
               />
             </div>
           </div>
@@ -337,11 +414,11 @@ export function ConfiguracionNotificaciones({
             })
           }
           disabled={isPending}
-          className="font-body text-xs text-text-primary bg-surface border border-border rounded-[var(--radius-sm)] px-3 py-1 hover:bg-background disabled:opacity-50"
+          className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
         >
           Guardar
         </button>
-      </div>
+      </section>
     </div>
   );
 }
