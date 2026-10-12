@@ -173,7 +173,13 @@ export async function lanzarDeploy(
 export const proyectosRouter = router({
   obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
+    const cert = proyecto.dominio
+      ? (await leerCertificados())[proyecto.dominio]
+      : undefined;
     return {
+      ssl: proyecto.dominio
+        ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
+        : null,
       id: proyecto.id,
       nombre: proyecto.nombre,
       clienteSlug: proyecto.cliente.slug,

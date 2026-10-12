@@ -1294,6 +1294,40 @@ describe("proyectos.obtener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
+  it("incluye el estado y la caducidad del certificado del dominio", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+    vi.mocked(leerCertificados).mockResolvedValueOnce({
+      "app.cliente-uno.com": { caducaEn: "2026-11-11T23:12:51.000Z" },
+    });
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toEqual({
+      activo: true,
+      caducaEn: "2026-11-11T23:12:51.000Z",
+    });
+  });
+
+  it("no lee certificados si el proyecto no tiene dominio", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toBeNull();
+    expect(leerCertificados).not.toHaveBeenCalled();
+  });
+
   it("devuelve el proyecto con cliente sin servicios y con credencialId", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyectoConCliente as never,
