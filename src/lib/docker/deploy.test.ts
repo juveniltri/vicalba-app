@@ -507,3 +507,125 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     );
   });
 });
+
+describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
+  const envRepo = "/var/vicalba/repos/acme/web-app/.env";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => {
+        if (args[2] === "rev-parse" && args[3] === "HEAD")
+          return cb(null, "e881352abcdef0123456789\n", "");
+        cb(null, "", "");
+      },
+    );
+  });
+
+  const writesTo = (path: string) =>
+    vi.mocked(mockWriteFile).mock.calls.filter(([p]) => p === path);
+
+  it("compose desde repo: el .env del build incluye runtime, build-time y GIT_SHA_SHORT antes del up", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [{ clave: "DATABASE_URL", valor: "postgres://db" }],
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    const [primera] = writesTo(envRepo);
+    expect(primera?.[1]).toBe(
+      "DATABASE_URL=postgres://db\nVITE_SENTRY_DSN=https://dsn\nGIT_SHA_SHORT=e881352",
+    );
+    const writeOrder =
+      vi.mocked(mockWriteFile).mock.invocationCallOrder[
+        vi.mocked(mockWriteFile).mock.calls.indexOf(primera!)
+      ];
+    expect(writeOrder).toBeLessThan(mockSpawn.mock.invocationCallOrder[0]);
+  });
+
+  it("compose desde repo: tras el up el .env queda solo con las runtime (los secretos de build no persisten)", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variables: [{ clave: "DATABASE_URL", valor: "postgres://db" }],
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    const escrituras = writesTo(envRepo);
+    expect(escrituras.at(-1)?.[1]).toBe("DATABASE_URL=postgres://db");
+    const ultimaOrden =
+      vi.mocked(mockWriteFile).mock.invocationCallOrder[
+        vi.mocked(mockWriteFile).mock.calls.indexOf(escrituras.at(-1)!)
+      ];
+    expect(ultimaOrden).toBeGreaterThan(mockSpawn.mock.invocationCallOrder[0]);
+  });
+
+  it("compose desde repo: restaura el .env runtime aunque el build falle", async () => {
+    mockSpawn.mockImplementationOnce(() => makeSpawnResult(1));
+
+    await expect(
+      deployProyecto({
+        ...baseParams,
+        variables: [{ clave: "DATABASE_URL", valor: "postgres://db" }],
+        variablesBuildTime: [
+          { clave: "VITE_SENTRY_DSN", valor: "https://dsn" },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    expect(writesTo(envRepo).at(-1)?.[1]).toBe("DATABASE_URL=postgres://db");
+  });
+
+  it("compose desde repo: sin runtime vars borra el .env tras el up", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith(envRepo);
+  });
+
+  it("dockerfile: el compose generado pasa build-time y GIT_SHA_SHORT como build.args", async () => {
+    await deployProyecto({
+      ...baseParams,
+      tipo: "dockerfile",
+      variables: [{ clave: "DATABASE_URL", valor: "postgres://db" }],
+      variablesBuildTime: [
+        { clave: "VITE_SENTRY_DSN", valor: 'https://"dsn"' },
+      ],
+    });
+
+    const [compose] = writesTo(
+      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+    expect(compose?.[1]).toContain(
+      [
+        "    build:",
+        '      context: "/var/vicalba/repos/acme/web-app"',
+        '      dockerfile: "/var/vicalba/repos/acme/web-app/Dockerfile"',
+        "      args:",
+        '        VITE_SENTRY_DSN: "https://\\"dsn\\""',
+        '        GIT_SHA_SHORT: "e881352"',
+      ].join("\n"),
+    );
+    expect(compose?.[1]).not.toMatch(/args:[\s\S]*DATABASE_URL[\s\S]*ports:/);
+  });
+
+  it("GIT_SHA_SHORT definida por el usuario se sustituye por el commit realmente desplegado", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variablesBuildTime: [{ clave: "GIT_SHA_SHORT", valor: "v0.9.00" }],
+    });
+
+    expect(writesTo(envRepo)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
+  });
+});

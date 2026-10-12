@@ -128,17 +128,31 @@ function generarDockerfileNodejs(
   ].join("\n");
 }
 
-function serializarEnvironment(
+function serializarEnvFile(
+  variables: Array<{ clave: string; valor: string }>,
+): string {
+  return variables.map(({ clave, valor }) => `${clave}=${valor}`).join("\n");
+}
+
+function serializarMapaYaml(
+  cabecera: string,
+  indent: string,
   variables: Array<{ clave: string; valor: string }>,
 ): string[] {
   if (!variables.length) return [];
   return [
-    "    environment:",
+    cabecera,
     ...variables.map(
       ({ clave, valor }) =>
-        `      ${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+        `${indent}${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
     ),
   ];
+}
+
+function serializarEnvironment(
+  variables: Array<{ clave: string; valor: string }>,
+): string[] {
+  return serializarMapaYaml("    environment:", "      ", variables);
 }
 
 function serializarVolumes(
@@ -158,6 +172,7 @@ function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
   puerto: number;
+  buildArgs?: Array<{ clave: string; valor: string }>;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): string {
@@ -167,6 +182,7 @@ function generarDockerComposeConBuild(params: {
     "    build:",
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
+    ...serializarMapaYaml("      args:", "        ", params.buildArgs ?? []),
     "    ports:",
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
@@ -330,6 +346,14 @@ export async function deployProyecto(params: {
     let composeFile: string;
 
     const runtimeVars = variables ?? [];
+    // The panel's commit hash wins over any user-defined var with the same name.
+    const buildVars = [
+      ...(variablesBuildTime ?? []).filter((v) => v.clave !== "GIT_SHA_SHORT"),
+      ...(capturedSha
+        ? [{ clave: "GIT_SHA_SHORT", valor: capturedSha.slice(0, 7) }]
+        : []),
+    ];
+    const esComposeDesdeRepo = tipo === "compose" && !composeContent;
 
     if (tipo === "compose") {
       if (composeContent) {
@@ -345,10 +369,7 @@ export async function deployProyecto(params: {
         composeFile = composePath;
         if (runtimeVars.length > 0) {
           const envFilePath = `${panelDir}/${proyectoNombre}.env`;
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(envFilePath, envContent, {
+          await writeFile(envFilePath, serializarEnvFile(runtimeVars), {
             encoding: "utf-8",
             mode: 0o600,
           });
@@ -357,11 +378,9 @@ export async function deployProyecto(params: {
         composeFile = `${repoDir}/docker-compose.yml`;
         // For repo-based compose files, write .env next to the compose file so
         // docker compose auto-loads it for ${VAR} substitution on every up/restart.
-        if (runtimeVars.length > 0) {
-          const envContent = runtimeVars
-            .map(({ clave, valor }) => `${clave}=${valor}`)
-            .join("\n");
-          await writeFile(`${repoDir}/.env`, envContent, {
+        const buildEnvVars = [...runtimeVars, ...buildVars];
+        if (buildEnvVars.length > 0) {
+          await writeFile(`${repoDir}/.env`, serializarEnvFile(buildEnvVars), {
             encoding: "utf-8",
             mode: 0o600,
           });
@@ -379,6 +398,7 @@ export async function deployProyecto(params: {
           context: repoDir,
           dockerfile: dfAbsoluto,
           puerto,
+          buildArgs: buildVars,
           variables: runtimeVars,
           volumenes,
         }),
@@ -460,6 +480,16 @@ export async function deployProyecto(params: {
     } finally {
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
+      }
+      if (esComposeDesdeRepo && buildVars.length > 0) {
+        if (runtimeVars.length > 0) {
+          await writeFile(`${repoDir}/.env`, serializarEnvFile(runtimeVars), {
+            encoding: "utf-8",
+            mode: 0o600,
+          });
+        } else {
+          await unlink(`${repoDir}/.env`).catch(() => {});
+        }
       }
     }
 
