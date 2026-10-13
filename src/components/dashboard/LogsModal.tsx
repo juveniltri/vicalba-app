@@ -57,9 +57,8 @@ export function LogsModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const { lines, connected, error, clear } = useContainerLogs(
-    open ? proyectoId : null,
-  );
+  const { lines, connected, error, sinContenedores, finalizado, clear } =
+    useContainerLogs(open ? proyectoId : null);
   const [nivel, setNivel] = useState<Nivel>("ALL");
   const [mostrarTs, setMostrarTs] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -170,8 +169,14 @@ export function LogsModal({
         {/* Área de logs */}
         <div className="flex-1 overflow-y-auto p-3 font-mono text-xs text-text-primary space-y-0.5">
           {error && <p className="text-state-error">{error}</p>}
-          {lineasFiltradas.length === 0 && !error && (
-            <p className="text-text-muted">Esperando logs…</p>
+          {sinContenedores ? (
+            <p className="text-text-muted">
+              El proyecto no tiene contenedores en marcha.
+            </p>
+          ) : (
+            lineasFiltradas.length === 0 &&
+            !error &&
+            !finalizado && <p className="text-text-muted">Esperando logs…</p>
           )}
           {lineasFiltradas.map((entry, i) => {
             const parsed = parseLine(entry.line);
@@ -190,6 +195,11 @@ export function LogsModal({
               </p>
             );
           })}
+          {finalizado && (
+            <p className="pt-2 text-text-muted">
+              Los contenedores se han detenido.
+            </p>
+          )}
           <div ref={bottomRef} />
         </div>
 

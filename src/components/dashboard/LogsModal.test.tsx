@@ -238,3 +238,25 @@ describe("LogsModal — controles", () => {
     expect(screen.getByText(/Live/)).toBeInTheDocument();
   });
 });
+
+describe("LogsModal — estado del stream", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("avisa de que no hay contenedores en vez de esperar logs", () => {
+    setup([], { sinContenedores: true });
+    render(<LogsModal {...defaultProps} />);
+    expect(
+      screen.getByText("El proyecto no tiene contenedores en marcha."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Esperando logs…")).not.toBeInTheDocument();
+  });
+
+  it("indica al final del log que los contenedores se han detenido", () => {
+    setup([{ servicio: "web", line: "apagando" }], { finalizado: true });
+    render(<LogsModal {...defaultProps} />);
+    expect(screen.getByText("apagando")).toBeInTheDocument();
+    expect(
+      screen.getByText("Los contenedores se han detenido."),
+    ).toBeInTheDocument();
+  });
+});

@@ -34,11 +34,12 @@ export async function GET(
           },
           abortController.signal,
         );
-        if (sinContenedores) {
+        // Without an explicit end event EventSource reconnects on its own and
+        // the viewer keeps showing a stream that is never coming back.
+        if (!abortController.signal.aborted) {
+          const tipo = sinContenedores ? "sin_contenedores" : "fin";
           controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ tipo: "sin_contenedores" })}\n\n`,
-            ),
+            encoder.encode(`data: ${JSON.stringify({ tipo })}\n\n`),
           );
         }
       } catch {

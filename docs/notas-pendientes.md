@@ -11,7 +11,7 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 - ~~**Deploy real no testeado en VPS**~~: validado en octubre 2026 — auto-deploy vía webhook de GitHub funcionando de punta a punta en la VPS.
 
-- **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
+- ~~**Logs SSE con proyecto sin contenedores**~~: resuelto. El servidor emite `sin_contenedores` o `fin` (contenedores detenidos) antes de cerrar y el visor lo muestra en vez de quedarse en «Esperando logs…».
 
 - ~~**Variables de entorno en deploy**~~: resuelto. El webhook route ahora descifra las `VariableEntorno` del proyecto y las pasa a `ejecutarDeploy`, que escribe un `.env.panel` temporal, lo pasa con `--env-file` a `docker compose`, y lo borra en el bloque `finally`. Mismo patrón que tRPC `deploy` y `rollback`.
 
