@@ -1,31 +1,44 @@
 import { docker } from "@/lib/docker/client";
+import { estadoTraefik } from "@/lib/docker/traefik";
 import { prisma } from "@/lib/prisma";
+import { estadoCertificados } from "@/lib/ssl/acme";
 
 type CheckStatus = "ok" | "error";
 
+type Checks = {
+  database: CheckStatus;
+  docker: CheckStatus;
+  proxy: CheckStatus;
+  certificados: CheckStatus;
+};
+
 export type HealthResult = {
   status: "ok" | "degraded";
-  checks: { database: CheckStatus; docker: CheckStatus };
+  checks: Checks;
   version: string;
 };
 
+const comprobar = (check: Promise<unknown>): Promise<CheckStatus> =>
+  check.then(
+    () => "ok",
+    () => "error",
+  );
+
 export async function comprobarSalud(): Promise<HealthResult> {
-  const checks: { database: CheckStatus; docker: CheckStatus } = {
-    database: "error",
-    docker: "error",
+  const [database, dockerCheck, proxy, certificados] = await Promise.all([
+    comprobar(prisma.$queryRaw`SELECT 1`),
+    comprobar(docker.ping()),
+    estadoTraefik(),
+    estadoCertificados(),
+  ]);
+  const checks: Checks = {
+    database,
+    docker: dockerCheck,
+    proxy,
+    certificados,
   };
 
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    checks.database = "ok";
-  } catch {}
-
-  try {
-    await docker.ping();
-    checks.docker = "ok";
-  } catch {}
-
-  const healthy = checks.database === "ok" && checks.docker === "ok";
+  const healthy = Object.values(checks).every((c) => c === "ok");
   return {
     status: healthy ? "ok" : "degraded",
     checks,

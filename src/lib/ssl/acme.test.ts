@@ -13,11 +13,13 @@ vi.mock("@/env", () => ({
 
 let leerCertificados: typeof import("./acme").leerCertificados;
 let leerEstadoSSL: typeof import("./acme").leerEstadoSSL;
+let estadoCertificados: typeof import("./acme").estadoCertificados;
 
 // The module caches acme.json: a fresh copy per test keeps them independent.
 beforeEach(async () => {
   vi.resetModules();
-  ({ leerCertificados, leerEstadoSSL } = await import("./acme"));
+  ({ leerCertificados, leerEstadoSSL, estadoCertificados } =
+    await import("./acme"));
 });
 
 const acmeConCerts = JSON.stringify({
@@ -240,5 +242,38 @@ describe("caché de acme.json", () => {
     expect(await leerCertificados()).toEqual({});
     expect(await leerCertificados()).toHaveProperty("app.ejemplo.com");
     expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("estadoCertificados", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("devuelve ok si acme.json se lee y tiene el formato de Traefik", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeTraefikReal);
+    expect(await estadoCertificados()).toBe("ok");
+  });
+
+  it("devuelve error si no se puede leer acme.json", async () => {
+    mockLeerFicheroTraefik.mockRejectedValue(
+      new Error("Tiempo de espera agotado"),
+    );
+    expect(await estadoCertificados()).toBe("error");
+  });
+
+  it("devuelve error si acme.json no es JSON válido", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue("no-json");
+    expect(await estadoCertificados()).toBe("error");
+  });
+
+  it("devuelve error si el JSON no tiene el formato esperado", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(JSON.stringify({ x: 1 }));
+    expect(await estadoCertificados()).toBe("error");
+  });
+
+  it("reutiliza la lectura en caché del resto de funciones", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
+    await leerCertificados();
+    await estadoCertificados();
+    expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(1);
   });
 });

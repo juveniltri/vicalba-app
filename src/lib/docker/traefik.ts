@@ -14,6 +14,15 @@ async function encontrarContenedorTraefik() {
   );
 }
 
+export async function estadoTraefik(): Promise<"ok" | "error"> {
+  try {
+    const traefik = await encontrarContenedorTraefik();
+    return traefik?.State === "running" ? "ok" : "error";
+  } catch {
+    return "error";
+  }
+}
+
 const TIMEOUT_MS = 5_000;
 
 // Traefik fuerza permisos 600 en su fichero de certificados (propiedad de su

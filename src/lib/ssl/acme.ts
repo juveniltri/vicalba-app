@@ -52,6 +52,16 @@ function leerAcme(): Promise<string> {
   return enCurso;
 }
 
+export async function estadoCertificados(): Promise<"ok" | "error"> {
+  try {
+    return acmeSchema.safeParse(JSON.parse(await leerAcme())).success
+      ? "ok"
+      : "error";
+  } catch {
+    return "error";
+  }
+}
+
 export async function leerCertificados(): Promise<
   Record<string, { caducaEn: string | null }>
 > {
