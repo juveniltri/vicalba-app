@@ -23,6 +23,13 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ---
 
+## Operación pendiente tras desplegar la 2.1.0
+
+- **Activar Sentry**: crear el proyecto en sentry.io (Next.js) y poner `SENTRY_DSN` en el `.env` de la VPS. Sin DSN el panel funciona igual y no envía errores.
+- **Vigilar el primer deploy de cada proyecto Node.js**: pasan de Node 20 a Node 22. Revisar los que fijen `engines.node` o usen módulos nativos antiguos.
+
+---
+
 ## Decisiones pendientes
 
 - ~~**Tipos de proyecto**~~: resuelto. Implementado enum `TipoProyecto` (`compose | dockerfile | nodejs | image`) con deploy multi-tipo, formulario dinámico y campos por tipo.

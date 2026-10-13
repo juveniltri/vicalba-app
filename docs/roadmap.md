@@ -5,19 +5,6 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ---
 
-## En curso — v2.1 (`feature/v2.1`)
-
-Acordado el 14/10/2026; se cierra con PR `feature/v2.1` → `develop`.
-
-- [x] **Node 22 en los Dockerfiles generados** — `deploy.ts` usa `node:20-alpine` y Node 20 está fuera de soporte desde abril de 2026 (sin parches de seguridad). El panel ya usa Node 22.
-- [x] **Sentry conectado de verdad** — solo servidor, activo con `SENTRY_DSN` (falta crear el proyecto en sentry.io y poner el DSN en el `.env` de la VPS). Avisos `console.warn` de `src/lib` pasados a Pino.
-- [x] **`.dockerignore` generado** — tipo nodejs: `<Dockerfile>.dockerignore` junto al Dockerfile generado con `.git` + las reglas del `.dockerignore` del repo. En el tipo dockerfile el Dockerfile y su `.dockerignore` son del cliente; no se tocan.
-- [ ] **CI en ramas `feature/**`** — el workflow solo corre en push a `develop`/`master` y en PRs.
-- [x] **Quitar código sin uso** — procedure `proyectos.estadoSSL` y `leerEstadoSSL`.
-- [x] **Telegram distingue cancelado** — un deploy cancelado por timeout sale con ❌ como un error.
-
----
-
 ## Bugs conocidos
 
 - **Deploy desde Node en Windows (solo desarrollo)** — `docker compose up --build` lanzado desde el panel falla en «failed to execute bake» (también con el código anterior a v2.1; desde la shell funciona), y cancelar solo mata `docker.exe`: el hijo `docker-compose.exe` termina el build. En la VPS (Linux) ambos funcionan.
@@ -36,7 +23,7 @@ Acordado el 14/10/2026; se cierra con PR `feature/v2.1` → `develop`.
 
 ## Hecho (antes en este backlog)
 
-- `GIT_SHA_SHORT` en proyectos Node.js · Logs del contenedor en pestaña propia (`VisorLogs`, compartido con el modal) · Proxy único `src/proxy.ts` (`/api/*` ya no redirige al login en `next dev`) y límite de 10 intentos/min por IP en el login · Logs SSE sin contenedores · Estado de Traefik y certificados en el health check y el Dashboard · Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
+- **v2.1.0** (ver `CHANGELOG.md`): Node 22 y `.dockerignore` en Dockerfiles generados · Sentry en servidor · CI en ramas feature/hotfix/release · código SSL sin uso eliminado · Telegram distingue cancelado · historial de versiones en Novedades · `GIT_SHA_SHORT` en proyectos Node.js · Logs del contenedor en pestaña propia (`VisorLogs`, compartido con el modal) · Proxy único `src/proxy.ts` (`/api/*` ya no redirige al login en `next dev`) y límite de 10 intentos/min por IP en el login · Logs SSE sin contenedores · Estado de Traefik y certificados en el health check y el Dashboard · Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
 
 ---
 
