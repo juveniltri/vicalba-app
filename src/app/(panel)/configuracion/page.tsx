@@ -1,13 +1,31 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
 import { createServerCaller } from "@/server/caller";
 import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
 import { GestionCredenciales } from "@/components/dashboard/GestionCredenciales";
+import { PageHeader } from "@/components/layout/PageHeader";
 
-export default async function ConfiguracionPage() {
+const SECCIONES = [
+  { id: "notificaciones", etiqueta: "Notificaciones" },
+  { id: "credenciales", etiqueta: "Credenciales SSH" },
+  { id: "webhook", etiqueta: "Webhook de GitHub" },
+  { id: "sistema", etiqueta: "Sistema" },
+] as const;
+type Seccion = (typeof SECCIONES)[number]["id"];
+
+export default async function ConfiguracionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ seccion?: string }>;
+}) {
   const session = await auth();
   if (!session) redirect("/login");
+
+  const { seccion: pedida } = await searchParams;
+  const seccion: Seccion =
+    SECCIONES.find((s) => s.id === pedida)?.id ?? "notificaciones";
 
   const api = await createServerCaller();
   const [config, credenciales] = await Promise.all([
@@ -17,154 +35,150 @@ export default async function ConfiguracionPage() {
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
 
-  const initials = (session.user?.name ?? session.user?.email ?? "?")
-    .charAt(0)
-    .toUpperCase();
-
   return (
-    <div className="max-w-2xl px-10 pt-10 pb-16">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-display text-2xl font-semibold -tracking-[0.03em]">
-          Configuración
-        </h1>
-        <p className="font-body text-[12.5px] text-text-muted mt-[7px]">
-          Ajustes del panel, webhooks y credenciales
-        </p>
-      </div>
+    <div className="flex flex-col gap-6 px-5 md:px-10 pt-7 pb-16">
+      <PageHeader comando="config" titulo="Configuración" />
 
-      <div className="flex flex-col gap-5">
-        {/* Sesión */}
-        <Section titulo="Sesión">
-          <div className="flex items-center gap-4">
-            <div className="grid place-items-center w-10 h-10 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-display font-bold text-base shrink-0">
-              {initials}
-            </div>
-            <div className="min-w-0 flex flex-col gap-0.5">
-              <span className="font-display text-sm font-semibold text-text-primary truncate">
-                {session.user?.name ?? "—"}
-              </span>
-              <span className="font-body text-xs text-text-muted truncate">
-                {session.user?.email ?? "—"}
-              </span>
-            </div>
-          </div>
-        </Section>
-
-        {/* GitHub Webhooks */}
-        <Section
-          titulo="GitHub Webhooks"
-          descripcion="Configura este endpoint en GitHub para activar auto-deploys al hacer push a la rama de cada proyecto."
+      <div className="flex flex-wrap items-start gap-7">
+        <nav
+          aria-label="Secciones de configuración"
+          className="flex flex-[1_1_180px] max-w-[220px] flex-col gap-0.5"
         >
-          <Campo label="Payload URL" valor={webhookUrl} mono />
-          <div className="grid grid-cols-2 gap-4">
-            <Campo label="Content type" valor="application/json" mono />
-            <Campo label="Secret" valor="GITHUB_WEBHOOK_SECRET" mono />
-          </div>
-        </Section>
+          {SECCIONES.map((s) => {
+            const activa = s.id === seccion;
+            return (
+              <Link
+                key={s.id}
+                href={`/configuracion?seccion=${s.id}`}
+                aria-current={activa ? "page" : undefined}
+                className={`flex items-center min-h-10 px-3 rounded-[var(--radius-md)] font-body text-[13px] ${
+                  activa
+                    ? "bg-elevated text-text-primary"
+                    : "text-text-secondary hover:text-text-primary hover:bg-elevated"
+                }`}
+              >
+                {s.etiqueta}
+                {s.id === "credenciales" && (
+                  <span className="ml-auto text-[11px] text-text-muted">
+                    {credenciales.length}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
 
-        {/* Credenciales SSH */}
-        <Section
-          titulo="Credenciales SSH"
-          descripcion="Claves SSH para clonar repositorios privados. La clave privada se cifra en base de datos con AES-256-GCM."
-        >
-          <GestionCredenciales credencialesIniciales={credenciales} />
-        </Section>
+        <div className="flex flex-[999_1_520px] min-w-0 max-w-3xl flex-col gap-4">
+          {seccion === "notificaciones" && (
+            <>
+              <Encabezado
+                titulo="Notificaciones de deploy"
+                descripcion="Se envían al terminar cada deploy, rollback o auto-deploy."
+              />
+              <ConfiguracionNotificaciones config={config} />
+            </>
+          )}
 
-        {/* Notificaciones */}
-        <Section
-          titulo="Notificaciones"
-          descripcion="Alertas cuando un deploy termine en éxito o error."
-        >
-          <ConfiguracionNotificaciones config={config} />
-        </Section>
+          {seccion === "credenciales" && (
+            <>
+              <Encabezado
+                titulo="Credenciales SSH"
+                descripcion="Claves SSH para clonar repositorios privados. La clave privada se cifra en base de datos con AES-256-GCM."
+              />
+              <Tarjeta>
+                <GestionCredenciales credencialesIniciales={credenciales} />
+              </Tarjeta>
+            </>
+          )}
 
-        {/* Sistema */}
-        <Section titulo="Sistema">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Campo
-              label="Entorno"
-              valor={env.NODE_ENV}
-              mono
-              badge={
-                env.NODE_ENV === "production" ? "production" : "development"
-              }
-            />
-            {env.PANEL_DOMAIN && (
-              <Campo label="Dominio del panel" valor={env.PANEL_DOMAIN} mono />
-            )}
-            <Campo label="Socket Docker" valor={env.DOCKER_SOCKET_PATH} mono />
-            <Campo label="Directorio repos" valor={env.REPOS_DIR} mono />
-          </div>
-        </Section>
+          {seccion === "webhook" && (
+            <>
+              <Encabezado
+                titulo="Webhook de GitHub"
+                descripcion="Configura este endpoint en el repositorio (Settings → Webhooks) para lanzar auto-deploys al hacer push a la rama de cada proyecto."
+              />
+              <Tarjeta>
+                <Campo etiqueta="Payload URL" valor={webhookUrl} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Campo etiqueta="Content type" valor="application/json" />
+                  <Campo
+                    etiqueta="Secret"
+                    valor="GITHUB_WEBHOOK_SECRET (del .env)"
+                  />
+                </div>
+                <p className="font-body text-xs text-text-muted">
+                  Eventos: «Just the push event». Activa el auto-deploy en cada
+                  proyecto desde su ficha.
+                </p>
+              </Tarjeta>
+            </>
+          )}
+
+          {seccion === "sistema" && (
+            <>
+              <Encabezado titulo="Sistema" />
+              <Tarjeta>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Campo
+                    etiqueta="Sesión"
+                    valor={session.user?.email ?? session.user?.name ?? "—"}
+                  />
+                  <Campo etiqueta="Entorno" valor={env.NODE_ENV} />
+                  {env.PANEL_DOMAIN && (
+                    <Campo
+                      etiqueta="Dominio del panel"
+                      valor={env.PANEL_DOMAIN}
+                    />
+                  )}
+                  <Campo
+                    etiqueta="Socket Docker"
+                    valor={env.DOCKER_SOCKET_PATH}
+                  />
+                  <Campo etiqueta="Directorio repos" valor={env.REPOS_DIR} />
+                </div>
+              </Tarjeta>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function Section({
+function Encabezado({
   titulo,
   descripcion,
-  children,
 }: {
   titulo: string;
   descripcion?: string;
-  children: React.ReactNode;
 }) {
   return (
-    <section className="bg-surface border border-border rounded-[var(--radius-lg)] p-5">
-      <div className="mb-4">
-        <h2 className="font-display text-[11px] font-semibold text-text-muted uppercase tracking-[0.1em]">
-          {titulo}
-        </h2>
-        {descripcion && (
-          <p className="font-body text-[12px] text-text-muted mt-1.5 leading-relaxed">
-            {descripcion}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-col gap-4">{children}</div>
+    <div className="flex flex-col gap-1">
+      <h2 className="font-display text-lg font-semibold">{titulo}</h2>
+      {descripcion && (
+        <p className="font-body text-[12.5px] leading-relaxed text-text-secondary">
+          {descripcion}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Tarjeta({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-4 rounded-[var(--radius-lg)] bg-surface border border-border p-5">
+      {children}
     </section>
   );
 }
 
-const BADGE_COLOR: Record<string, string> = {
-  production: "bg-state-running/15 text-state-running",
-  development: "bg-[var(--color-accent)]/15 text-[var(--color-accent)]",
-};
-
-function Campo({
-  label,
-  valor,
-  mono = false,
-  badge,
-}: {
-  label: string;
-  valor: string;
-  mono?: boolean;
-  badge?: string;
-}) {
+function Campo({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="font-body text-xs text-text-muted">{label}</span>
-      <div className="flex items-center gap-2">
-        <span
-          className={`font-body text-sm text-text-primary min-w-0 ${
-            mono
-              ? "font-mono bg-elevated border border-border rounded-[var(--radius-sm)] px-2 py-1 break-all flex-1"
-              : ""
-          }`}
-        >
-          {valor}
-        </span>
-        {badge && (
-          <span
-            className={`shrink-0 font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] ${BADGE_COLOR[badge] ?? "bg-border text-text-muted"}`}
-          >
-            {badge}
-          </span>
-        )}
-      </div>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="font-body text-xs text-text-muted">{etiqueta}</span>
+      <span className="px-2.5 py-1.5 rounded-[var(--radius-sm)] bg-elevated border border-border font-body text-[13px] break-all">
+        {valor}
+      </span>
     </div>
   );
 }

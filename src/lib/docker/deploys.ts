@@ -7,6 +7,7 @@ import { deployProyecto } from "./deploy";
 
 export async function ejecutarDeploy(params: {
   proyectoId: string;
+  origen?: "manual" | "webhook" | "rollback";
   tipo: string;
   repoUrl?: string | null;
   rama: string;
@@ -24,14 +25,19 @@ export async function ejecutarDeploy(params: {
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
 }): Promise<{ resultado: "exito" | "error"; output: string }> {
-  const { proyectoId, ...deployParams } = params;
+  const { proyectoId, origen = "manual", ...deployParams } = params;
 
   // Create emitter synchronously (before first await) so SSE clients can subscribe
   // immediately after the router mutation returns.
   const emitter = getOrCreateDeployEmitter(proyectoId);
 
   const registro = await prisma.deploy.create({
-    data: { proyectoId, rama: deployParams.rama, resultado: "en_curso" },
+    data: {
+      proyectoId,
+      rama: deployParams.rama,
+      resultado: "en_curso",
+      origen,
+    },
   });
 
   let resultado: "exito" | "error" = "error";

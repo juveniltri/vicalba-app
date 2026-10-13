@@ -1,29 +1,41 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 type Theme = "dark" | "light";
 
 const STORAGE_KEY = "vicalba-theme";
+const oyentes = new Set<() => void>();
 
 function readThemeFromDOM(): Theme {
-  if (typeof document === "undefined") return "dark";
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
+function suscribir(oyente: () => void) {
+  oyentes.add(oyente);
+  return () => {
+    oyentes.delete(oyente);
+  };
+}
+
 export function useTheme() {
-  // El lazy initializer lee del DOM, que el inline script de layout.tsx ya
-  // inicializó con el tema correcto antes del primer paint.
-  const [theme, setThemeState] = useState<Theme>(readThemeFromDOM);
+  // The inline script in layout.tsx sets data-theme before first paint. Reading
+  // it through useSyncExternalStore (server snapshot "dark") avoids a hydration
+  // mismatch, which made React re-render <html> and reset the theme to dark.
+  const theme = useSyncExternalStore(
+    suscribir,
+    readThemeFromDOM,
+    () => "dark" as const,
+  );
 
   const setTheme = useCallback((next: Theme) => {
-    setThemeState(next);
     document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {
       // Modo privado con storage bloqueado
     }
+    oyentes.forEach((o) => o());
   }, []);
 
   return { theme, setTheme };

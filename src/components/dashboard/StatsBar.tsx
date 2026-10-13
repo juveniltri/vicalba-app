@@ -1,11 +1,12 @@
 import type { EstadoServicio } from "@/lib/schemas/dashboard";
-import { Sparkline } from "@/components/ui/Sparkline";
+import { EstadoMarca } from "./StatusBadge";
 
 interface StatsBarProps {
   proyectos: Array<{ estado: EstadoServicio }>;
+  clientes?: number;
 }
 
-export function StatsBar({ proyectos }: StatsBarProps) {
+export function StatsBar({ proyectos, clientes }: StatsBarProps) {
   const total = proyectos.length;
   const running = proyectos.filter((p) => p.estado === "running").length;
   const stopped = proyectos.filter((p) => p.estado === "stopped").length;
@@ -13,45 +14,41 @@ export function StatsBar({ proyectos }: StatsBarProps) {
 
   return (
     <div
-      className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+      className="grid grid-cols-2 lg:grid-cols-4 gap-3"
       role="region"
       aria-label="resumen de estado"
     >
       <StatCard
         id="stat-total"
+        label="Proyectos"
         count={total}
-        label="Total"
-        seed={41}
-        base={Math.max(total * 8, 30)}
-        amp={20}
-        color="var(--color-text-primary)"
+        detalle={
+          clientes === undefined
+            ? "en el VPS"
+            : `en ${clientes} cliente${clientes === 1 ? "" : "s"}`
+        }
       />
       <StatCard
         id="stat-running"
-        count={running}
         label="Running"
-        seed={17}
-        base={Math.max(running * 8, 25)}
-        amp={22}
-        color="var(--color-state-running)"
+        estado="running"
+        count={running}
+        detalle={`de ${total}`}
       />
       <StatCard
         id="stat-stopped"
-        count={stopped}
         label="Stopped"
-        seed={63}
-        base={Math.max(stopped * 8, 20)}
-        amp={18}
-        color="var(--color-text-muted)"
+        estado="stopped"
+        count={stopped}
+        detalle="parados"
       />
       <StatCard
         id="stat-error"
-        count={error}
         label="Error"
-        seed={89}
-        base={Math.max(error * 8, 15)}
-        amp={25}
-        color="var(--color-state-error)"
+        estado="error"
+        count={error}
+        detalle={error > 0 ? "requieren atención" : "todo en orden"}
+        alerta={error > 0}
       />
     </div>
   );
@@ -59,34 +56,34 @@ export function StatsBar({ proyectos }: StatsBarProps) {
 
 function StatCard({
   id,
-  count,
   label,
-  seed,
-  base,
-  amp,
-  color,
+  count,
+  detalle,
+  estado,
+  alerta = false,
 }: {
   id: string;
-  count: number;
   label: string;
-  seed: number;
-  base: number;
-  amp: number;
-  color: string;
+  count: number;
+  detalle: string;
+  estado?: EstadoServicio;
+  alerta?: boolean;
 }) {
   return (
     <div
       data-testid={id}
-      className="bg-surface border border-border rounded-[var(--radius-lg)] p-[15px_16px_13px]"
-      style={{ color }}
+      className="flex flex-col gap-1.5 px-[18px] py-4 rounded-[var(--radius-lg)] bg-surface border border-border"
     >
-      <div className="font-display text-[10.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+      <span className="flex items-center gap-1.5 font-body text-[11.5px] text-text-muted">
+        {estado && <EstadoMarca estado={estado} />}
         {label}
-      </div>
-      <div className="font-display font-bold text-[28px] -tracking-[0.03em] mt-2 leading-none">
+      </span>
+      <span
+        className={`font-display text-[28px] font-bold leading-none ${alerta ? "text-error-text" : ""}`}
+      >
         {count}
-      </div>
-      <Sparkline seed={seed} base={base} amp={amp} bars={20} />
+      </span>
+      <span className="font-body text-[11.5px] text-text-muted">{detalle}</span>
     </div>
   );
 }

@@ -34,11 +34,23 @@ describe("enviarWebhook", () => {
     );
   });
 
-  it("no lanza si fetch falla", async () => {
+  it("propaga el error de red para registrarlo como fallo del canal", async () => {
     mockFetch.mockRejectedValue(new Error("network error"));
 
     await expect(
       enviarWebhook("https://hooks.ejemplo.com/notify", payload),
-    ).resolves.not.toThrow();
+    ).rejects.toThrow("network error");
+  });
+
+  it("falla si el destino responde con un código no 2xx, sin exponer la URL", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    const error = await enviarWebhook(
+      "https://discord.com/api/webhooks/1/secret-token",
+      payload,
+    ).catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("El webhook respondió 404");
   });
 });

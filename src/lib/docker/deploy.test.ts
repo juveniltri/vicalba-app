@@ -157,6 +157,16 @@ describe("deployProyecto", () => {
     });
   });
 
+  it("anuncia en el log la fase de red y proxy antes de terminar", async () => {
+    const onLog = vi.fn();
+    await deployProyecto({ ...baseParams, onLog });
+
+    const lineas = onLog.mock.calls.map(([l]) => l as string);
+    const red = lineas.indexOf("→ Conectando red y proxy...");
+    expect(red).toBeGreaterThan(-1);
+    expect(red).toBeLessThan(lineas.indexOf("✓ Deploy completado"));
+  });
+
   it("ignora silenciosamente el error 'already exists' al conectar a la red", async () => {
     mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/web"] }]);
     mockConnect.mockRejectedValueOnce(new Error("already exists in network"));

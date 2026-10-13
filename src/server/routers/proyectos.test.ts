@@ -16,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
     cliente: { findMany: vi.fn(), findUnique: vi.fn() },
     proyecto: {
       findUnique: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
       update: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
     volumen: {
       findMany: vi.fn().mockResolvedValue([]),
     },
-    deploy: { findMany: vi.fn(), findUnique: vi.fn() },
+    deploy: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     credencial: { findUnique: vi.fn() },
   },
 }));
@@ -92,6 +93,7 @@ vi.mock("@/lib/docker/traefik", () => ({
 
 vi.mock("@/lib/ssl/acme", () => ({
   leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true }),
+  leerCertificados: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@/lib/notificaciones", () => ({
@@ -120,8 +122,12 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
-import { leerEstadoSSL } from "@/lib/ssl/acme";
+import { leerCertificados, leerEstadoSSL } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
+import {
+  clearDeployEmitter,
+  getOrCreateDeployEmitter,
+} from "@/lib/deploy-stream";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
 
@@ -235,20 +241,70 @@ describe("proyectos.listar", () => {
     const callArg = vi.mocked(prisma.cliente.findMany).mock
       .calls[0][0] as Record<string, unknown>;
     const proyectosInclude = (
-      callArg?.include as { proyectos?: { include?: unknown } }
+      callArg?.include as { proyectos?: { include?: object } }
     )?.proyectos;
-    expect(proyectosInclude).not.toHaveProperty("include");
+    expect(Object.keys(proyectosInclude?.include ?? {})).toEqual(["deploys"]);
   });
 
-  it("sslActivo es siempre null (comprobación SSL desactivada temporalmente) y no llama a leerEstadoSSL", async () => {
+  it("lee los certificados una sola vez y devuelve estado y caducidad por proyecto", async () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(prisma.cliente.findMany).mockResolvedValue(mockDbData as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue([
+      {
+        ...mockDbData[0],
+        proyectos: [
+          mockDbData[0].proyectos[0],
+          { ...mockDbData[0].proyectos[0], id: "p2", dominio: "sin-cert.com" },
+          { ...mockDbData[0].proyectos[0], id: "p3", dominio: null },
+        ],
+      },
+    ] as never);
+    vi.mocked(leerCertificados).mockResolvedValue({
+      "app.cliente-uno.com": { caducaEn: "2026-11-11T23:12:51.000Z" },
+    });
 
     const ctx = await createContext();
-    const result = await createCaller(ctx).proyectos.listar();
+    const [cliente] = await createCaller(ctx).proyectos.listar();
 
-    expect(result[0].proyectos[0].sslActivo).toBeNull();
+    expect(cliente.proyectos.map((p) => p.ssl)).toEqual([
+      { activo: true, caducaEn: "2026-11-11T23:12:51.000Z" },
+      { activo: false, caducaEn: null },
+      null,
+    ]);
+    expect(cliente.proyectos[0].sslActivo).toBe(true);
+    expect(leerCertificados).toHaveBeenCalledOnce();
     expect(leerEstadoSSL).not.toHaveBeenCalled();
+  });
+
+  it("incluye commit, resultado y origen del último deploy", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue([
+      {
+        ...mockDbData[0],
+        proyectos: [
+          {
+            ...mockDbData[0].proyectos[0],
+            deploys: [
+              {
+                sha: "e881352abcdef",
+                resultado: "error",
+                origen: "webhook",
+                iniciadoEn: new Date(),
+              },
+            ],
+          },
+        ],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const [cliente] = await createCaller(ctx).proyectos.listar();
+
+    expect(cliente.proyectos[0].ultimoDeploy).toMatchObject({
+      rama: "main",
+      sha: "e881352abcdef",
+      resultado: "error",
+      origen: "webhook",
+    });
   });
 
   it("throws UNAUTHORIZED when not authenticated", async () => {
@@ -996,6 +1052,7 @@ describe("proyectos.deploy", () => {
         rama: "main",
         clienteSlug: "cliente-uno",
         proyectoNombre: "web-app",
+        origen: "manual",
       }),
     );
     const deployCall = vi.mocked(ejecutarDeploy).mock.calls[0][0] as Record<
@@ -1237,6 +1294,54 @@ describe("proyectos.obtener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
+  it("incluye el estado y la caducidad del certificado del dominio", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+    vi.mocked(leerCertificados).mockResolvedValueOnce({
+      "app.cliente-uno.com": { caducaEn: "2026-11-11T23:12:51.000Z" },
+    });
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toEqual({
+      activo: true,
+      caducaEn: "2026-11-11T23:12:51.000Z",
+    });
+  });
+
+  it("marca el certificado como ausente si el dominio no tiene ninguno", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+    vi.mocked(leerCertificados).mockResolvedValueOnce({});
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toEqual({ activo: false, caducaEn: null });
+  });
+
+  it("no lee certificados si el proyecto no tiene dominio", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      dominio: null,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.ssl).toBeNull();
+    expect(leerCertificados).not.toHaveBeenCalled();
+  });
+
   it("devuelve el proyecto con cliente sin servicios y con credencialId", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyectoConCliente as never,
@@ -1413,6 +1518,20 @@ describe("proyectos.listarDeploys", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
+  it("incluye el origen de cada deploy", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.deploy.findMany).mockResolvedValue([]);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.listarDeploys({ proyectoId: "p1" });
+
+    expect(prisma.deploy.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ origen: true }),
+      }),
+    );
+  });
+
   it("devuelve los últimos deploys del proyecto incluyendo sha", async () => {
     const deploys = [
       {
@@ -1503,6 +1622,15 @@ describe("proyectos.rollback", () => {
       unknown
     >;
     expect(rollbackCall).not.toHaveProperty("servicios");
+  });
+
+  it("marca el deploy como rollback", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.rollback({ deployId: "d1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ origen: "rollback" }),
+    );
   });
 
   it("despliega con los mismos volúmenes y composeContent que un deploy normal", async () => {
@@ -2464,5 +2592,200 @@ describe("proyectos.cargarComposeDesdeRepo", () => {
     await expect(
       createCaller(ctx).proyectos.cargarComposeDesdeRepo({ id: "p1" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("proyectos.actividad", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.deploy.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([]);
+  });
+
+  it("devuelve los últimos deploys de todos los proyectos con su cliente", async () => {
+    vi.mocked(prisma.deploy.findMany).mockResolvedValue([
+      {
+        id: "d1",
+        proyectoId: "p1",
+        rama: "main",
+        sha: "e881352abcdef",
+        resultado: "exito",
+        origen: "webhook",
+        iniciadoEn: new Date(),
+        proyecto: { nombre: "crm", cliente: { nombre: "microcapilar" } },
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const { recientes } = await createCaller(ctx).proyectos.actividad();
+
+    expect(prisma.deploy.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8, orderBy: { iniciadoEn: "desc" } }),
+    );
+    expect(recientes).toEqual([
+      {
+        id: "d1",
+        proyectoId: "p1",
+        proyecto: "crm",
+        cliente: "microcapilar",
+        rama: "main",
+        sha: "e881352abcdef",
+        resultado: "exito",
+        origen: "webhook",
+        hace: "hace 0m",
+      },
+    ]);
+  });
+
+  it("lista en atención los proyectos en error con el final del log de su último deploy", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p9",
+        nombre: "api",
+        estado: "error",
+        cliente: { nombre: "acme" },
+        deploys: [
+          {
+            id: "d9",
+            sha: "7b02d4e9",
+            rama: "main",
+            origen: "manual",
+            output: "#0 inicio\n#1 paso\n\n#2 npm ci\nexit code 1\n",
+            iniciadoEn: new Date(),
+          },
+        ],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const { atencion } = await createCaller(ctx).proyectos.actividad();
+
+    expect(prisma.proyecto.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { estado: { in: ["error", "deploying"] } },
+      }),
+    );
+    expect(atencion).toEqual([
+      expect.objectContaining({
+        id: "p9",
+        nombre: "api",
+        cliente: "acme",
+        estado: "error",
+        deployId: "d9",
+        sha: "7b02d4e9",
+        rama: "main",
+        lineas: ["#1 paso", "#2 npm ci", "exit code 1"],
+      }),
+    ]);
+  });
+
+  it("ofrece rollback al último deploy correcto de un proyecto en error", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p9",
+        nombre: "api",
+        estado: "error",
+        cliente: { nombre: "acme" },
+        deploys: [],
+      },
+    ] as never);
+    vi.mocked(prisma.deploy.findFirst).mockResolvedValue({
+      id: "d5",
+      sha: "a3f9c21ff",
+    } as never);
+
+    const ctx = await createContext();
+    const { atencion } = await createCaller(ctx).proyectos.actividad();
+
+    expect(prisma.deploy.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { proyectoId: "p9", resultado: "exito", sha: { not: null } },
+      }),
+    );
+    expect(atencion[0].rollback).toEqual({ deployId: "d5", sha: "a3f9c21ff" });
+  });
+
+  it("para un proyecto desplegando usa las líneas en vivo del deploy", async () => {
+    getOrCreateDeployEmitter("p1").emit("line", "#12 RUN npm run build");
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p1",
+        nombre: "crm",
+        estado: "deploying",
+        cliente: { nombre: "microcapilar" },
+        deploys: [
+          {
+            id: "d1",
+            sha: null,
+            rama: "main",
+            origen: "webhook",
+            output: null,
+            iniciadoEn: new Date(),
+          },
+        ],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const { atencion } = await createCaller(ctx).proyectos.actividad();
+
+    expect(atencion[0].lineas).toEqual(["#12 RUN npm run build"]);
+    clearDeployEmitter("p1");
+  });
+
+  it("tolera un proyecto en atención que aún no tiene deploys", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p2",
+        nombre: "nuevo",
+        estado: "error",
+        cliente: { nombre: "acme" },
+        deploys: [],
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const { atencion } = await createCaller(ctx).proyectos.actividad();
+
+    expect(atencion[0]).toMatchObject({
+      deployId: null,
+      sha: null,
+      lineas: [],
+    });
+  });
+});
+
+describe("proyectos.indice", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve id, nombre, cliente y estado de cada proyecto sin leer certificados", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      {
+        id: "p1",
+        nombre: "crm",
+        estado: "deploying",
+        dominio: "crm.ejemplo.com",
+        cliente: { nombre: "microcapilar", slug: "microcapilar" },
+      },
+    ] as never);
+
+    const ctx = await createContext();
+    const indice = await createCaller(ctx).proyectos.indice();
+
+    expect(indice).toEqual([
+      {
+        id: "p1",
+        nombre: "crm",
+        estado: "deploying",
+        dominio: "crm.ejemplo.com",
+        cliente: "microcapilar",
+        clienteSlug: "microcapilar",
+      },
+    ]);
+    expect(leerCertificados).not.toHaveBeenCalled();
   });
 });

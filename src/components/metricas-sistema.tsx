@@ -68,11 +68,11 @@ export function MetricasSistema() {
   }, []);
 
   return (
-    <section>
-      <h2 className="font-display text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">
+    <section className="flex flex-col gap-3.5 px-5 py-4 rounded-[var(--radius-lg)] bg-surface border border-border">
+      <h2 className="font-display text-[15px] font-semibold">
         Métricas de sistema
       </h2>
-      <div className="border border-border rounded-[var(--radius-md)] p-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <BarraMetrica
           label="CPU"
           porcentaje={metricas?.cpu ?? 0}

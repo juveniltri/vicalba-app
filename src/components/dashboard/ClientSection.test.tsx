@@ -6,6 +6,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 vi.mock("@/app/(panel)/actions", () => ({
   logoutAction: vi.fn(),
+  deployProyectoAction: vi.fn().mockResolvedValue(undefined),
   eliminarClienteAction: vi.fn().mockResolvedValue(undefined),
   crearProyectoAction: vi.fn().mockResolvedValue(undefined),
   editarClienteAction: vi.fn().mockResolvedValue(undefined),
@@ -53,6 +54,7 @@ const cliente: ClienteConProyectos = {
       rama: "main",
       autoDeployHabilitado: false,
       sslActivo: null,
+      ssl: null,
       tipo: "compose",
       puerto: null,
       imagenUrl: null,
@@ -71,6 +73,7 @@ const cliente: ClienteConProyectos = {
       rama: "main",
       autoDeployHabilitado: false,
       sslActivo: null,
+      ssl: null,
       tipo: "compose",
       puerto: null,
       imagenUrl: null,
@@ -100,10 +103,17 @@ describe("ClientSection", () => {
     expect(screen.getByText("api")).toBeInTheDocument();
   });
 
-  it("renderiza cero tarjetas si el cliente no tiene proyectos", () => {
+  it("indica que no hay proyectos si el cliente no tiene ninguno", () => {
     render(<ClientSection cliente={{ ...cliente, proyectos: [] }} />);
     expect(screen.queryByText("web-app")).not.toBeInTheDocument();
-    expect(screen.queryByText("api")).not.toBeInTheDocument();
+    expect(screen.getByText("Sin proyectos todavía.")).toBeInTheDocument();
+  });
+
+  it("muestra la red del cliente y el número de proyectos", () => {
+    render(<ClientSection cliente={cliente} />);
+    expect(
+      screen.getByText("cliente-cliente-test-network · 2 proyectos"),
+    ).toBeInTheDocument();
   });
 
   it("muestra los botones de acción del cliente", () => {

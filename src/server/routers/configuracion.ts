@@ -51,6 +51,20 @@ export const configuracionRouter = router({
       telegramHabilitado: config.telegramHabilitado,
       telegramBotTokenConfigurado: config.telegramBotTokenCifrado !== null,
       telegramChatId: config.telegramChatId,
+      estadoCanales: {
+        email: {
+          ultimoEnvioEn: config.emailUltimoEnvioEn,
+          ultimoError: config.emailUltimoError,
+        },
+        telegram: {
+          ultimoEnvioEn: config.telegramUltimoEnvioEn,
+          ultimoError: config.telegramUltimoError,
+        },
+        webhook: {
+          ultimoEnvioEn: config.webhookUltimoEnvioEn,
+          ultimoError: config.webhookUltimoError,
+        },
+      },
     };
   }),
 

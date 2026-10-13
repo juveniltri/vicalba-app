@@ -117,6 +117,28 @@ describe("configuracion.obtener", () => {
     );
   });
 
+  it("devuelve el estado del último envío de cada canal", async () => {
+    const enviadoEn = new Date("2026-10-12T22:00:00Z");
+    mockFindUnique.mockResolvedValue({
+      ...configBD,
+      emailUltimoEnvioEn: enviadoEn,
+      emailUltimoError: "connect ETIMEDOUT",
+      telegramUltimoEnvioEn: null,
+      telegramUltimoError: null,
+      webhookUltimoEnvioEn: enviadoEn,
+      webhookUltimoError: null,
+    });
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).configuracion.obtener();
+
+    expect(result?.estadoCanales).toEqual({
+      email: { ultimoEnvioEn: enviadoEn, ultimoError: "connect ETIMEDOUT" },
+      telegram: { ultimoEnvioEn: null, ultimoError: null },
+      webhook: { ultimoEnvioEn: enviadoEn, ultimoError: null },
+    });
+  });
+
   it("devuelve null si no hay config en BD", async () => {
     mockFindUnique.mockResolvedValue(null);
 

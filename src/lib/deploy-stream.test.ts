@@ -3,6 +3,7 @@ import {
   clearDeployEmitter,
   getOrCreateDeployEmitter,
   suscribirDeployLogs,
+  ultimasLineas,
 } from "./deploy-stream";
 
 describe("suscribirDeployLogs", () => {
@@ -95,5 +96,20 @@ describe("suscribirDeployLogs", () => {
 
   it("devuelve null si no hay deploy en curso para el proyecto", () => {
     expect(suscribirDeployLogs("otro", vi.fn(), vi.fn())).toBeNull();
+  });
+});
+
+describe("ultimasLineas", () => {
+  afterEach(() => clearDeployEmitter("p1"));
+
+  it("devuelve las últimas n líneas no vacías del deploy en curso", () => {
+    const emitter = getOrCreateDeployEmitter("p1");
+    ["uno", "", "dos", "tres", "  "].forEach((l) => emitter.emit("line", l));
+
+    expect(ultimasLineas("p1", 2)).toEqual(["dos", "tres"]);
+  });
+
+  it("devuelve un array vacío si no hay deploy en curso", () => {
+    expect(ultimasLineas("otro", 3)).toEqual([]);
   });
 });

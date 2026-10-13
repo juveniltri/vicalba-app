@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { GestionUsuarios } from "@/components/dashboard/GestionUsuarios";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,11 @@ export default async function UsuariosPage() {
   const usuarios = await api.usuarios.listar();
 
   return (
-    <div className="max-w-2xl flex flex-col gap-8 px-10 pt-10 pb-14">
-      <h1 className="font-display text-2xl font-bold text-text-primary">
-        Usuarios
-      </h1>
-      <GestionUsuarios usuariosIniciales={usuarios} />
+    <div className="flex flex-col gap-6 px-5 md:px-10 pt-7 pb-14">
+      <PageHeader comando="who" titulo="Usuarios" />
+      <section className="max-w-3xl rounded-[var(--radius-lg)] bg-surface border border-border p-5">
+        <GestionUsuarios usuariosIniciales={usuarios} />
+      </section>
     </div>
   );
 }
