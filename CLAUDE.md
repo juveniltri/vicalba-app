@@ -142,7 +142,7 @@ Antes de cada merge a `main`: invoca `/security-review`.
 
 ## Observabilidad
 
-- **Sentry:** configurado en todos los entornos (excepto test). Captura errores y performance.
+- **Sentry:** solo servidor y solo si `SENTRY_DSN` está definido (`.env` de la VPS; vacío = desactivado). `src/instrumentation.ts` lo inicializa y exporta `onRequestError` (páginas, rutas API, server actions); la ruta de tRPC envía los `INTERNAL_SERVER_ERROR` desde su `onError`, y `lanzarDeploy` las excepciones inesperadas del deploy en segundo plano. Sin source maps subidos.
 - **Pino:** logging estructurado en JSON. Cada log con `level`, `msg`, `context` y `traceId`.
 - **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla.
 - **Logs de contenedor:** streaming vía SSE desde `GET /api/projects/[id]/logs` — nunca almacenar logs de contenedor en BD.

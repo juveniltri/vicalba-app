@@ -1,4 +1,5 @@
 // src/server/routers/proyectos.ts
+import { captureException } from "@sentry/nextjs";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -181,7 +182,10 @@ export async function lanzarDeploy(
         output,
       });
     })
-    .catch(async () => {
+    .catch(async (err: unknown) => {
+      // ejecutarDeploy already turns build failures into a result; reaching
+      // this point is a bug, and the fire-and-forget would otherwise hide it.
+      captureException(err, { tags: { proyectoId: proyecto.id } });
       await prisma.proyecto.update({
         where: { id: proyecto.id },
         data: { estado: "error" },

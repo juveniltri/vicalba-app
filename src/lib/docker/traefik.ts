@@ -1,6 +1,9 @@
 import { PassThrough } from "node:stream";
 import { env } from "@/env";
+import { logger } from "@/lib/logger";
 import { docker } from "./client";
+
+const log = logger.child({ module: "docker" });
 
 const nombreRed = (clienteSlug: string) => `cliente-${clienteSlug}-network`;
 
@@ -105,9 +108,7 @@ export async function conectarTraefikARed(clienteSlug: string): Promise<void> {
     traefik = await encontrarContenedorTraefik();
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping conectarTraefikARed in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "conectarTraefikARed omitido en desarrollo");
     return;
   }
   if (!traefik) return;
@@ -128,9 +129,7 @@ export async function desconectarTraefikDeRed(
     traefik = await encontrarContenedorTraefik();
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping desconectarTraefikDeRed in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "desconectarTraefikDeRed omitido en desarrollo");
     return;
   }
   if (!traefik) return;

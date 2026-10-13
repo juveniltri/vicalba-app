@@ -1,9 +1,20 @@
+import { captureRequestError } from "@sentry/nextjs";
+
+// Next calls this for unhandled errors in pages, route handlers and server
+// actions; it is a no-op until initSentry() has run with a DSN.
+export const onRequestError = captureRequestError;
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   const { logger } = await import("@/lib/logger");
+  const { initSentry } = await import("@/lib/sentry");
   const { limpiarDeploysHuerfanos } = await import("@/lib/docker/deploys");
   const log = logger.child({ module: "arranque" });
+
+  if (!initSentry() && process.env.NODE_ENV === "production") {
+    log.warn("SENTRY_DSN no configurado: los errores no se envían a Sentry");
+  }
 
   // Deploys only live in this process: any left en_curso died with the previous one.
   try {

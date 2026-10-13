@@ -46,7 +46,11 @@ const serverSchema = z.object({
     .default("info"),
 
   // Monitoring (opcional — el panel arranca sin Sentry)
-  SENTRY_DSN: z.string().url().optional(),
+  // docker-compose passes "" when it is not set in .env; that means "no Sentry".
+  SENTRY_DSN: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
 });
 
 const clientSchema = z.object({

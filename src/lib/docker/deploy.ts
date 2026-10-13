@@ -2,10 +2,13 @@ import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { logger } from "@/lib/logger";
 import { encontrarServicioPorPuerto } from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
 import { conectarTraefikARed } from "./traefik";
+
+const log = logger.child({ module: "docker" });
 
 const execFileAsync = promisify(execFile);
 
@@ -115,9 +118,7 @@ async function conectarContenedoresARedCliente(
     );
   } catch (err) {
     if (env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping conectarContenedoresARedCliente in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "conectarContenedoresARedCliente omitido en desarrollo");
   }
 }
 

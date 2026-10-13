@@ -99,6 +99,8 @@ vi.mock("@/lib/ssl/acme", () => ({
   leerCertificados: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+
 vi.mock("@/lib/notificaciones", () => ({
   enviarNotificacion: vi.fn().mockResolvedValue(undefined),
 }));
@@ -132,6 +134,7 @@ import {
 } from "@/lib/docker/traefik";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
+import { captureException } from "@sentry/nextjs";
 import {
   clearDeployEmitter,
   getOrCreateDeployEmitter,
@@ -1207,6 +1210,25 @@ describe("proyectos.deploy", () => {
         expect.objectContaining({ data: { estado: "error" } }),
       );
     });
+  });
+
+  it("envía a Sentry la excepción inesperada del deploy", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      repositorioUrl: "https://github.com/org/repo",
+    } as never);
+    const fallo = new Error("fatal build error");
+    vi.mocked(ejecutarDeploy).mockRejectedValue(fallo);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(mockProyecto as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    await vi.waitFor(() =>
+      expect(captureException).toHaveBeenCalledWith(fallo, {
+        tags: { proyectoId: "p1" },
+      }),
+    );
   });
 });
 
