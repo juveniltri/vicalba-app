@@ -7,7 +7,7 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Bugs conocidos
 
-- **`/api/*` redirige al login en `next dev`** — solo en desarrollo (Turbopack); con `next start` las rutas `/api` responden bien. Sospecha: conviven `middleware.ts` (raíz, NextAuth) y `src/proxy.ts` (CORS + rate limit), y Next 16 espera un único `src/proxy.ts`. Impide probar en local el log de deploy en vivo (SSE) y el webhook. Propuesta: unificar ambos en `src/proxy.ts`.
+- **Deploy desde Node en Windows (solo desarrollo)** — `docker compose up --build` lanzado desde el panel falla en «failed to execute bake» (también con el código anterior a v2.1; desde la shell funciona), y cancelar solo mata `docker.exe`: el hijo `docker-compose.exe` termina el build. En la VPS (Linux) ambos funcionan.
 
 ---
 
@@ -15,25 +15,15 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Features
 
-- **Cancelar deploy** — botón en el detalle (estaba en el mockup del rediseño). Implica matar el proceso de `docker compose` en curso, restaurar el `.env` sin vars build-time y marcar el Deploy como cancelado.
-
-- **`GIT_SHA_SHORT` en proyectos Node.js** — hoy solo se inyecta en compose desde repo y dockerfile.
-
-- **Estado del Proxy (Traefik) en el Dashboard** — el health check solo comprueba BD y Docker daemon.
-
+- **Backups (siguiente prioridad tras v2.1)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
 - **Secciones Clientes y Proxy en Configuración** — aparecían en el mockup; todavía no hay pantallas detrás.
-
-### Técnico / Refactor
-
-- **Botón Reiniciar = `docker restart`** — verificar si el restart actual hace stop+start o llama a `docker restart`. Si es lo primero, cambiarlo: `docker restart` es más rápido y no recrea el contenedor.
-
-- **Logs del contenedor en pestaña propia** — hoy se abren en el modal (`LogsModal`) desde la cabecera del detalle; extraer el visor para poder incrustarlo.
+- **Documentación OpenAPI** — ver «Decisiones pendientes» en `docs/notas-pendientes.md` (alcance: solo REST o también tRPC).
 
 ---
 
 ## Hecho (antes en este backlog)
 
-- Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
+- **v2.1.0** (ver `CHANGELOG.md`): Node 22 y `.dockerignore` en Dockerfiles generados · Sentry en servidor · CI en ramas feature/hotfix/release · código SSL sin uso eliminado · Telegram distingue cancelado · historial de versiones en Novedades · `GIT_SHA_SHORT` en proyectos Node.js · Logs del contenedor en pestaña propia (`VisorLogs`, compartido con el modal) · Proxy único `src/proxy.ts` (`/api/*` ya no redirige al login en `next dev`) y límite de 10 intentos/min por IP en el login · Logs SSE sin contenedores · Estado de Traefik y certificados en el health check y el Dashboard · Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
 
 ---
 

@@ -37,6 +37,7 @@ describe("DeploysRecientes", () => {
           base,
           { ...base, id: "d2", resultado: "error" },
           { ...base, id: "d3", resultado: "en_curso", sha: null },
+          { ...base, id: "d4", resultado: "cancelado" },
         ]}
       />,
     );
@@ -44,6 +45,7 @@ describe("DeploysRecientes", () => {
     expect(screen.getByText("éxito")).toBeInTheDocument();
     expect(screen.getByText("error")).toBeInTheDocument();
     expect(screen.getByText("en curso")).toBeInTheDocument();
+    expect(screen.getByText("cancelado")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 

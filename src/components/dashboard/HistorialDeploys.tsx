@@ -4,7 +4,7 @@ type Deploy = {
   id: string;
   rama: string;
   sha: string | null;
-  resultado: "en_curso" | "exito" | "error";
+  resultado: "en_curso" | "exito" | "error" | "cancelado";
   output: string | null;
   iniciadoEn: Date;
   finalizadoEn: Date | null;
@@ -41,7 +41,9 @@ export function HistorialDeploys({
             ? "text-state-running"
             : d.resultado === "error"
               ? "text-state-error"
-              : "text-state-deploying";
+              : d.resultado === "cancelado"
+                ? "text-text-muted"
+                : "text-state-deploying";
 
         return (
           <div

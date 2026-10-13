@@ -12,6 +12,11 @@ vi.mock("node:fs/promises", () => ({
   mkdir: mockMkdir,
 }));
 
+const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
+vi.mock("@/lib/logger", () => ({
+  logger: { child: () => ({ warn: mockWarn }) },
+}));
+
 vi.mock("@/env", () => ({
   env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic", NODE_ENV: "test" },
 }));
@@ -115,8 +120,7 @@ describe("escribirConfigTraefik", () => {
     });
   });
 
-  it("muestra console.warn en dev cuando writeFile falla y no relanza el error", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("avisa por el logger en dev cuando writeFile falla y no relanza el error", async () => {
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockRejectedValue(
       Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
@@ -125,8 +129,10 @@ describe("escribirConfigTraefik", () => {
     await expect(
       escribirConfigTraefik("web-app", "yaml"),
     ).resolves.toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[traefik]"));
-    warnSpy.mockRestore();
+    expect(mockWarn).toHaveBeenCalledWith(
+      { code: "ENOENT", dir: "/etc/traefik/dynamic" },
+      expect.stringContaining("config de Traefik"),
+    );
   });
 
   it("relanza el error en producción cuando writeFile falla", async () => {

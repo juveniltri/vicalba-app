@@ -43,6 +43,7 @@ vi.mock("@/env", () => ({
 import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
+  estadoTraefik,
   leerFicheroTraefik,
 } from "./traefik";
 
@@ -221,5 +222,31 @@ describe("leerFicheroTraefik", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("estadoTraefik", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("devuelve ok si el contenedor Traefik está corriendo", async () => {
+    mockListContainers.mockResolvedValue([
+      { ...mockTraefik, State: "running" },
+    ]);
+    expect(await estadoTraefik()).toBe("ok");
+  });
+
+  it("devuelve error si el contenedor existe pero está parado", async () => {
+    mockListContainers.mockResolvedValue([{ ...mockTraefik, State: "exited" }]);
+    expect(await estadoTraefik()).toBe("error");
+  });
+
+  it("devuelve error si no hay contenedor Traefik", async () => {
+    mockListContainers.mockResolvedValue([]);
+    expect(await estadoTraefik()).toBe("error");
+  });
+
+  it("devuelve error si Docker no responde", async () => {
+    mockListContainers.mockRejectedValue(new Error("socket hang up"));
+    expect(await estadoTraefik()).toBe("error");
   });
 });

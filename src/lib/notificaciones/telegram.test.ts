@@ -78,6 +78,21 @@ describe("enviarTelegram", () => {
     expect(body.text).toContain("✅");
   });
 
+  it.each([
+    ["error", "❌"],
+    ["cancelado", "⏱️"],
+  ] as const)("con resultado %s usa %s", async (resultado, emoji) => {
+    await enviarTelegram("bot-token-123", "chat-456", {
+      ...payload,
+      resultado,
+    });
+
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    ) as { text: string };
+    expect(body.text.startsWith(`${emoji} Deploy ${resultado}`)).toBe(true);
+  });
+
   it("propaga el error de red para registrarlo como fallo del canal", async () => {
     mockFetch.mockRejectedValue(new Error("network error"));
 

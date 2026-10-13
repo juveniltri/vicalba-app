@@ -31,7 +31,35 @@ const guardarInput = z.object({
     .optional(),
 });
 
+export const TIMEOUT_DEPLOY_POR_DEFECTO = 30;
+
+const timeoutMinutosSchema = z
+  .number()
+  .int()
+  .refine((n) => n === 0 || (n >= 5 && n <= 180), {
+    message: "El timeout debe ser 0 (sin límite) o entre 5 y 180 minutos",
+  });
+
 export const configuracionRouter = router({
+  obtenerDeploys: protectedProcedure.query(async () => {
+    const config = await prisma.configuracionDeploy.findUnique({
+      where: { id: "default" },
+    });
+    return {
+      timeoutMinutos: config?.timeoutMinutos ?? TIMEOUT_DEPLOY_POR_DEFECTO,
+    };
+  }),
+
+  guardarDeploys: protectedProcedure
+    .input(z.object({ timeoutMinutos: timeoutMinutosSchema }))
+    .mutation(async ({ input }) => {
+      await prisma.configuracionDeploy.upsert({
+        where: { id: "default" },
+        create: { id: "default", ...input },
+        update: input,
+      });
+    }),
+
   obtener: protectedProcedure.query(async () => {
     const config = await prisma.configuracionNotificacion.findUnique({
       where: { id: "default" },

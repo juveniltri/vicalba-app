@@ -31,6 +31,10 @@ Glosario de términos del dominio de este proyecto. Todos los ficheros, variable
 | **`GIT_SHA_SHORT`**       | Variable build-time que el panel inyecta en cada deploy con los 7 primeros caracteres del commit desplegado.                                                                                  |
 | **Canal de notificación** | Vía por la que el panel avisa del resultado de un deploy: email, Telegram o webhook. Guarda la fecha y el error de su último envío.                                                           |
 | **Proyecto fijado**       | Proyecto que el usuario ancla en la barra lateral para acceso rápido. Preferencia por navegador (localStorage), no se guarda en BD.                                                           |
+| **Deploy cancelado**      | Deploy detenido a mano o por superar el timeout. Su resultado es `cancelado` y el proyecto vuelve al estado real de sus contenedores.                                                         |
+| **Timeout de deploy**     | Tiempo máximo que puede durar un deploy (Configuración → Deploys). Al superarlo se cancela solo y se notifica.                                                                                |
+| **Deploy huérfano**       | Deploy que quedó `en_curso` porque el panel se reinició a mitad. Se cierra como cancelado al arrancar el panel.                                                                               |
+| **Novedades**             | Historial de versiones del panel, leído de `CHANGELOG.md` y mostrado en la página Novedades.                                                                                                  |
 
 ---
 
@@ -43,6 +47,7 @@ Glosario de términos del dominio de este proyecto. Todos los ficheros, variable
 | `start`             | Arrancar un proyecto parado                                       |
 | `stop`              | Detener un proyecto en ejecución                                  |
 | `restart`           | Parar y arrancar un proyecto                                      |
+| `cancel deploy`     | Detener un deploy en curso (a mano o por timeout)                 |
 | `stream logs`       | Conectarse al stream SSE de logs de los contenedores del proyecto |
 | `configure domain`  | Asociar un dominio a un proyecto y registrarlo en Traefik         |
 | `issue certificate` | Solicitar/renovar certificado Let's Encrypt para un dominio       |

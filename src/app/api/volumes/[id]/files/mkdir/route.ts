@@ -1,10 +1,9 @@
 import { mkdir } from "node:fs/promises";
-import path from "node:path";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
@@ -17,12 +16,6 @@ async function resolveVolumen(id: string) {
     where: { id },
     include: { proyecto: { include: { cliente: true } } },
   });
-}
-
-function safeResolvePath(base: string, relative: string): string | null {
-  const resolved = path.resolve(base, relative);
-  if (!resolved.startsWith(base + path.sep) && resolved !== base) return null;
-  return resolved;
 }
 
 export async function POST(
@@ -51,7 +44,7 @@ export async function POST(
   );
 
   const relative = body.path ? `${body.path}/${body.nombre}` : body.nombre;
-  const target = safeResolvePath(base, relative);
+  const target = resolverRutaSegura(base, relative, { permitirRaiz: false });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {

@@ -9,17 +9,24 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ## Deuda técnica
 
-- **Deploy real no testeado en VPS**: el refactor de deploy vía compose labels (`-p ${clienteSlug}-${proyectoNombre}`) funciona localmente. Pendiente de validar el flujo completo (clone → `docker compose up`) contra un repositorio GitHub real en la VPS.
+- ~~**Deploy real no testeado en VPS**~~: validado en octubre 2026 — auto-deploy vía webhook de GitHub funcionando de punta a punta en la VPS.
 
-- **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
+- ~~**Logs SSE con proyecto sin contenedores**~~: resuelto. El servidor emite `sin_contenedores` o `fin` (contenedores detenidos) antes de cerrar y el visor lo muestra en vez de quedarse en «Esperando logs…».
 
 - ~~**Variables de entorno en deploy**~~: resuelto. El webhook route ahora descifra las `VariableEntorno` del proyecto y las pasa a `ejecutarDeploy`, que escribe un `.env.panel` temporal, lo pasa con `--env-file` a `docker compose`, y lo borra en el bloque `finally`. Mismo patrón que tRPC `deploy` y `rollback`.
 
-- **Tests de volúmenes en Windows**: 3 tests de `src/app/api/volumes/[id]/files` (download ZIP y mkdir) fallan en Windows y pasan en CI (Linux). Probablemente por separadores de ruta; no afecta a producción.
+- ~~**Tests de volúmenes en Windows**~~: resuelto. La comprobación anti path-traversal comparaba la base POSIX sin resolver; ahora todas las rutas de volúmenes usan `resolverRutaSegura` (`src/lib/volumenes.ts`).
 
 - **Lock file entre plataformas**: el `package-lock.json` regenerado en Windows cambia los flags `peer` y añade `@emnapi/*`, y `npm ci` falla con un lock generado en macOS. CI usa `npm install --prefer-offline`.
 
 - **Entorno dev sin Docker daemon**: las llamadas a dockerode se silencian en desarrollo con un `console.warn`. Valorar un mock de dockerode para tests de integración más realistas.
+
+---
+
+## Operación pendiente tras desplegar la 2.1.0
+
+- **Activar Sentry**: crear el proyecto en sentry.io (Next.js) y poner `SENTRY_DSN` en el `.env` de la VPS. Sin DSN el panel funciona igual y no envía errores.
+- **Vigilar el primer deploy de cada proyecto Node.js**: pasan de Node 20 a Node 22. Revisar los que fijen `engines.node` o usen módulos nativos antiguos.
 
 ---
 

@@ -141,4 +141,52 @@ describe("useContainerLogs", () => {
     });
     expect(result.current.lines).toHaveLength(0);
   });
+
+  it("evento fin: marca finalizado y cierra la conexión sin error", () => {
+    const { result } = renderHook(() => useContainerLogs("p1"));
+    act(() => {
+      mockEs.onopen?.();
+      mockEs.onmessage?.({
+        data: JSON.stringify({ servicio: "web", line: "adiós" }),
+      });
+    });
+    act(() => {
+      mockEs.onmessage?.({ data: JSON.stringify({ tipo: "fin" }) });
+    });
+
+    expect(result.current.finalizado).toBe(true);
+    expect(result.current.connected).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.lines).toHaveLength(1);
+    expect(mockEs.close).toHaveBeenCalled();
+  });
+
+  it("el error de conexión se muestra en castellano", () => {
+    const { result } = renderHook(() => useContainerLogs("p1"));
+    act(() => {
+      mockEs.onerror?.();
+    });
+    expect(result.current.error).toBe("Conexión perdida");
+  });
+
+  it("al cerrar y reabrir empieza de cero", () => {
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | null }) => useContainerLogs(id),
+      { initialProps: { id: "p1" as string | null } },
+    );
+    act(() => {
+      mockEs.onmessage?.({
+        data: JSON.stringify({ servicio: "web", line: "hola" }),
+      });
+      mockEs.onmessage?.({ data: JSON.stringify({ tipo: "fin" }) });
+    });
+
+    rerender({ id: null });
+    rerender({ id: "p1" });
+
+    expect(result.current.lines).toHaveLength(0);
+    expect(result.current.finalizado).toBe(false);
+    expect(result.current.sinContenedores).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
 });

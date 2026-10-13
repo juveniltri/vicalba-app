@@ -24,7 +24,8 @@ vi.mock("fflate", () => ({
   ),
 }));
 
-vi.mock("@/lib/volumenes", () => ({
+vi.mock("@/lib/volumenes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/volumenes")>()),
   rutaHostVolumen: vi
     .fn()
     .mockReturnValue("/repos/cliente/proyecto/volumes/galeria"),

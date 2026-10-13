@@ -56,9 +56,11 @@ export function DeployLogsPanel({
       ? "Deploy completado"
       : done === "error"
         ? "Deploy fallido"
-        : active
-          ? "Deploy en curso"
-          : "Último deploy";
+        : done === "cancelado"
+          ? "Deploy cancelado"
+          : active
+            ? "Deploy en curso"
+            : "Último deploy";
   const tono =
     done === "exito"
       ? { borde: "border-border", marca: "bg-state-running" }
@@ -67,10 +69,12 @@ export function DeployLogsPanel({
             borde: "border-error-border",
             marca: "bg-state-error rounded-[2px]",
           }
-        : {
-            borde: "border-deploying-border",
-            marca: "bg-state-deploying animate-pulse",
-          };
+        : done === "cancelado"
+          ? { borde: "border-border", marca: "bg-text-muted" }
+          : {
+              borde: "border-deploying-border",
+              marca: "bg-state-deploying animate-pulse",
+            };
 
   return (
     <section
@@ -111,14 +115,25 @@ export function DeployLogsPanel({
           const hecha = i < fase;
           const enCurso = i === fase && done === null;
           const fallida = i === fase && done === "error";
-          const simbolo = hecha ? "✓" : fallida ? "■" : enCurso ? "●" : "○";
+          const cancelada = i === fase && done === "cancelado";
+          const simbolo = hecha
+            ? "✓"
+            : fallida
+              ? "■"
+              : cancelada
+                ? "⊘"
+                : enCurso
+                  ? "●"
+                  : "○";
           const clase = hecha
             ? "text-running-text"
             : fallida
               ? "text-error-text font-semibold"
-              : enCurso
-                ? "text-deploying-text font-semibold"
-                : "text-text-muted";
+              : cancelada
+                ? "text-text-secondary font-semibold"
+                : enCurso
+                  ? "text-deploying-text font-semibold"
+                  : "text-text-muted";
           return (
             <li key={nombre} className={clase}>
               {simbolo} {nombre}

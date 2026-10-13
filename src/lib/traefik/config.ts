@@ -1,5 +1,8 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { env } from "@/env";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "traefik" });
 
 export function generarConfigTraefik(params: {
   dominio: string;
@@ -40,8 +43,12 @@ export async function escribirConfigTraefik(
     );
   } catch (err) {
     if (env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[traefik] Skipping config write in dev (${(err as NodeJS.ErrnoException).code}): ${env.TRAEFIK_DYNAMIC_DIR}`,
+    log.warn(
+      {
+        code: (err as NodeJS.ErrnoException).code,
+        dir: env.TRAEFIK_DYNAMIC_DIR,
+      },
+      "No se pudo escribir la config de Traefik (se omite en desarrollo)",
     );
   }
 }

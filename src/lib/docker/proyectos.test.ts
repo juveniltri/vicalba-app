@@ -36,6 +36,7 @@ vi.mock("@/env", () => ({
 import {
   DockerError,
   detenerProyecto,
+  estadoContenedores,
   iniciarProyecto,
   restartProyecto,
   streamProyectoLogs,
@@ -426,5 +427,24 @@ describe("streamProyectoLogs", () => {
     await expect(
       streamProyectoLogs("cliente-uno", "web-app", vi.fn(), controller.signal),
     ).resolves.toStrictEqual({ sinContenedores: true });
+  });
+});
+
+describe("estadoContenedores", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("devuelve running si algún contenedor del proyecto está corriendo", async () => {
+    mockListContainers.mockResolvedValue([makeContainer("c1", "web")]);
+
+    expect(await estadoContenedores("cliente-uno", "web-app")).toBe("running");
+    expect(mockListContainers).toHaveBeenCalledWith({
+      all: false,
+      filters: { label: ["com.docker.compose.project=cliente-uno-web-app"] },
+    });
+  });
+
+  it("devuelve stopped si no hay contenedores corriendo", async () => {
+    mockListContainers.mockResolvedValue([]);
+    expect(await estadoContenedores("cliente-uno", "web-app")).toBe("stopped");
   });
 });

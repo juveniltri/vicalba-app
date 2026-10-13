@@ -73,6 +73,23 @@ describe("HistorialDeploys", () => {
     );
   });
 
+  it("muestra los deploys cancelados en gris y sin botón Rollback", () => {
+    const deploys = [{ ...deployExito, resultado: "cancelado" as const }];
+    render(
+      <HistorialDeploys
+        deploys={deploys}
+        isDeploying={false}
+        onRollback={mockOnRollback}
+      />,
+    );
+    expect(screen.getByText("cancelado").className).toContain(
+      "text-text-muted",
+    );
+    expect(
+      screen.queryByRole("button", { name: /rollback/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("muestra la duración en segundos cuando el deploy finalizó", () => {
     render(<HistorialDeploys {...defaultProps} />);
     expect(screen.getByText("2s")).toBeInTheDocument();

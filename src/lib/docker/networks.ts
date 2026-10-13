@@ -1,4 +1,7 @@
 import { docker } from "./client";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "docker" });
 
 const nombreRed = (clienteSlug: string) => `cliente-${clienteSlug}-network`;
 
@@ -12,9 +15,7 @@ export async function asegurarRedCliente(clienteSlug: string): Promise<void> {
     }
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping asegurarRedCliente in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "asegurarRedCliente omitido en desarrollo");
   }
 }
 
@@ -28,8 +29,6 @@ export async function eliminarRedCliente(clienteSlug: string): Promise<void> {
     }
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping eliminarRedCliente in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "eliminarRedCliente omitido en desarrollo");
   }
 }

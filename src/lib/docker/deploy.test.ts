@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockExecFile,
+  mockExecFileOpts,
   mockSpawn,
   mockWriteFile,
   mockMkdir,
@@ -12,6 +13,7 @@ const {
   mockReadFile,
 } = vi.hoisted(() => {
   const execFileMock = vi.fn();
+  const execFileOptsMock = vi.fn();
   // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
   const customSymbol = Symbol.for("nodejs.util.promisify.custom");
   (execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>)[
@@ -19,8 +21,10 @@ const {
   ] = (
     cmd: unknown,
     args: unknown,
+    opts?: unknown,
   ): Promise<{ stdout: string; stderr: string }> =>
     new Promise((resolve, reject) => {
+      execFileOptsMock(cmd, args, opts);
       execFileMock(
         cmd,
         args,
@@ -47,6 +51,7 @@ const {
 
   return {
     mockExecFile: execFileMock,
+    mockExecFileOpts: execFileOptsMock,
     mockSpawn: spawnMock,
     mockWriteFile: vi.fn().mockResolvedValue(undefined),
     mockMkdir: vi.fn().mockResolvedValue(undefined),
@@ -603,6 +608,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     vi.clearAllMocks();
     mockWriteFile.mockResolvedValue(undefined);
     mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
     mockUnlink.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
@@ -709,6 +715,71 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     expect(compose?.[1]).not.toMatch(/args:[\s\S]*DATABASE_URL[\s\S]*ports:/);
   });
 
+  const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
+  const nodejs = {
+    ...baseParams,
+    tipo: "nodejs",
+    puerto: 3000,
+    buildCommand: "npm run build",
+    startCommand: "npm start",
+  };
+
+  it("nodejs: .env.local del build incluye las build-time y GIT_SHA_SHORT", async () => {
+    await deployProyecto({
+      ...nodejs,
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe(
+      "VITE_SENTRY_DSN=https://dsn\nGIT_SHA_SHORT=e881352",
+    );
+  });
+
+  it("nodejs: sin build-time del usuario también recibe GIT_SHA_SHORT y la imagen final no lleva .env.local", async () => {
+    await deployProyecto(nodejs);
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
+    const [dockerfile] = writesTo(
+      "/var/vicalba/repos/acme/.panel/web-app.Dockerfile",
+    );
+    expect(dockerfile?.[1]).toContain("rm -f .env.local");
+    expect(dockerfile?.[1]).toContain("FROM node:22-alpine AS builder");
+    expect(dockerfile?.[1]).toContain("FROM node:22-alpine AS runner");
+    // Node 20 is out of support (no security patches) since April 2026.
+    expect(dockerfile?.[1]).not.toContain("node:20");
+    expect(mockUnlink).toHaveBeenCalledWith(envLocal);
+  });
+
+  const ignoreGenerado =
+    "/var/vicalba/repos/acme/.panel/web-app.Dockerfile.dockerignore";
+
+  it("nodejs: la imagen no incluye el .git del repositorio", async () => {
+    await deployProyecto(nodejs);
+
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\n");
+  });
+
+  it("nodejs: respeta el .dockerignore del repositorio y le añade .git", async () => {
+    mockReadFile.mockImplementation(async (ruta: string) => {
+      if (ruta === "/var/vicalba/repos/acme/web-app/.dockerignore")
+        return "dist\n*.log\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    await deployProyecto(nodejs);
+
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe("dist\n*.log\n\n.git\n");
+  });
+
+  it("compose desde repo no borra un .env.local que no ha creado", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    expect(mockUnlink).not.toHaveBeenCalledWith(envLocal);
+  });
+
   it("GIT_SHA_SHORT definida por el usuario se sustituye por el commit realmente desplegado", async () => {
     await deployProyecto({
       ...baseParams,
@@ -716,5 +787,41 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     });
 
     expect(writesTo(envRepo)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
+  });
+});
+
+describe("deployProyecto — cancelación", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("pasa la señal de cancelación a git y a docker compose", async () => {
+    const { signal } = new AbortController();
+    await deployProyecto({ ...baseParams, signal });
+
+    const llamadasGit = mockExecFileOpts.mock.calls.filter(
+      ([cmd]) => cmd === "git",
+    );
+    expect(llamadasGit.length).toBeGreaterThan(0);
+    for (const [, , opts] of llamadasGit) {
+      expect(opts).toMatchObject({ signal });
+    }
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "docker",
+      expect.any(Array),
+      expect.objectContaining({ signal }),
+    );
   });
 });

@@ -52,6 +52,16 @@ function leerAcme(): Promise<string> {
   return enCurso;
 }
 
+export async function estadoCertificados(): Promise<"ok" | "error"> {
+  try {
+    return acmeSchema.safeParse(JSON.parse(await leerAcme())).success
+      ? "ok"
+      : "error";
+  } catch {
+    return "error";
+  }
+}
+
 export async function leerCertificados(): Promise<
   Record<string, { caducaEn: string | null }>
 > {
@@ -72,22 +82,5 @@ export async function leerCertificados(): Promise<
     return resultado;
   } catch {
     return {};
-  }
-}
-
-export async function leerEstadoSSL(
-  dominio: string,
-): Promise<{ activo: boolean }> {
-  try {
-    const content = await leerAcme();
-    const parsed = acmeSchema.safeParse(JSON.parse(content));
-    if (!parsed.success) return { activo: false };
-    const certs = Object.values(parsed.data).flatMap(
-      (r) => r.Certificates ?? [],
-    );
-    const activo = certs.some((c) => c.domain.main === dominio);
-    return { activo };
-  } catch {
-    return { activo: false };
   }
 }
