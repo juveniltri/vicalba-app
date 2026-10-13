@@ -224,6 +224,24 @@ Al crear/editar/eliminar un proyecto con dominio, el panel llama a `conectarTrae
 `desconectarTraefikDeRed` via dockerode. Variable de entorno relevante: `TRAEFIK_CONTAINER_NAME`
 (default: `traefik`). Solo hace falta intervención manual en instalaciones con un nombre distinto.
 
+### Nota — variables que inyecta el panel en el build
+
+En cada deploy desde repositorio el panel añade **`GIT_SHA_SHORT`** (los 7 primeros caracteres del
+commit desplegado) a las variables build-time; si el usuario define una con ese nombre, gana la del panel.
+
+- **Compose desde repo:** las build-time y `GIT_SHA_SHORT` se escriben en `<repo>/.env` antes del
+  `up --build` y, al terminar (éxito o error), el `.env` vuelve a contener solo las runtime.
+  El proyecto las mapea en su compose, p. ej. `args: { CRM_BUILD: ${GIT_SHA_SHORT} }`.
+- **Dockerfile:** van como `build.args` en el compose generado.
+- **Node.js:** las build-time van a `.env.local` del stage builder; `GIT_SHA_SHORT` todavía no.
+
+### Nota — webhook de GitHub
+
+Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
+secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
+https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
+GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
+
 ---
 
 ## Skills disponibles
@@ -301,6 +319,8 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fix CSP Monaco (develop): Monaco Editor servido desde /monaco-editor/vs (prebuild copia min/vs a public/); CSP no necesita cdn.jsdelivr.net; worker-src blob: para workers internos
   - Security review (develop): valorSchema con regex /^[^\r\n]\*$/ en router variables (crear + actualizar) — previene newline injection en --env-file de docker compose
   - Compose env y UI fixes (`hotfix/compose-env-and-ui-fixes`): botón "↺ Recargar del repo" en ComposeEditor (clona/actualiza repo vía `prepararRepo`/`ensureRepo` exportado, procedure `cargarComposeDesdeRepo`, sustituye `build:`/`context: .` por ruta relativa `../{nombre}` para build context válido sin rutas absolutas); fix `.env` siempre escrito en deploy aunque no haya variables configuradas (modo repo: `repoDir/.env`; modo composeContent: `panelDir/{nombre}.env` + `panelDir/.env`) — evita error cuando el compose usa `env_file: .env`; VariablesPanel rediseñado con editor Monaco unificado en formato `.env` (botón "Editar variables" descifra y carga, guardar sincroniza con upsert/eliminación; lista muestra `KEY=••••••••` con toggle build-time y eliminar con confirmación), nuevas procedures `variables.listarConValores`/`variables.sincronizar` y server actions `cargarVariablesAction`/`sincronizarVariablesAction`; fix race condition Docker "network sandbox" en `conectarContenedoresARedCliente` (error ignorado como warning tras `docker compose up -d`, se reintenta en el próximo deploy); feedback visual en Iniciar/Detener/Reiniciar (componente `ProjectActionButton` con `useTransition` — botón deshabilitado y texto "Iniciando…/Deteniendo…/Reiniciando…" mientras la Server Action está en curso; `ToastProvider`/`useToast` propio en `src/components/ui/Toast.tsx`, sin dependencias nuevas, montado en el layout del panel — sustituye el descarte silencioso de errores de los Server Actions por un toast de éxito/error); cobertura 100% restaurada en `src/server/routers/**` (tests de `cargarComposeDesdeRepo`, rama `isComposeDirectoRollback` en `rollback`, rama de `\r` suelto en `variables.sincronizar`) (601 tests, en hotfix/compose-env-and-ui-fixes)
+  - Hotfix compose-env, logs, webhook y email (`hotfix/compose-env-and-ui-fixes`, PR #34 → master): variables build-time en compose desde repo (`.env` temporal) y `build.args` en tipo dockerfile; `GIT_SHA_SHORT` inyectado en el build; logs de deploy SSE en el detalle (stream en `globalThis` con replay: el Map por módulo no se compartía entre rutas); webhook con URL normalizada, `202` en segundo plano, ping/form-urlencoded, y `lanzarDeploy()` único para botón/rollback/webhook (antes webhook y rollback no pasaban volúmenes ni composeContent); email con `secure` en 465, timeout 10s, errores registrados con Pino y botón «Enviar prueba» (`configuracion.probarEmail`); audit de producción a 0 high (overrides `dompurify`, `deepmerge-ts`)
+  - Rediseño del Panel (`feature/rediseno-ui`, PR #36 → develop, #38 → master): tokens dark/light ampliados; `StatusBadge` con forma por estado; sidebar con búsqueda ⌘K (`CommandPalette`), proyectos fijados (`useFijados`, localStorage) y menú plegable en móvil; Dashboard con «Requiere atención» (rollback al último commit correcto), últimos deploys y estado del VPS con certificados por caducar; Proyectos en tabla por cliente (`FilaProyecto`, `ProyectosExplorer` con búsqueda y filtros); detalle con pestañas `?tab=` y `DeployLogsPanel` con fases; Configuración por secciones `?seccion=` con estado real de cada canal. Backend: `leerCertificados()` (caducidad X509, una lectura de acme.json), `Deploy.origen` y estado del último envío por canal (migración `20261013000000`), `proyectos.actividad` / `proyectos.indice`; webhook y Telegram propagan errores y fallan con no-2xx; `useTheme` con `useSyncExternalStore` (el tema claro no se aplicaba por un error de hidratación). Mockup: https://claude.ai/artifact/8KiTGsrRFhkhBKWPDRYaMR (765 tests)
 - **En construcción:** —
-- **Bloqueado / pendiente:** —
-- **Próximo hito:** PR develop → master
+- **Bloqueado / pendiente:** ver `docs/roadmap.md` (cancelar deploy, unificar `middleware.ts` + `src/proxy.ts`)
+- **Próximo hito:** sincronizar develop con master tras #38

@@ -1,6 +1,6 @@
 # Notas pendientes
 
-## Estado actual (junio 2026)
+## Estado actual (octubre 2026)
 
 Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master y en producción.
 Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
@@ -14,6 +14,10 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 - **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
 
 - ~~**Variables de entorno en deploy**~~: resuelto. El webhook route ahora descifra las `VariableEntorno` del proyecto y las pasa a `ejecutarDeploy`, que escribe un `.env.panel` temporal, lo pasa con `--env-file` a `docker compose`, y lo borra en el bloque `finally`. Mismo patrón que tRPC `deploy` y `rollback`.
+
+- **Tests de volúmenes en Windows**: 3 tests de `src/app/api/volumes/[id]/files` (download ZIP y mkdir) fallan en Windows y pasan en CI (Linux). Probablemente por separadores de ruta; no afecta a producción.
+
+- **Lock file entre plataformas**: el `package-lock.json` regenerado en Windows cambia los flags `peer` y añade `@emnapi/*`, y `npm ci` falla con un lock generado en macOS. CI usa `npm install --prefer-offline`.
 
 - **Entorno dev sin Docker daemon**: las llamadas a dockerode se silencian en desarrollo con un `console.warn`. Valorar un mock de dockerode para tests de integración más realistas.
 

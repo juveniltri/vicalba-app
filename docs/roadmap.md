@@ -7,7 +7,7 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Bugs conocidos
 
-- **Variables de entorno no llegan al contenedor tras el deploy** — al añadir variables en el panel y redesplegar, el contenedor no las recibe. Workaround actual: copiar `.env` manualmente dentro del Docker. Investigar cómo `deployProyecto` escribe y pasa el `.env` al `docker compose`.
+- **`/api/*` redirige al login en `next dev`** — solo en desarrollo (Turbopack); con `next start` las rutas `/api` responden bien. Sospecha: conviven `middleware.ts` (raíz, NextAuth) y `src/proxy.ts` (CORS + rate limit), y Next 16 espera un único `src/proxy.ts`. Impide probar en local el log de deploy en vivo (SSE) y el webhook. Propuesta: unificar ambos en `src/proxy.ts`.
 
 ---
 
@@ -15,23 +15,25 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Features
 
-- **Gestión de usuarios** — CRUD de usuarios del panel + cambio de contraseña. Actualmente solo existe el usuario configurado en variables de entorno.
+- **Cancelar deploy** — botón en el detalle (estaba en el mockup del rediseño). Implica matar el proceso de `docker compose` en curso, restaurar el `.env` sin vars build-time y marcar el Deploy como cancelado.
 
-- **Logs en tiempo real durante el deploy** — capturar stdout/stderr del proceso de deploy (git clone, docker compose build/up) y streamearlo via SSE igual que los logs de contenedor. Actualmente el deploy es opaco hasta que termina.
+- **`GIT_SHA_SHORT` en proyectos Node.js** — hoy solo se inyecta en compose desde repo y dockerfile.
 
-- **Volúmenes persistentes + gestor de ficheros** — crear volúmenes Docker montados en rutas específicas del contenedor (ej. `/app/public/galeria`) y exponer un file browser en el panel para subir, descargar y eliminar ficheros. Caso de uso: imágenes de galería, assets estáticos, ficheros de configuración que viven fuera del repositorio. Referencia: gestor de ficheros de Coolify.
+- **Estado del Proxy (Traefik) en el Dashboard** — el health check solo comprueba BD y Docker daemon.
 
-- **Import masivo de variables de entorno** — textarea donde pegar el contenido de un `.env` completo y que el panel lo parsee e importe todas las variables de golpe, en lugar de añadirlas una a una.
-
-### Mejoras UX / UI
-
-- **Vista de logs más grande** — el panel de logs actual se ve demasiado pequeño. Opciones: panel redimensionable, modo pantalla completa, o aumentar tamaño de fuente base.
+- **Secciones Clientes y Proxy en Configuración** — aparecían en el mockup; todavía no hay pantallas detrás.
 
 ### Técnico / Refactor
 
 - **Botón Reiniciar = `docker restart`** — verificar si el restart actual hace stop+start o llama a `docker restart`. Si es lo primero, cambiarlo: `docker restart` es más rápido y no recrea el contenedor.
 
-- **Revisión de deuda técnica** — pendiente concretar áreas específicas.
+- **Logs del contenedor en pestaña propia** — hoy se abren en el modal (`LogsModal`) desde la cabecera del detalle; extraer el visor para poder incrustarlo.
+
+---
+
+## Hecho (antes en este backlog)
+
+- Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
 
 ---
 
