@@ -714,6 +714,47 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     expect(compose?.[1]).not.toMatch(/args:[\s\S]*DATABASE_URL[\s\S]*ports:/);
   });
 
+  const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
+  const nodejs = {
+    ...baseParams,
+    tipo: "nodejs",
+    puerto: 3000,
+    buildCommand: "npm run build",
+    startCommand: "npm start",
+  };
+
+  it("nodejs: .env.local del build incluye las build-time y GIT_SHA_SHORT", async () => {
+    await deployProyecto({
+      ...nodejs,
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe(
+      "VITE_SENTRY_DSN=https://dsn\nGIT_SHA_SHORT=e881352",
+    );
+  });
+
+  it("nodejs: sin build-time del usuario también recibe GIT_SHA_SHORT y la imagen final no lleva .env.local", async () => {
+    await deployProyecto(nodejs);
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
+    const [dockerfile] = writesTo(
+      "/var/vicalba/repos/acme/.panel/web-app.Dockerfile",
+    );
+    expect(dockerfile?.[1]).toContain("rm -f .env.local");
+    expect(dockerfile?.[1]).toContain("FROM node:20-alpine AS runner");
+    expect(mockUnlink).toHaveBeenCalledWith(envLocal);
+  });
+
+  it("compose desde repo no borra un .env.local que no ha creado", async () => {
+    await deployProyecto({
+      ...baseParams,
+      variablesBuildTime: [{ clave: "VITE_SENTRY_DSN", valor: "https://dsn" }],
+    });
+
+    expect(mockUnlink).not.toHaveBeenCalledWith(envLocal);
+  });
+
   it("GIT_SHA_SHORT definida por el usuario se sustituye por el commit realmente desplegado", async () => {
     await deployProyecto({
       ...baseParams,

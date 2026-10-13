@@ -413,6 +413,7 @@ export async function deployProyecto(params: {
         : []),
     ];
     const esComposeDesdeRepo = tipo === "compose" && !composeContent;
+    let escribioEnvLocal = false;
 
     if (tipo === "compose") {
       if (composeContent) {
@@ -475,18 +476,16 @@ export async function deployProyecto(params: {
       const dfGenerado = `${panelDir}/${proyectoNombre}.Dockerfile`;
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
 
-      const hasBuildVars = variablesBuildTime && variablesBuildTime.length > 0;
+      const hasBuildVars = buildVars.length > 0;
       if (hasBuildVars) {
         // Write to .env.local in the repo so COPY . . picks it up during build.
         // The multi-stage Dockerfile deletes it before the runner stage copies,
         // so the deployed image stays clean.
-        const buildEnvContent = variablesBuildTime
-          .map(({ clave, valor }) => `${clave}=${valor}`)
-          .join("\n");
-        await writeFile(`${repoDir}/.env.local`, buildEnvContent, {
+        await writeFile(`${repoDir}/.env.local`, serializarEnvFile(buildVars), {
           encoding: "utf-8",
           mode: 0o600,
         });
+        escribioEnvLocal = true;
       }
 
       await writeFile(
@@ -554,7 +553,7 @@ export async function deployProyecto(params: {
     try {
       output = await spawnDockerCompose(composeArgs, onLog, signal);
     } finally {
-      if (variablesBuildTime && variablesBuildTime.length > 0) {
+      if (escribioEnvLocal) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});
       }
       if (esComposeDesdeRepo && buildVars.length > 0) {

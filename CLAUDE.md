@@ -233,7 +233,7 @@ commit desplegado) a las variables build-time; si el usuario define una con ese 
   `up --build` y, al terminar (éxito o error), el `.env` vuelve a contener solo las runtime.
   El proyecto las mapea en su compose, p. ej. `args: { CRM_BUILD: ${GIT_SHA_SHORT} }`.
 - **Dockerfile:** van como `build.args` en el compose generado.
-- **Node.js:** las build-time van a `.env.local` del stage builder; `GIT_SHA_SHORT` todavía no.
+- **Node.js:** las build-time y `GIT_SHA_SHORT` van a `.env.local` del stage builder; el Dockerfile multi-stage lo borra antes del stage final.
 
 ### Nota — webhook de GitHub
 
