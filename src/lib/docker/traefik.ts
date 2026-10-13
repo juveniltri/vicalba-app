@@ -31,9 +31,9 @@ const TIMEOUT_MS = 5_000;
 // exec` en el propio contenedor de Traefik, reutilizando el acceso al socket
 // Docker que el panel ya tiene para gestionar el resto de contenedores.
 //
-// leerEstadoSSL se llama una vez POR PROYECTO CON DOMINIO en el listado del
-// dashboard (justo donde redirige el login) — si el exec se queda colgado
-// (daemon saturado, socket sin responder), no puede bloquear el panel entero.
+// Dashboard, Proyectos, el detalle y el health check leen acme.json por aquí
+// (vía la caché de src/lib/ssl/acme.ts) — si el exec se queda colgado (daemon
+// saturado, socket sin responder), no puede bloquear el panel entero.
 export async function leerFicheroTraefik(ruta: string): Promise<string> {
   return Promise.race([
     leerFicheroTraefikSinTimeout(ruta),
