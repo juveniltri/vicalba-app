@@ -35,6 +35,7 @@ import {
 } from "@/components/dashboard/AccionesProyecto";
 import { botonPrimario, botonSecundario } from "@/components/layout/PageHeader";
 import {
+  cancelarDeployAction,
   deployProyectoAction,
   detenerAction,
   iniciarAction,
@@ -194,6 +195,23 @@ export default async function DetalleProyectoPage({
           >
             <IconRedeploy className="w-[13px] h-[13px]" />
           </ProjectActionButton>
+          {isDeploying && (
+            <ProjectActionButton
+              action={async () => {
+                "use server";
+                const result = await cancelarDeployAction(id);
+                revalidatePath(`/proyectos/${id}`);
+                return result;
+              }}
+              label="Cancelar deploy"
+              pendingLabel="Cancelando…"
+              confirmLabel="¿Cancelar el deploy?"
+              successMessage="Deploy cancelado"
+              className={botonSecundario}
+            >
+              <IconStop className="w-[13px] h-[13px]" />
+            </ProjectActionButton>
+          )}
           <form
             action={async () => {
               "use server";

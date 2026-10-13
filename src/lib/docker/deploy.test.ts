@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockExecFile,
+  mockExecFileOpts,
   mockSpawn,
   mockWriteFile,
   mockMkdir,
@@ -12,6 +13,7 @@ const {
   mockReadFile,
 } = vi.hoisted(() => {
   const execFileMock = vi.fn();
+  const execFileOptsMock = vi.fn();
   // Attach the custom promisify symbol so promisify(execFileMock) returns { stdout, stderr }
   const customSymbol = Symbol.for("nodejs.util.promisify.custom");
   (execFileMock as unknown as Record<symbol, (...args: unknown[]) => unknown>)[
@@ -19,8 +21,10 @@ const {
   ] = (
     cmd: unknown,
     args: unknown,
+    opts?: unknown,
   ): Promise<{ stdout: string; stderr: string }> =>
     new Promise((resolve, reject) => {
+      execFileOptsMock(cmd, args, opts);
       execFileMock(
         cmd,
         args,
@@ -47,6 +51,7 @@ const {
 
   return {
     mockExecFile: execFileMock,
+    mockExecFileOpts: execFileOptsMock,
     mockSpawn: spawnMock,
     mockWriteFile: vi.fn().mockResolvedValue(undefined),
     mockMkdir: vi.fn().mockResolvedValue(undefined),
@@ -716,5 +721,41 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     });
 
     expect(writesTo(envRepo)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
+  });
+});
+
+describe("deployProyecto — cancelación", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("pasa la señal de cancelación a git y a docker compose", async () => {
+    const { signal } = new AbortController();
+    await deployProyecto({ ...baseParams, signal });
+
+    const llamadasGit = mockExecFileOpts.mock.calls.filter(
+      ([cmd]) => cmd === "git",
+    );
+    expect(llamadasGit.length).toBeGreaterThan(0);
+    for (const [, , opts] of llamadasGit) {
+      expect(opts).toMatchObject({ signal });
+    }
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "docker",
+      expect.any(Array),
+      expect.objectContaining({ signal }),
+    );
   });
 });

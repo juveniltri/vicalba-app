@@ -30,6 +30,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     deploy: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     credencial: { findUnique: vi.fn() },
+    configuracionDeploy: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }));
 
@@ -41,6 +42,7 @@ vi.mock("@/lib/docker/proyectos", () => ({
   iniciarProyecto: vi.fn(),
   detenerProyecto: vi.fn(),
   restartProyecto: vi.fn(),
+  estadoContenedores: vi.fn().mockResolvedValue("running"),
   DockerError: class DockerError extends Error {
     constructor(
       public code: string,
@@ -60,6 +62,8 @@ vi.mock("@/lib/traefik/config", () => ({
 
 vi.mock("@/lib/docker/deploys", () => ({
   ejecutarDeploy: vi.fn().mockResolvedValue({ resultado: "exito", output: "" }),
+  cancelarDeploy: vi.fn().mockReturnValue(true),
+  limpiarDeploysHuerfanos: vi.fn().mockResolvedValue(1),
 }));
 
 vi.mock("@/lib/docker/deploy", () => ({
@@ -106,6 +110,7 @@ import {
   iniciarProyecto,
   detenerProyecto,
   restartProyecto,
+  estadoContenedores,
   DockerError,
 } from "@/lib/docker/proyectos";
 import {
@@ -113,7 +118,11 @@ import {
   escribirConfigTraefik,
   eliminarConfigTraefik,
 } from "@/lib/traefik/config";
-import { ejecutarDeploy } from "@/lib/docker/deploys";
+import {
+  cancelarDeploy,
+  ejecutarDeploy,
+  limpiarDeploysHuerfanos,
+} from "@/lib/docker/deploys";
 import { prepararRepo } from "@/lib/docker/deploy";
 import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
@@ -2787,5 +2796,175 @@ describe("proyectos.indice", () => {
       },
     ]);
     expect(leerCertificados).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos.deploy — cancelación y timeout", () => {
+  const proyecto = {
+    id: "p1",
+    nombre: "web-app",
+    clienteId: "c1",
+    estado: "running" as const,
+    dominio: null,
+    repositorioUrl: "https://github.com/org/repo",
+    rama: "main",
+    tipo: "compose" as const,
+    cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(proyecto as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(proyecto as never);
+    vi.mocked(prisma.configuracionDeploy.findUnique).mockResolvedValue(null);
+    vi.mocked(estadoContenedores).mockResolvedValue("running");
+  });
+
+  async function desplegar() {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+  }
+
+  it("pasa a ejecutarDeploy el timeout guardado en la configuración", async () => {
+    vi.mocked(prisma.configuracionDeploy.findUnique).mockResolvedValue({
+      id: "default",
+      timeoutMinutos: 45,
+    });
+    await desplegar();
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ timeoutMinutos: 45 }),
+    );
+  });
+
+  it("usa 30 minutos si no hay configuración guardada", async () => {
+    await desplegar();
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ timeoutMinutos: 30 }),
+    );
+  });
+
+  it("tras cancelar deja el proyecto en el estado real de sus contenedores y no notifica", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "cancelado",
+      output: "Cancelado por admin@vicalba.local",
+      porTimeout: false,
+    });
+    vi.mocked(estadoContenedores).mockResolvedValue("stopped");
+
+    await desplegar();
+
+    await vi.waitFor(() =>
+      expect(prisma.proyecto.update).toHaveBeenLastCalledWith({
+        where: { id: "p1" },
+        data: { estado: "stopped" },
+      }),
+    );
+    expect(estadoContenedores).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(enviarNotificacion).not.toHaveBeenCalled();
+  });
+
+  it("si se cancela por timeout notifica el deploy como cancelado", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "cancelado",
+      output: "Cancelado por timeout (30 min)",
+      porTimeout: true,
+    });
+
+    await desplegar();
+
+    await vi.waitFor(() =>
+      expect(enviarNotificacion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resultado: "cancelado",
+          output: "Cancelado por timeout (30 min)",
+        }),
+      ),
+    );
+  });
+
+  it("si Docker no responde tras cancelar marca el proyecto como error", async () => {
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "cancelado",
+      output: "Cancelado por admin@vicalba.local",
+      porTimeout: false,
+    });
+    vi.mocked(estadoContenedores).mockRejectedValue(new Error("socket caído"));
+
+    await desplegar();
+
+    await vi.waitFor(() =>
+      expect(prisma.proyecto.update).toHaveBeenLastCalledWith({
+        where: { id: "p1" },
+        data: { estado: "error" },
+      }),
+    );
+  });
+});
+
+describe("proyectos.cancelarDeploy", () => {
+  const proyecto = {
+    id: "p1",
+    nombre: "web-app",
+    estado: "deploying" as const,
+    cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(proyecto as never);
+    vi.mocked(cancelarDeploy).mockReturnValue(true);
+  });
+
+  async function cancelar() {
+    const ctx = await createContext();
+    return createCaller(ctx).proyectos.cancelarDeploy({ id: "p1" });
+  }
+
+  it("cancela el deploy en curso indicando quién lo cancela", async () => {
+    await expect(cancelar()).resolves.toEqual({ ok: true });
+    expect(cancelarDeploy).toHaveBeenCalledWith(
+      "p1",
+      "Cancelado por admin@vicalba.local",
+    );
+    expect(limpiarDeploysHuerfanos).not.toHaveBeenCalled();
+  });
+
+  it("si el proceso ya no existe (p. ej. tras reiniciar el panel) cierra el deploy huérfano", async () => {
+    vi.mocked(cancelarDeploy).mockReturnValue(false);
+
+    await expect(cancelar()).resolves.toEqual({ ok: true });
+    expect(limpiarDeploysHuerfanos).toHaveBeenCalledWith(
+      "Cancelado por admin@vicalba.local",
+      "p1",
+    );
+  });
+
+  it("falla si el proyecto no está desplegando", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...proyecto,
+      estado: "running",
+    } as never);
+    vi.mocked(cancelarDeploy).mockReturnValue(false);
+
+    await expect(cancelar()).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "El proyecto no tiene ningún deploy en curso",
+    });
+  });
+
+  it("falla con NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+    await expect(cancelar()).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("usa un nombre genérico si la sesión no tiene email", async () => {
+    vi.mocked(auth).mockResolvedValue({ ...mockSession, user: {} } as never);
+    await cancelar();
+    expect(cancelarDeploy).toHaveBeenCalledWith(
+      "p1",
+      "Cancelado por un usuario",
+    );
   });
 });

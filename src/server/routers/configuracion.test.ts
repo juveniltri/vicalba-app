@@ -10,10 +10,18 @@ vi.mock("@/env", () => ({
   },
 }));
 
-const { mockFindUnique, mockUpsert, mockCifrar } = vi.hoisted(() => ({
+const {
+  mockFindUnique,
+  mockUpsert,
+  mockCifrar,
+  mockDeployFindUnique,
+  mockDeployUpsert,
+} = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpsert: vi.fn(),
   mockCifrar: vi.fn(),
+  mockDeployFindUnique: vi.fn(),
+  mockDeployUpsert: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -21,6 +29,10 @@ vi.mock("@/lib/prisma", () => ({
     configuracionNotificacion: {
       findUnique: mockFindUnique,
       upsert: mockUpsert,
+    },
+    configuracionDeploy: {
+      findUnique: mockDeployFindUnique,
+      upsert: mockDeployUpsert,
     },
   },
 }));
@@ -345,4 +357,56 @@ describe("configuracion.probarEmail", () => {
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(enviarEmailDePrueba).not.toHaveBeenCalled();
   });
+});
+
+describe("configuracion — deploys", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  async function caller() {
+    return createCaller(await createContext()).configuracion;
+  }
+
+  it("obtenerDeploys devuelve 30 minutos si no hay nada guardado", async () => {
+    mockDeployFindUnique.mockResolvedValue(null);
+    expect(await (await caller()).obtenerDeploys()).toEqual({
+      timeoutMinutos: 30,
+    });
+  });
+
+  it("obtenerDeploys devuelve el timeout guardado", async () => {
+    mockDeployFindUnique.mockResolvedValue({
+      id: "default",
+      timeoutMinutos: 90,
+    });
+    expect(await (await caller()).obtenerDeploys()).toEqual({
+      timeoutMinutos: 90,
+    });
+  });
+
+  it("guardarDeploys guarda el timeout", async () => {
+    await (await caller()).guardarDeploys({ timeoutMinutos: 45 });
+    expect(mockDeployUpsert).toHaveBeenCalledWith({
+      where: { id: "default" },
+      create: { id: "default", timeoutMinutos: 45 },
+      update: { timeoutMinutos: 45 },
+    });
+  });
+
+  it("guardarDeploys acepta 0 para desactivar el timeout", async () => {
+    await (await caller()).guardarDeploys({ timeoutMinutos: 0 });
+    expect(mockDeployUpsert).toHaveBeenCalled();
+  });
+
+  it.each([1, 4, 181, 12.5, -5])(
+    "guardarDeploys rechaza %s minutos",
+    async (timeoutMinutos) => {
+      await expect(
+        (await caller()).guardarDeploys({ timeoutMinutos }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mockDeployUpsert).not.toHaveBeenCalled();
+    },
+  );
 });

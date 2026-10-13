@@ -12,7 +12,7 @@ export interface PayloadNotificacion {
   clienteSlug: string;
   rama: string;
   sha: string | null;
-  resultado: "exito" | "error";
+  resultado: "exito" | "error" | "cancelado";
   output: string;
 }
 

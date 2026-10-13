@@ -153,6 +153,15 @@ export async function deployProyectoAction(id: string) {
   }
 }
 
+export async function cancelarDeployAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.cancelarDeploy({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al cancelar el deploy") };
+  }
+}
+
 export async function toggleAutoDeployAction(id: string) {
   try {
     const api = await createServerCaller();
@@ -275,6 +284,17 @@ export async function asignarCredencialAction(
     await api.proyectos.asignarCredencial({ id: proyectoId, credencialId });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al asignar credencial") };
+  }
+}
+
+export async function guardarConfiguracionDeploysAction(
+  timeoutMinutos: number,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.configuracion.guardarDeploys({ timeoutMinutos });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al guardar la configuración") };
   }
 }
 

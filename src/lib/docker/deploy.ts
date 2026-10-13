@@ -27,8 +27,9 @@ export async function ensureRepo(
   repoDir: string,
   gitEnv: NodeJS.ProcessEnv,
   onLog?: (line: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const opts = { env: gitEnv };
+  const opts = { env: gitEnv, signal };
   try {
     await execFileAsync(
       "git",
@@ -261,11 +262,16 @@ function generarDockerComposeConImage(params: {
 function spawnDockerCompose(
   args: string[],
   onLog?: (line: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let collected = "";
+    // NOTE: on abort only the docker CLI gets the signal. On Linux it forwards it
+    // to the compose plugin and BuildKit drops the build; on Windows the
+    // docker-compose.exe child survives and finishes the build (dev only).
     const proc = spawn("docker", args, {
       env: { ...process.env, DOCKER_BUILDKIT: "1" },
+      signal,
     });
 
     const handleChunk = (chunk: Buffer) => {
@@ -314,6 +320,7 @@ export async function deployProyecto(params: {
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
   onLog?: (line: string) => void;
+  signal?: AbortSignal;
 }): Promise<{ output: string; sha: string }> {
   const {
     tipo,
@@ -331,6 +338,7 @@ export async function deployProyecto(params: {
     buildCommand,
     startCommand,
     onLog,
+    signal,
   } = params;
   const volumenes = params.volumenes ?? [];
 
@@ -365,13 +373,13 @@ export async function deployProyecto(params: {
         )
       : repoUrl;
 
-  const opts = { env: gitEnv };
+  const opts = { env: gitEnv, signal };
   let capturedSha = "";
 
   try {
     // Operaciones git — solo para tipos que usan repo
     if (tipo !== "image" && effectiveRepoUrl) {
-      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv, onLog);
+      await ensureRepo(effectiveRepoUrl, repoDir, gitEnv, onLog, signal);
 
       if (sha) {
         onLog?.(`→ Haciendo checkout de ${sha}...`);
@@ -544,7 +552,7 @@ export async function deployProyecto(params: {
 
     let output = "";
     try {
-      output = await spawnDockerCompose(composeArgs, onLog);
+      output = await spawnDockerCompose(composeArgs, onLog, signal);
     } finally {
       if (variablesBuildTime && variablesBuildTime.length > 0) {
         await unlink(`${repoDir}/.env.local`).catch(() => {});

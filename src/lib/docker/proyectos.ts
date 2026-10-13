@@ -34,6 +34,16 @@ async function listProjectContainers(
   >;
 }
 
+export async function estadoContenedores(
+  clienteSlug: string,
+  proyectoNombre: string,
+): Promise<"running" | "stopped"> {
+  const corriendo = await listProjectContainers(
+    projectSlug(clienteSlug, proyectoNombre),
+  );
+  return corriendo.length > 0 ? "running" : "stopped";
+}
+
 export async function iniciarProyecto(
   clienteSlug: string,
   proyectoNombre: string,
