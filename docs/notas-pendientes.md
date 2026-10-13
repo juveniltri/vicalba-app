@@ -15,7 +15,7 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 - ~~**Variables de entorno en deploy**~~: resuelto. El webhook route ahora descifra las `VariableEntorno` del proyecto y las pasa a `ejecutarDeploy`, que escribe un `.env.panel` temporal, lo pasa con `--env-file` a `docker compose`, y lo borra en el bloque `finally`. Mismo patrón que tRPC `deploy` y `rollback`.
 
-- **Tests de volúmenes en Windows**: 3 tests de `src/app/api/volumes/[id]/files` (download ZIP y mkdir) fallan en Windows y pasan en CI (Linux). Probablemente por separadores de ruta; no afecta a producción.
+- ~~**Tests de volúmenes en Windows**~~: resuelto. La comprobación anti path-traversal comparaba la base POSIX sin resolver; ahora todas las rutas de volúmenes usan `resolverRutaSegura` (`src/lib/volumenes.ts`).
 
 - **Lock file entre plataformas**: el `package-lock.json` regenerado en Windows cambia los flags `peer` y añade `@emnapi/*`, y `npm ci` falla con un lock generado en macOS. CI usa `npm install --prefer-offline`.
 

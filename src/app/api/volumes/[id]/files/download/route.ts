@@ -4,7 +4,7 @@ import { type NextRequest } from "next/server";
 import { zip } from "fflate";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 async function resolveVolumen(id: string) {
@@ -12,12 +12,6 @@ async function resolveVolumen(id: string) {
     where: { id },
     include: { proyecto: { include: { cliente: true } } },
   });
-}
-
-function safeResolvePath(base: string, relative: string): string | null {
-  const resolved = path.resolve(base, relative);
-  if (!resolved.startsWith(base + path.sep) && resolved !== base) return null;
-  return resolved;
 }
 
 function zipAsync(entradas: Record<string, Uint8Array>): Promise<Uint8Array> {
@@ -51,7 +45,7 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const dir = subpath ? safeResolvePath(base, subpath) : base;
+  const dir = resolverRutaSegura(base, subpath);
   if (!dir) return new Response("Invalid path", { status: 400 });
 
   const nombres = filesParam
@@ -62,8 +56,8 @@ export async function GET(
   const entradas: Record<string, Uint8Array> = {};
   for (const nombre of nombres) {
     const safeName = path.basename(nombre);
-    const filePath = path.join(dir, safeName);
-    if (!filePath.startsWith(base)) continue;
+    const filePath = resolverRutaSegura(dir, safeName, { permitirRaiz: false });
+    if (!filePath) continue;
     try {
       const data = await readFile(filePath);
       entradas[safeName] = new Uint8Array(data);

@@ -3,7 +3,7 @@ import path from "node:path";
 import { type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 async function resolveVolumen(id: string) {
@@ -26,12 +26,6 @@ function hostDir(
   );
 }
 
-function safeResolvePath(base: string, relative: string): string | null {
-  const resolved = path.resolve(base, relative);
-  if (!resolved.startsWith(base + path.sep) && resolved !== base) return null;
-  return resolved;
-}
-
 // GET — list files in volume directory
 export async function GET(
   req: NextRequest,
@@ -51,7 +45,7 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = subpath ? safeResolvePath(base, subpath) : base;
+  const target = resolverRutaSegura(base, subpath);
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
@@ -92,7 +86,7 @@ export async function POST(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = subpath ? safeResolvePath(base, subpath) : base;
+  const target = resolverRutaSegura(base, subpath);
   if (!target) return new Response("Invalid path", { status: 400 });
 
   let formData: FormData;
@@ -115,8 +109,10 @@ export async function POST(
     if (!(value instanceof File)) continue;
     const safeName = path.basename(value.name);
     if (!safeName || safeName === "." || safeName === "..") continue;
-    const destPath = path.join(target, safeName);
-    if (!destPath.startsWith(base)) continue;
+    const destPath = resolverRutaSegura(target, safeName, {
+      permitirRaiz: false,
+    });
+    if (!destPath) continue;
     try {
       const buffer = Buffer.from(await value.arrayBuffer());
       await writeFile(destPath, buffer);
@@ -154,7 +150,7 @@ export async function DELETE(
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
   if (!subpath) return new Response("path is required", { status: 400 });
 
-  const target = safeResolvePath(base, subpath);
+  const target = resolverRutaSegura(base, subpath, { permitirRaiz: false });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
