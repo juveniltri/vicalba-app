@@ -85,6 +85,14 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("renderiza el enlace Novedades", () => {
+    render(<Sidebar proyectos={proyectos} usuario={usuario} />);
+    expect(screen.getByRole("link", { name: "Novedades" })).toHaveAttribute(
+      "href",
+      "/novedades",
+    );
+  });
+
   it("el nav tiene el label de navegación principal", () => {
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
     expect(

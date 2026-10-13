@@ -13,6 +13,7 @@ import {
   IconDeploy,
   IconUsers,
   IconGear,
+  IconClock,
 } from "@/components/ui/icons";
 
 const nav = [
@@ -25,6 +26,7 @@ const nav = [
     icon: IconGear,
     exact: false,
   },
+  { href: "/novedades", label: "Novedades", icon: IconClock, exact: false },
 ];
 
 function iniciales(texto: string): string {

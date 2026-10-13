@@ -4,11 +4,13 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { comprobarSalud } from "@/lib/health";
+import { leerChangelog } from "@/lib/changelog";
 import { diasHasta } from "@/lib/formatHace";
 import { createServerCaller } from "@/server/caller";
 import { MetricasSistema } from "@/components/metricas-sistema";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { AtencionPanel } from "@/components/dashboard/AtencionPanel";
+import { AvisoNovedades } from "@/components/dashboard/AvisoNovedades";
 import { DeploysRecientes } from "@/components/dashboard/DeploysRecientes";
 import { EstadoVps } from "@/components/dashboard/EstadoVps";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
@@ -22,10 +24,11 @@ export default async function DashboardPage() {
   if (!session) redirect("/login");
 
   const api = await createServerCaller();
-  const [clientes, actividad, salud] = await Promise.all([
+  const [clientes, actividad, salud, [ultimaVersion]] = await Promise.all([
     api.proyectos.listar(),
     api.proyectos.actividad(),
     comprobarSalud(),
+    leerChangelog(),
   ]);
   const proyectos = clientes.flatMap((c) =>
     c.proyectos.map((p) => ({ ...p, clienteNombre: c.nombre })),
@@ -55,6 +58,13 @@ export default async function DashboardPage() {
           Ver proyectos
         </Link>
       </PageHeader>
+
+      {ultimaVersion && (
+        <AvisoNovedades
+          version={ultimaVersion.version}
+          resumen={ultimaVersion.resumen}
+        />
+      )}
 
       <AtencionPanel proyectos={actividad.atencion} />
 

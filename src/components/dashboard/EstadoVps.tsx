@@ -94,7 +94,9 @@ export function EstadoVps({
       </div>
       <div className="flex justify-between pt-3 border-t border-border text-xs text-text-muted">
         <span>Panel</span>
-        <span>v{version}</span>
+        <Link href="/novedades" className="hover:text-text-primary">
+          v{version}
+        </Link>
       </div>
     </section>
   );

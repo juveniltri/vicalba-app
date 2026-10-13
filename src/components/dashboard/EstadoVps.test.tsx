@@ -95,4 +95,12 @@ describe("EstadoVps", () => {
       "no se pueden leer",
     );
   });
+
+  it("la versión del panel enlaza a las novedades", () => {
+    render(<EstadoVps checks={ok} version="2.1.0" certificados={[]} />);
+    expect(screen.getByRole("link", { name: "v2.1.0" })).toHaveAttribute(
+      "href",
+      "/novedades",
+    );
+  });
 });

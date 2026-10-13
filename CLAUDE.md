@@ -37,6 +37,20 @@ perf:      mejora de rendimiento
 
 Breaking change: añade `!` después del tipo (`feat!:`) o `BREAKING CHANGE:` en el footer.
 
+### Versiones y changelog
+
+El panel muestra `CHANGELOG.md` en la página **Novedades** y avisa de la última versión en el
+Dashboard (`src/lib/changelog.ts` lo interpreta). En cada release, antes del PR a `master`:
+
+1. Añadir arriba la entrada `## [X.Y.Z] - AAAA-MM-DD` con un resumen de una línea y los apartados
+   `### Novedades`, `### Correcciones`, `### Seguridad`. Redactada para quien usa el panel, no
+   copiando commits (el borrador sale de `git log` de los `feat:`/`fix:` desde el último tag).
+2. Subir la versión: `npm version X.Y.Z --no-git-tag-version` (package.json + lock).
+3. Tras el merge a `master`, crear el tag `vX.Y.Z`.
+
+El fichero entra en la imagen por la excepción `!CHANGELOG.md` de `.dockerignore` y su `COPY`
+en el `Dockerfile`; si falta, Novedades sale vacía pero el panel funciona.
+
 ---
 
 ## Estrategia de testing — Regla 100/80/0
@@ -325,6 +339,7 @@ Ver `CONTEXT.md` para el glosario completo.
   - Cancelar deploy (`feature/cancelar-deploy`): resultado `cancelado` en `ResultadoDeploy`; `cancelarDeploy` aborta git/`docker compose` vía `AbortController` (registro en `globalThis`, en Linux el CLI reenvía la señal al plugin y BuildKit corta el build); procedure `proyectos.cancelarDeploy` + botón con confirmación en dos pasos (`ProjectActionButton` `confirmLabel`); estado tras cancelar según contenedores (`estadoContenedores`); timeout global `ConfiguracionDeploy.timeoutMinutos` (30 por defecto, 0 = sin límite, 5–180) en Configuración → Deploys, notifica solo si salta el timeout; `src/instrumentation.ts` cierra al arrancar los deploys huérfanos (`limpiarDeploysHuerfanos`) (825 tests)
   - Estado de Traefik en health check y Dashboard (`feature/v2.1`): `estadoTraefik` (contenedor running) y `estadoCertificados` (acme.json legible, usa la caché de 60 s) en `comprobarSalud`, checks en paralelo; `EstadoVps` con fila Traefik y certificados en rojo si no se pueden leer
   - Logs SSE sin contenedores y proxy único (`feature/v2.1`): la ruta de logs emite `sin_contenedores` / `fin` y `LogsModal` lo muestra; `middleware.ts` de la raíz eliminado, `src/proxy.ts` solo con la auth de NextAuth (antes `next build` usaba uno y `next dev` mezclaba los dos, enviando `/api/*` al login; el rate limit/CORS de `proxy.ts` nunca llegó a ejecutarse en producción); límite de 10 intentos/min por IP en `authorize()` (`src/lib/rate-limit.ts`, cubre la pantalla y `/api/auth/callback`)
+  - Versión 2.1.0 (`feature/v2.1`): `CHANGELOG.md` (2.1.0, 2.0.1 y «2.0 y anteriores»), página `/novedades`, aviso de la última versión en el Dashboard (`AvisoNovedades`, recordado por navegador), versión de la tarjeta VPS enlazada y entrada Novedades en el sidebar; Node 22 y `.dockerignore` en Dockerfiles generados, Sentry en servidor, CI en ramas feature/hotfix/release
 - **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
 - **Próximo hito:** PR `feature/cancelar-deploy` → develop
