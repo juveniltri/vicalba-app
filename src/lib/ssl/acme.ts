@@ -31,13 +31,32 @@ function fechaCaducidad(certificadoBase64: string | undefined): string | null {
   }
 }
 
-// One read for every domain: acme.json comes through `docker exec` and doing it
-// per project made the project list too slow.
+// acme.json comes through `docker exec`, so every page that shows certificates
+// shares one in-flight read and reuses it for a minute. Failures are not cached
+// so a Traefik restart recovers on the next request.
+const CACHE_MS = 60_000;
+let cache: { contenido: string; expira: number } | null = null;
+let enCurso: Promise<string> | null = null;
+
+function leerAcme(): Promise<string> {
+  if (cache && cache.expira > Date.now())
+    return Promise.resolve(cache.contenido);
+  enCurso ??= leerFicheroTraefik(env.ACME_JSON_PATH)
+    .then((contenido) => {
+      cache = { contenido, expira: Date.now() + CACHE_MS };
+      return contenido;
+    })
+    .finally(() => {
+      enCurso = null;
+    });
+  return enCurso;
+}
+
 export async function leerCertificados(): Promise<
   Record<string, { caducaEn: string | null }>
 > {
   try {
-    const content = await leerFicheroTraefik(env.ACME_JSON_PATH);
+    const content = await leerAcme();
     const parsed = acmeSchema.safeParse(JSON.parse(content));
     if (!parsed.success) return {};
 
@@ -60,7 +79,7 @@ export async function leerEstadoSSL(
   dominio: string,
 ): Promise<{ activo: boolean }> {
   try {
-    const content = await leerFicheroTraefik(env.ACME_JSON_PATH);
+    const content = await leerAcme();
     const parsed = acmeSchema.safeParse(JSON.parse(content));
     if (!parsed.success) return { activo: false };
     const certs = Object.values(parsed.data).flatMap(

@@ -11,7 +11,14 @@ vi.mock("@/env", () => ({
   env: { ACME_JSON_PATH: "/letsencrypt/acme.json" },
 }));
 
-import { leerCertificados, leerEstadoSSL } from "./acme";
+let leerCertificados: typeof import("./acme").leerCertificados;
+let leerEstadoSSL: typeof import("./acme").leerEstadoSSL;
+
+// The module caches acme.json: a fresh copy per test keeps them independent.
+beforeEach(async () => {
+  vi.resetModules();
+  ({ leerCertificados, leerEstadoSSL } = await import("./acme"));
+});
 
 const acmeConCerts = JSON.stringify({
   letsencrypt: {
@@ -188,5 +195,50 @@ describe("leerCertificados", () => {
     mockLeerFicheroTraefik.mockResolvedValue(JSON.stringify({ x: 1 }));
 
     await expect(leerCertificados()).resolves.toEqual({});
+  });
+});
+
+describe("caché de acme.json", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("comparte una sola lectura entre llamadas simultáneas", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
+
+    const resultados = await Promise.all([
+      ...Array.from({ length: 5 }, () => leerCertificados()),
+      leerEstadoSSL("app.ejemplo.com"),
+    ]);
+
+    expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(1);
+    expect(resultados[0]).toHaveProperty("app.ejemplo.com");
+    expect(resultados[5]).toEqual({ activo: true });
+  });
+
+  it("reutiliza la lectura durante 60 s y vuelve a leer después", async () => {
+    vi.useFakeTimers();
+    try {
+      mockLeerFicheroTraefik.mockResolvedValue(acmeConCerts);
+
+      await leerCertificados();
+      vi.advanceTimersByTime(59_000);
+      await leerEstadoSSL("app.ejemplo.com");
+      expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(2_000);
+      await leerCertificados();
+      expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("no guarda los fallos: la siguiente llamada vuelve a intentarlo", async () => {
+    mockLeerFicheroTraefik
+      .mockRejectedValueOnce(new Error("Tiempo de espera agotado"))
+      .mockResolvedValueOnce(acmeConCerts);
+
+    expect(await leerCertificados()).toEqual({});
+    expect(await leerCertificados()).toHaveProperty("app.ejemplo.com");
+    expect(mockLeerFicheroTraefik).toHaveBeenCalledTimes(2);
   });
 });
