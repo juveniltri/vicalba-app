@@ -608,6 +608,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     vi.clearAllMocks();
     mockWriteFile.mockResolvedValue(undefined);
     mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
     mockUnlink.mockResolvedValue(undefined);
     mockListContainers.mockResolvedValue([]);
     mockGetNetwork.mockReturnValue({ connect: mockConnect });
@@ -747,6 +748,27 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     // Node 20 is out of support (no security patches) since April 2026.
     expect(dockerfile?.[1]).not.toContain("node:20");
     expect(mockUnlink).toHaveBeenCalledWith(envLocal);
+  });
+
+  const ignoreGenerado =
+    "/var/vicalba/repos/acme/.panel/web-app.Dockerfile.dockerignore";
+
+  it("nodejs: la imagen no incluye el .git del repositorio", async () => {
+    await deployProyecto(nodejs);
+
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\n");
+  });
+
+  it("nodejs: respeta el .dockerignore del repositorio y le añade .git", async () => {
+    mockReadFile.mockImplementation(async (ruta: string) => {
+      if (ruta === "/var/vicalba/repos/acme/web-app/.dockerignore")
+        return "dist\n*.log\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    await deployProyecto(nodejs);
+
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe("dist\n*.log\n\n.git\n");
   });
 
   it("compose desde repo no borra un .env.local que no ha creado", async () => {

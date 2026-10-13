@@ -11,7 +11,7 @@ Acordado el 14/10/2026; se cierra con PR `feature/v2.1` → `develop`.
 
 - [x] **Node 22 en los Dockerfiles generados** — `deploy.ts` usa `node:20-alpine` y Node 20 está fuera de soporte desde abril de 2026 (sin parches de seguridad). El panel ya usa Node 22.
 - [ ] **Sentry conectado de verdad** — `@sentry/nextjs` está instalado y existe `src/lib/sentry.ts`, pero nadie lo importa: los errores de producción no llegan a ningún sitio. Además hay `console.*` donde debería ir Pino.
-- [ ] **`.dockerignore` generado** — el Dockerfile generado hace `COPY . .` sin `.dockerignore`, así que la imagen final de nodejs/dockerfile incluye `.git` con todo el historial del repo.
+- [x] **`.dockerignore` generado** — tipo nodejs: `<Dockerfile>.dockerignore` junto al Dockerfile generado con `.git` + las reglas del `.dockerignore` del repo. En el tipo dockerfile el Dockerfile y su `.dockerignore` son del cliente; no se tocan.
 - [ ] **CI en ramas `feature/**`** — el workflow solo corre en push a `develop`/`master` y en PRs.
 - [ ] **Quitar código sin uso** — procedure `proyectos.estadoSSL` y `leerEstadoSSL`.
 - [ ] **Telegram distingue cancelado** — un deploy cancelado por timeout sale con ❌ como un error.

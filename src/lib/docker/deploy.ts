@@ -492,6 +492,16 @@ export async function deployProyecto(params: {
         dfGenerado,
         generarDockerfileNodejs(buildCmd, startCmd, puerto, hasBuildVars),
       );
+      // BuildKit uses <Dockerfile>.dockerignore instead of the context's own,
+      // so the repo's rules are merged in. `COPY . .` would otherwise ship .git.
+      const ignoreRepo = await readFile(
+        `${repoDir}/.dockerignore`,
+        "utf-8",
+      ).catch(() => "");
+      await writeFile(
+        `${dfGenerado}.dockerignore`,
+        `${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}.git\n`,
+      );
       await writeFile(
         composePath,
         generarDockerComposeConBuild({
