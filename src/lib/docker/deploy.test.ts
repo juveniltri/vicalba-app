@@ -742,7 +742,10 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
       "/var/vicalba/repos/acme/.panel/web-app.Dockerfile",
     );
     expect(dockerfile?.[1]).toContain("rm -f .env.local");
-    expect(dockerfile?.[1]).toContain("FROM node:20-alpine AS runner");
+    expect(dockerfile?.[1]).toContain("FROM node:22-alpine AS builder");
+    expect(dockerfile?.[1]).toContain("FROM node:22-alpine AS runner");
+    // Node 20 is out of support (no security patches) since April 2026.
+    expect(dockerfile?.[1]).not.toContain("node:20");
     expect(mockUnlink).toHaveBeenCalledWith(envLocal);
   });
 

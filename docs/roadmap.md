@@ -9,7 +9,7 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 Acordado el 14/10/2026; se cierra con PR `feature/v2.1` → `develop`.
 
-- [ ] **Node 22 en los Dockerfiles generados** — `deploy.ts` usa `node:20-alpine` y Node 20 está fuera de soporte desde abril de 2026 (sin parches de seguridad). El panel ya usa Node 22.
+- [x] **Node 22 en los Dockerfiles generados** — `deploy.ts` usa `node:20-alpine` y Node 20 está fuera de soporte desde abril de 2026 (sin parches de seguridad). El panel ya usa Node 22.
 - [ ] **Sentry conectado de verdad** — `@sentry/nextjs` está instalado y existe `src/lib/sentry.ts`, pero nadie lo importa: los errores de producción no llegan a ningún sitio. Además hay `console.*` donde debería ir Pino.
 - [ ] **`.dockerignore` generado** — el Dockerfile generado hace `COPY . .` sin `.dockerignore`, así que la imagen final de nodejs/dockerfile incluye `.git` con todo el historial del repo.
 - [ ] **CI en ramas `feature/**`** — el workflow solo corre en push a `develop`/`master` y en PRs.

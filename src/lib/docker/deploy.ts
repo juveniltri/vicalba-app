@@ -150,16 +150,16 @@ function generarDockerfileNodejs(
     // Runner copies the final state of /app after the build + rm, so .env.local is not in
     // the deployed image. Builder intermediate layers still have it but are not deployed.
     return [
-      "FROM node:20-alpine AS builder",
+      "FROM node:22-alpine AS builder",
       "WORKDIR /app",
       // python3/make/g++: dependencias nativas (better-sqlite3, sharp, bcrypt...) sin
-      // binario prebuilt para node:20-alpine caen a node-gyp, que necesita este toolchain.
+      // binario prebuilt para node:22-alpine caen a node-gyp, que necesita este toolchain.
       "RUN apk add --no-cache python3 make g++",
       "COPY . .",
       "RUN npm ci",
       `RUN ${buildCmd} && rm -f .env.local`,
       "",
-      "FROM node:20-alpine AS runner",
+      "FROM node:22-alpine AS runner",
       "WORKDIR /app",
       "ENV NODE_ENV=production",
       "COPY --from=builder /app .",
@@ -169,7 +169,7 @@ function generarDockerfileNodejs(
   }
 
   return [
-    "FROM node:20-alpine",
+    "FROM node:22-alpine",
     "WORKDIR /app",
     "RUN apk add --no-cache python3 make g++",
     "COPY . .",
