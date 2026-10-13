@@ -5,6 +5,19 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [2.1.1] - 2026-10-14
+
+Las notificaciones de deploy vuelven a llegar a Discord.
+
+### Correcciones
+
+- Las notificaciones de deploy a un webhook de **Discord** fallaban con un error 400 porque Discord
+  no entendía el formato. Ahora llegan como un mensaje con el resultado, el proyecto, la rama, el
+  commit y las últimas líneas del log. Los webhooks de Slack también reciben su formato; cualquier
+  otra URL sigue recibiendo el mismo JSON de siempre.
+- Si un webhook rechaza una notificación, Configuración muestra el motivo que da el destino y no
+  solo el código de error.
+
 ## [2.1.0] - 2026-10-14
 
 Control de los deploys, estado de Traefik en el Dashboard, logs en su propia pestaña y varias mejoras de seguridad.
