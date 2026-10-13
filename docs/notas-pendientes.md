@@ -9,7 +9,7 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ## Deuda técnica
 
-- **Deploy real no testeado en VPS**: el refactor de deploy vía compose labels (`-p ${clienteSlug}-${proyectoNombre}`) funciona localmente. Pendiente de validar el flujo completo (clone → `docker compose up`) contra un repositorio GitHub real en la VPS.
+- ~~**Deploy real no testeado en VPS**~~: validado en octubre 2026 — auto-deploy vía webhook de GitHub funcionando de punta a punta en la VPS.
 
 - **Logs SSE con proyecto sin contenedores**: si el proyecto no tiene contenedores activos, `streamProyectoLogs` no emite nada y el SSE queda abierto indefinidamente. Considerar emitir un evento de cierre o un mensaje de "sin contenedores".
 

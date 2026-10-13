@@ -15,8 +15,6 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Features
 
-- **Cancelar deploy** — botón en el detalle (estaba en el mockup del rediseño). Implica matar el proceso de `docker compose` en curso, restaurar el `.env` sin vars build-time y marcar el Deploy como cancelado.
-
 - **`GIT_SHA_SHORT` en proyectos Node.js** — hoy solo se inyecta en compose desde repo y dockerfile.
 
 - **Estado del Proxy (Traefik) en el Dashboard** — el health check solo comprueba BD y Docker daemon.
@@ -25,15 +23,13 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Técnico / Refactor
 
-- **Botón Reiniciar = `docker restart`** — verificar si el restart actual hace stop+start o llama a `docker restart`. Si es lo primero, cambiarlo: `docker restart` es más rápido y no recrea el contenedor.
-
 - **Logs del contenedor en pestaña propia** — hoy se abren en el modal (`LogsModal`) desde la cabecera del detalle; extraer el visor para poder incrustarlo.
 
 ---
 
 ## Hecho (antes en este backlog)
 
-- Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
+- Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
 
 ---
 
