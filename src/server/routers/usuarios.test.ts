@@ -40,7 +40,7 @@ vi.mock("@/lib/traefik/config", () => ({
   escribirConfigTraefik: vi.fn(),
   eliminarConfigTraefik: vi.fn(),
 }));
-vi.mock("@/lib/ssl/acme", () => ({ leerEstadoSSL: vi.fn() }));
+vi.mock("@/lib/ssl/acme", () => ({ leerCertificados: vi.fn() }));
 vi.mock("@/lib/crypto", () => ({
   cifrar: vi
     .fn()

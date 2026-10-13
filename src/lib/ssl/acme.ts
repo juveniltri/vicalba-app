@@ -84,20 +84,3 @@ export async function leerCertificados(): Promise<
     return {};
   }
 }
-
-export async function leerEstadoSSL(
-  dominio: string,
-): Promise<{ activo: boolean }> {
-  try {
-    const content = await leerAcme();
-    const parsed = acmeSchema.safeParse(JSON.parse(content));
-    if (!parsed.success) return { activo: false };
-    const certs = Object.values(parsed.data).flatMap(
-      (r) => r.Certificates ?? [],
-    );
-    const activo = certs.some((c) => c.domain.main === dominio);
-    return { activo };
-  } catch {
-    return { activo: false };
-  }
-}

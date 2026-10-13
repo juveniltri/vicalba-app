@@ -33,7 +33,7 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
-import { leerCertificados, leerEstadoSSL } from "@/lib/ssl/acme";
+import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { ultimasLineas } from "@/lib/deploy-stream";
 
@@ -642,12 +642,6 @@ export const proyectosRouter = router({
       ),
     };
   }),
-
-  estadoSSL: protectedProcedure
-    .input(z.object({ dominio: z.string() }))
-    .query(async ({ input }) => {
-      return leerEstadoSSL(input.dominio);
-    }),
 
   listar: protectedProcedure.query(async () => {
     const [clientes, certificados] = await Promise.all([

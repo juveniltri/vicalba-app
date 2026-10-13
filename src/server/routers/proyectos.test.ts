@@ -96,7 +96,6 @@ vi.mock("@/lib/docker/traefik", () => ({
 }));
 
 vi.mock("@/lib/ssl/acme", () => ({
-  leerEstadoSSL: vi.fn().mockResolvedValue({ activo: true }),
   leerCertificados: vi.fn().mockResolvedValue({}),
 }));
 
@@ -131,7 +130,7 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
-import { leerCertificados, leerEstadoSSL } from "@/lib/ssl/acme";
+import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import {
   clearDeployEmitter,
@@ -281,7 +280,6 @@ describe("proyectos.listar", () => {
     ]);
     expect(cliente.proyectos[0].sslActivo).toBe(true);
     expect(leerCertificados).toHaveBeenCalledOnce();
-    expect(leerEstadoSSL).not.toHaveBeenCalled();
   });
 
   it("incluye commit, resultado y origen del último deploy", async () => {
@@ -2094,34 +2092,6 @@ describe("proyectos — integración Traefik redes", () => {
     await createCaller(ctx).proyectos.eliminar({ id: "p1" });
 
     expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
-  });
-});
-
-describe("proyectos.estadoSSL", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(auth).mockResolvedValue(mockSession as never);
-  });
-
-  it("devuelve el estado SSL del dominio", async () => {
-    vi.mocked(leerEstadoSSL).mockResolvedValue({ activo: true });
-
-    const ctx = await createContext();
-    const result = await createCaller(ctx).proyectos.estadoSSL({
-      dominio: "app.ejemplo.com",
-    });
-
-    expect(leerEstadoSSL).toHaveBeenCalledWith("app.ejemplo.com");
-    expect(result).toEqual({ activo: true });
-  });
-
-  it("requiere autenticación", async () => {
-    vi.mocked(auth).mockResolvedValue(null);
-
-    const ctx = await createContext();
-    await expect(
-      createCaller(ctx).proyectos.estadoSSL({ dominio: "app.ejemplo.com" }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 

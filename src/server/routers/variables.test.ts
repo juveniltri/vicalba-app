@@ -27,9 +27,7 @@ vi.mock("@/lib/docker/traefik", () => ({
   conectarTraefikARed: vi.fn(),
   desconectarTraefikDeRed: vi.fn(),
 }));
-vi.mock("@/lib/ssl/acme", () => ({
-  leerEstadoSSL: vi.fn(),
-}));
+vi.mock("@/lib/ssl/acme", () => ({ leerCertificados: vi.fn() }));
 vi.mock("@/lib/traefik/config", () => ({
   generarConfigTraefik: vi.fn(),
   escribirConfigTraefik: vi.fn(),
