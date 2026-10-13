@@ -5,7 +5,22 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ---
 
+## En curso — v2.1 (`feature/v2.1`)
+
+Acordado el 14/10/2026; se cierra con PR `feature/v2.1` → `develop`.
+
+- [ ] **Node 22 en los Dockerfiles generados** — `deploy.ts` usa `node:20-alpine` y Node 20 está fuera de soporte desde abril de 2026 (sin parches de seguridad). El panel ya usa Node 22.
+- [ ] **Sentry conectado de verdad** — `@sentry/nextjs` está instalado y existe `src/lib/sentry.ts`, pero nadie lo importa: los errores de producción no llegan a ningún sitio. Además hay `console.*` donde debería ir Pino.
+- [ ] **`.dockerignore` generado** — el Dockerfile generado hace `COPY . .` sin `.dockerignore`, así que la imagen final de nodejs/dockerfile incluye `.git` con todo el historial del repo.
+- [ ] **CI en ramas `feature/**`** — el workflow solo corre en push a `develop`/`master` y en PRs.
+- [ ] **Quitar código sin uso** — procedure `proyectos.estadoSSL` y `leerEstadoSSL`.
+- [ ] **Telegram distingue cancelado** — un deploy cancelado por timeout sale con ❌ como un error.
+
+---
+
 ## Bugs conocidos
+
+- **Deploy desde Node en Windows (solo desarrollo)** — `docker compose up --build` lanzado desde el panel falla en «failed to execute bake» (también con el código anterior a v2.1; desde la shell funciona), y cancelar solo mata `docker.exe`: el hijo `docker-compose.exe` termina el build. En la VPS (Linux) ambos funcionan.
 
 ---
 
@@ -13,11 +28,9 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Features
 
+- **Backups (siguiente prioridad tras v2.1)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
 - **Secciones Clientes y Proxy en Configuración** — aparecían en el mockup; todavía no hay pantallas detrás.
-
-### Técnico / Refactor
-
-- **`.git` dentro de la imagen en tipos nodejs/dockerfile** — el Dockerfile generado hace `COPY . .` sin `.dockerignore`, así que la imagen final incluye el historial del repo. Añadir un `.dockerignore` generado (`.git`, `node_modules`, `.env*`) o copiar solo lo necesario.
+- **Documentación OpenAPI** — ver «Decisiones pendientes» en `docs/notas-pendientes.md` (alcance: solo REST o también tRPC).
 
 ---
 
