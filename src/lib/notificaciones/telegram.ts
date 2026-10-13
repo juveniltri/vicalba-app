@@ -8,7 +8,9 @@ export async function enviarTelegram(
   const lineas = payload.output.split("\n");
   const outputTruncado = lineas.slice(-20).join("\n");
 
-  const emoji = payload.resultado === "exito" ? "✅" : "❌";
+  const emoji = { exito: "✅", error: "❌", cancelado: "⏱️" }[
+    payload.resultado
+  ];
   const text = [
     `${emoji} Deploy ${payload.resultado} — ${payload.proyectoNombre}`,
     `Rama: ${payload.rama}`,
