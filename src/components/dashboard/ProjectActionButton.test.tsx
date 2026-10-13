@@ -77,4 +77,56 @@ describe("ProjectActionButton", () => {
 
     expect(screen.getByRole("button", { name: "Detener" })).toBeDisabled();
   });
+
+  it("con confirmLabel pide confirmación y solo ejecuta en el segundo clic", async () => {
+    const user = userEvent.setup();
+    const action = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ToastProvider>
+        <ProjectActionButton
+          action={action}
+          label="Cancelar deploy"
+          pendingLabel="Cancelando…"
+          confirmLabel="¿Cancelar el deploy?"
+          successMessage="Deploy cancelado"
+          className="btn"
+        />
+      </ToastProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancelar deploy" }));
+    expect(action).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "¿Cancelar el deploy?" }),
+    );
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Deploy cancelado")).toBeInTheDocument();
+  });
+
+  it("la confirmación se descarta al salir del botón", async () => {
+    const user = userEvent.setup();
+    const action = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ToastProvider>
+        <ProjectActionButton
+          action={action}
+          label="Cancelar deploy"
+          pendingLabel="Cancelando…"
+          confirmLabel="¿Cancelar el deploy?"
+          successMessage="Deploy cancelado"
+          className="btn"
+        />
+        <button type="button">otro</button>
+      </ToastProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancelar deploy" }));
+    await user.click(screen.getByRole("button", { name: "otro" }));
+
+    expect(
+      screen.getByRole("button", { name: "Cancelar deploy" }),
+    ).toBeInTheDocument();
+    expect(action).not.toHaveBeenCalled();
+  });
 });

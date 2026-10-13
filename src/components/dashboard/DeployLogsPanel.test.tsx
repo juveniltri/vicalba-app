@@ -2,7 +2,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const estado: { lines: string[]; done: "exito" | "error" | null } = {
+const estado: {
+  lines: string[];
+  done: "exito" | "error" | "cancelado" | null;
+} = {
   lines: [],
   done: null,
 };
@@ -98,6 +101,26 @@ describe("DeployLogsPanel", () => {
       "✓ Repositorio",
       "✓ Checkout",
       "■ Build y arranque",
+      "○ Red y proxy",
+    ]);
+  });
+
+  it("al cancelar marca como cancelada la fase en la que se quedó", () => {
+    estado.lines = [
+      "→ SHA: abc",
+      "→ Construyendo e iniciando contenedores...",
+      "⊘ Cancelado por timeout (30 min)",
+    ];
+    estado.done = "cancelado";
+    render(<DeployLogsPanel proyectoId="p1" active={false} />);
+
+    expect(
+      screen.getByRole("heading", { name: "Deploy cancelado" }),
+    ).toBeInTheDocument();
+    expect(fases()).toEqual([
+      "✓ Repositorio",
+      "✓ Checkout",
+      "⊘ Build y arranque",
       "○ Red y proxy",
     ]);
   });

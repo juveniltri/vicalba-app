@@ -6,6 +6,7 @@ export const RESULTADO_DEPLOY = {
   exito: { simbolo: "✓", texto: "éxito", clase: "text-running-text" },
   error: { simbolo: "■", texto: "error", clase: "text-error-text" },
   en_curso: { simbolo: "●", texto: "en curso", clase: "text-deploying-text" },
+  cancelado: { simbolo: "⊘", texto: "cancelado", clase: "text-text-muted" },
 } as const;
 
 export function DeploysRecientes({ deploys }: { deploys: DeployReciente[] }) {

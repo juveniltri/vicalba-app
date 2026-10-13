@@ -19,6 +19,7 @@ enum ResultadoDeploy {
   en_curso
   exito
   error
+  cancelado
 }
 
 enum OrigenDeploy {
@@ -131,6 +132,12 @@ model Deploy {
   finalizadoEn DateTime?
 
   @@index([proyectoId, iniciadoEn(sort: Desc)])
+}
+
+model ConfiguracionDeploy {
+  id             String @id @default("default")
+  // 0 disables the automatic cancellation.
+  timeoutMinutos Int    @default(30)
 }
 
 model ConfiguracionNotificacion {

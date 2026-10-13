@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
 import { createServerCaller } from "@/server/caller";
+import { ConfiguracionDeploys } from "@/components/dashboard/ConfiguracionDeploys";
 import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
 import { GestionCredenciales } from "@/components/dashboard/GestionCredenciales";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 const SECCIONES = [
   { id: "notificaciones", etiqueta: "Notificaciones" },
+  { id: "deploys", etiqueta: "Deploys" },
   { id: "credenciales", etiqueta: "Credenciales SSH" },
   { id: "webhook", etiqueta: "Webhook de GitHub" },
   { id: "sistema", etiqueta: "Sistema" },
@@ -28,9 +30,10 @@ export default async function ConfiguracionPage({
     SECCIONES.find((s) => s.id === pedida)?.id ?? "notificaciones";
 
   const api = await createServerCaller();
-  const [config, credenciales] = await Promise.all([
+  const [config, credenciales, configDeploys] = await Promise.all([
     api.configuracion.obtener(),
     api.credenciales.listar(),
+    api.configuracion.obtenerDeploys(),
   ]);
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
@@ -76,6 +79,20 @@ export default async function ConfiguracionPage({
                 descripcion="Se envían al terminar cada deploy, rollback o auto-deploy."
               />
               <ConfiguracionNotificaciones config={config} />
+            </>
+          )}
+
+          {seccion === "deploys" && (
+            <>
+              <Encabezado
+                titulo="Deploys"
+                descripcion="Límites que se aplican a todos los deploys, rollbacks y auto-deploys."
+              />
+              <Tarjeta>
+                <ConfiguracionDeploys
+                  timeoutMinutos={configDeploys.timeoutMinutos}
+                />
+              </Tarjeta>
             </>
           )}
 

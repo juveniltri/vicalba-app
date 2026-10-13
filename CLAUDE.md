@@ -37,6 +37,20 @@ perf:      mejora de rendimiento
 
 Breaking change: añade `!` después del tipo (`feat!:`) o `BREAKING CHANGE:` en el footer.
 
+### Versiones y changelog
+
+El panel muestra `CHANGELOG.md` en la página **Novedades** y avisa de la última versión en el
+Dashboard (`src/lib/changelog.ts` lo interpreta). En cada release, antes del PR a `master`:
+
+1. Añadir arriba la entrada `## [X.Y.Z] - AAAA-MM-DD` con un resumen de una línea y los apartados
+   `### Novedades`, `### Correcciones`, `### Seguridad`. Redactada para quien usa el panel, no
+   copiando commits (el borrador sale de `git log` de los `feat:`/`fix:` desde el último tag).
+2. Subir la versión: `npm version X.Y.Z --no-git-tag-version` (package.json + lock).
+3. Tras el merge a `master`, crear el tag `vX.Y.Z`.
+
+El fichero entra en la imagen por la excepción `!CHANGELOG.md` de `.dockerignore` y su `COPY`
+en el `Dockerfile`; si falta, Novedades sale vacía pero el panel funciona.
+
 ---
 
 ## Estrategia de testing — Regla 100/80/0
@@ -142,9 +156,9 @@ Antes de cada merge a `main`: invoca `/security-review`.
 
 ## Observabilidad
 
-- **Sentry:** configurado en todos los entornos (excepto test). Captura errores y performance.
+- **Sentry:** solo servidor y solo si `SENTRY_DSN` está definido (`.env` de la VPS; vacío = desactivado). `src/instrumentation.ts` lo inicializa y exporta `onRequestError` (páginas, rutas API, server actions); la ruta de tRPC envía los `INTERNAL_SERVER_ERROR` desde su `onError`, y `lanzarDeploy` las excepciones inesperadas del deploy en segundo plano. Sin source maps subidos.
 - **Pino:** logging estructurado en JSON. Cada log con `level`, `msg`, `context` y `traceId`.
-- **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon y versión del deploy.
+- **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla.
 - **Logs de contenedor:** streaming vía SSE desde `GET /api/projects/[id]/logs` — nunca almacenar logs de contenedor en BD.
 
 ---
@@ -182,7 +196,7 @@ nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
 bind-mounted — Docker lo crea solo al arrancar. Traefik fuerza permisos 600 en
 ese fichero (propiedad de su propio usuario), así que el panel —que corre como
 usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
-`leerEstadoSSL` no lee el fichero directamente: usa `leerFicheroTraefik`
+`leerCertificados` no lee el fichero directamente: usa `leerFicheroTraefik`
 (`src/lib/docker/traefik.ts`), que hace `docker exec cat <ruta>` en el propio
 contenedor Traefik vía el socket Docker que el panel ya tiene montado.
 `ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
@@ -223,6 +237,24 @@ La conexión de Traefik a las redes de cliente es **automática** desde la featu
 Al crear/editar/eliminar un proyecto con dominio, el panel llama a `conectarTraefikARed` /
 `desconectarTraefikDeRed` via dockerode. Variable de entorno relevante: `TRAEFIK_CONTAINER_NAME`
 (default: `traefik`). Solo hace falta intervención manual en instalaciones con un nombre distinto.
+
+### Nota — variables que inyecta el panel en el build
+
+En cada deploy desde repositorio el panel añade **`GIT_SHA_SHORT`** (los 7 primeros caracteres del
+commit desplegado) a las variables build-time; si el usuario define una con ese nombre, gana la del panel.
+
+- **Compose desde repo:** las build-time y `GIT_SHA_SHORT` se escriben en `<repo>/.env` antes del
+  `up --build` y, al terminar (éxito o error), el `.env` vuelve a contener solo las runtime.
+  El proyecto las mapea en su compose, p. ej. `args: { CRM_BUILD: ${GIT_SHA_SHORT} }`.
+- **Dockerfile:** van como `build.args` en el compose generado.
+- **Node.js:** las build-time y `GIT_SHA_SHORT` van a `.env.local` del stage builder; el Dockerfile multi-stage lo borra antes del stage final.
+
+### Nota — webhook de GitHub
+
+Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
+secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
+https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
+GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
 
 ---
 
@@ -301,6 +333,21 @@ Ver `CONTEXT.md` para el glosario completo.
   - Fix CSP Monaco (develop): Monaco Editor servido desde /monaco-editor/vs (prebuild copia min/vs a public/); CSP no necesita cdn.jsdelivr.net; worker-src blob: para workers internos
   - Security review (develop): valorSchema con regex /^[^\r\n]\*$/ en router variables (crear + actualizar) — previene newline injection en --env-file de docker compose
   - Compose env y UI fixes (`hotfix/compose-env-and-ui-fixes`): botón "↺ Recargar del repo" en ComposeEditor (clona/actualiza repo vía `prepararRepo`/`ensureRepo` exportado, procedure `cargarComposeDesdeRepo`, sustituye `build:`/`context: .` por ruta relativa `../{nombre}` para build context válido sin rutas absolutas); fix `.env` siempre escrito en deploy aunque no haya variables configuradas (modo repo: `repoDir/.env`; modo composeContent: `panelDir/{nombre}.env` + `panelDir/.env`) — evita error cuando el compose usa `env_file: .env`; VariablesPanel rediseñado con editor Monaco unificado en formato `.env` (botón "Editar variables" descifra y carga, guardar sincroniza con upsert/eliminación; lista muestra `KEY=••••••••` con toggle build-time y eliminar con confirmación), nuevas procedures `variables.listarConValores`/`variables.sincronizar` y server actions `cargarVariablesAction`/`sincronizarVariablesAction`; fix race condition Docker "network sandbox" en `conectarContenedoresARedCliente` (error ignorado como warning tras `docker compose up -d`, se reintenta en el próximo deploy); feedback visual en Iniciar/Detener/Reiniciar (componente `ProjectActionButton` con `useTransition` — botón deshabilitado y texto "Iniciando…/Deteniendo…/Reiniciando…" mientras la Server Action está en curso; `ToastProvider`/`useToast` propio en `src/components/ui/Toast.tsx`, sin dependencias nuevas, montado en el layout del panel — sustituye el descarte silencioso de errores de los Server Actions por un toast de éxito/error); cobertura 100% restaurada en `src/server/routers/**` (tests de `cargarComposeDesdeRepo`, rama `isComposeDirectoRollback` en `rollback`, rama de `\r` suelto en `variables.sincronizar`) (601 tests, en hotfix/compose-env-and-ui-fixes)
+  - Hotfix compose-env, logs, webhook y email (`hotfix/compose-env-and-ui-fixes`, PR #34 → master): variables build-time en compose desde repo (`.env` temporal) y `build.args` en tipo dockerfile; `GIT_SHA_SHORT` inyectado en el build; logs de deploy SSE en el detalle (stream en `globalThis` con replay: el Map por módulo no se compartía entre rutas); webhook con URL normalizada, `202` en segundo plano, ping/form-urlencoded, y `lanzarDeploy()` único para botón/rollback/webhook (antes webhook y rollback no pasaban volúmenes ni composeContent); email con `secure` en 465, timeout 10s, errores registrados con Pino y botón «Enviar prueba» (`configuracion.probarEmail`); audit de producción a 0 high (overrides `dompurify`, `deepmerge-ts`)
+  - Rediseño del Panel (`feature/rediseno-ui`, PR #36 → develop, #38 → master): tokens dark/light ampliados; `StatusBadge` con forma por estado; sidebar con búsqueda ⌘K (`CommandPalette`), proyectos fijados (`useFijados`, localStorage) y menú plegable en móvil; Dashboard con «Requiere atención» (rollback al último commit correcto), últimos deploys y estado del VPS con certificados por caducar; Proyectos en tabla por cliente (`FilaProyecto`, `ProyectosExplorer` con búsqueda y filtros); detalle con pestañas `?tab=` y `DeployLogsPanel` con fases; Configuración por secciones `?seccion=` con estado real de cada canal. Backend: `leerCertificados()` (caducidad X509, una lectura de acme.json), `Deploy.origen` y estado del último envío por canal (migración `20261013000000`), `proyectos.actividad` / `proyectos.indice`; webhook y Telegram propagan errores y fallan con no-2xx; `useTheme` con `useSyncExternalStore` (el tema claro no se aplicaba por un error de hidratación). Mockup: https://claude.ai/artifact/8KiTGsrRFhkhBKWPDRYaMR (765 tests)
+  - Hotfix rendimiento y SSL (`hotfix/traefik-exec-stream`, PR #40 → master): `leerFicheroTraefik` cierra stdout/stderr al terminar el exec (`demuxStream` no los cierra; cada lectura de acme.json esperaba al timeout de 5 s, Dashboard/Proyectos/detalle tardaban ~5 s y el SSL salía siempre "sin certificado"); `leerCertificados`/`leerEstadoSSL` comparten una sola lectura en curso y la cachean 60 s (sin cachear fallos); skeleton `src/app/(panel)/loading.tsx` para todas las páginas del panel (787 tests)
+  - Versión 2.1.0 (`feature/v2.1`, PR → develop; detalle para usuarios en `CHANGELOG.md`):
+    - Cancelar deploy: resultado `cancelado`; `cancelarDeploy` aborta git/`docker compose` con un `AbortController` por proyecto (registro en `globalThis`; en Linux el CLI reenvía la señal al plugin y BuildKit corta el build); procedure `proyectos.cancelarDeploy` y botón con confirmación (`ProjectActionButton` `confirmLabel`); estado posterior según contenedores (`estadoContenedores`)
+    - Timeout de deploy global `ConfiguracionDeploy.timeoutMinutos` (30 por defecto, 0 = sin límite, 5–180) en Configuración → Deploys; notifica solo si salta el timeout
+    - Deploys huérfanos: `src/instrumentation.ts` cierra al arrancar los que quedaron `en_curso` (`limpiarDeploysHuerfanos`)
+    - Health check y Dashboard con `proxy` (contenedor Traefik running) y `certificados` (acme.json legible); checks en paralelo
+    - Logs: la ruta SSE emite `sin_contenedores` / `fin`; visor `VisorLogs` compartido entre el modal y la pestaña Logs del detalle
+    - Auth: `middleware.ts` eliminado, `src/proxy.ts` único con la auth de NextAuth (el rate limit/CORS del antiguo `proxy.ts` nunca se ejecutó en producción); 10 intentos/min por IP en `authorize()` (`src/lib/rate-limit.ts`)
+    - Volúmenes: `resolverRutaSegura` única en `src/lib/volumenes.ts` (arregla Windows y bloquea borrar la raíz del volumen)
+    - Deploy Node.js: `GIT_SHA_SHORT` en el build, Node 22 en los Dockerfiles generados y `<Dockerfile>.dockerignore` con `.git`
+    - Sentry en servidor (ver Observabilidad), avisos de `src/lib` por Pino, Telegram con ⏱️ para cancelado
+    - Novedades: `CHANGELOG.md` + página `/novedades` + aviso en el Dashboard (ver «Versiones y changelog»)
+    - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
 - **En construcción:** —
-- **Bloqueado / pendiente:** —
-- **Próximo hito:** PR develop → master
+- **Bloqueado / pendiente:** ver `docs/roadmap.md`
+- **Próximo hito:** merge de `feature/v2.1` → develop y release 2.1.0 a master (tag `v2.1.0`); después, backups (ver `docs/roadmap.md`)

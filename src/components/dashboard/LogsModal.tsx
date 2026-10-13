@@ -57,105 +57,132 @@ export function LogsModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const { lines, connected, error, clear } = useContainerLogs(
-    open ? proyectoId : null,
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <VisorLogs
+        proyectoId={proyectoId}
+        titulo={`Logs — ${proyectoNombre}`}
+        onClose={onClose}
+        className="w-[80vw] h-[80vh]"
+      />
+    </div>
   );
+}
+
+// Mounted only while visible: unmounting closes the log stream.
+export function VisorLogs({
+  proyectoId,
+  titulo,
+  onClose,
+  className = "",
+}: {
+  proyectoId: string;
+  titulo: string;
+  onClose?: () => void;
+  className?: string;
+}) {
+  const { lines, connected, error, sinContenedores, finalizado, clear } =
+    useContainerLogs(proyectoId);
   const [nivel, setNivel] = useState<Nivel>("ALL");
   const [mostrarTs, setMostrarTs] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [servicioFiltro, setServicioFiltro] = useState<string>("todos");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
 
   const serviciosDetectados = useMemo(() => {
     const set = new Set(lines.map((l) => l.servicio));
     return Array.from(set).sort();
   }, [lines]);
 
+  // Scrolls the log area only; scrollIntoView would also move the page when
+  // the viewer is embedded in a tab.
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const area = areaRef.current;
+    if (autoScroll && area) area.scrollTop = area.scrollHeight;
   }, [lines, autoScroll]);
-
-  if (!open) return null;
 
   const lineasFiltradas = lines
     .filter((e) => pasaFiltro(e, nivel))
     .filter((e) => servicioFiltro === "todos" || e.servicio === servicioFiltro);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[80vw] h-[80vh] bg-surface border border-border rounded-[var(--radius-md)] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border gap-3 flex-wrap">
-          <span className="font-display text-sm font-semibold text-text-primary">
-            Logs — {proyectoNombre}
-            {connected && (
-              <span className="ml-2 font-body text-xs text-state-success">
-                ● Live
-              </span>
-            )}
-          </span>
-          <div className="flex items-center gap-1 flex-wrap">
-            {NIVELES.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setNivel(n)}
-                aria-label={`Filtro ${n}`}
-                aria-pressed={nivel === n}
-                className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
-                  nivel === n
-                    ? "border-primary-400 text-primary-400"
-                    : "border-border text-text-muted hover:border-primary-300"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
-            {/* Selector de servicio — solo si hay múltiples */}
-            {serviciosDetectados.length > 1 && (
-              <>
-                <span className="w-px h-3 bg-border mx-1" />
-                <button
-                  type="button"
-                  onClick={() => setServicioFiltro("todos")}
-                  className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
-                    servicioFiltro === "todos"
-                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                      : "border-border text-text-muted hover:border-primary-300"
-                  }`}
-                >
-                  todos
-                </button>
-                {serviciosDetectados.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setServicioFiltro(s)}
-                    className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
-                      servicioFiltro === s
-                        ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                        : "border-border text-text-muted hover:border-primary-300"
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </>
-            )}
-
+    <div
+      className={`bg-surface border border-border rounded-[var(--radius-md)] flex flex-col overflow-hidden ${className}`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border gap-3 flex-wrap">
+        <span className="font-display text-sm font-semibold text-text-primary">
+          {titulo}
+          {connected && (
+            <span className="ml-2 font-body text-xs text-state-success">
+              ● Live
+            </span>
+          )}
+        </span>
+        <div className="flex items-center gap-1 flex-wrap">
+          {NIVELES.map((n) => (
             <button
+              key={n}
               type="button"
-              onClick={() => setMostrarTs((v) => !v)}
-              aria-label="Toggle timestamps"
-              aria-pressed={mostrarTs}
-              className={`font-mono text-xs px-2 py-0.5 rounded border ml-1 transition-colors ${
-                mostrarTs
+              onClick={() => setNivel(n)}
+              aria-label={`Filtro ${n}`}
+              aria-pressed={nivel === n}
+              className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                nivel === n
                   ? "border-primary-400 text-primary-400"
                   : "border-border text-text-muted hover:border-primary-300"
               }`}
             >
-              TS
+              {n}
             </button>
+          ))}
+          {/* Selector de servicio — solo si hay múltiples */}
+          {serviciosDetectados.length > 1 && (
+            <>
+              <span className="w-px h-3 bg-border mx-1" />
+              <button
+                type="button"
+                onClick={() => setServicioFiltro("todos")}
+                className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                  servicioFiltro === "todos"
+                    ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                    : "border-border text-text-muted hover:border-primary-300"
+                }`}
+              >
+                todos
+              </button>
+              {serviciosDetectados.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setServicioFiltro(s)}
+                  className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                    servicioFiltro === s
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                      : "border-border text-text-muted hover:border-primary-300"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setMostrarTs((v) => !v)}
+            aria-label="Toggle timestamps"
+            aria-pressed={mostrarTs}
+            className={`font-mono text-xs px-2 py-0.5 rounded border ml-1 transition-colors ${
+              mostrarTs
+                ? "border-primary-400 text-primary-400"
+                : "border-border text-text-muted hover:border-primary-300"
+            }`}
+          >
+            TS
+          </button>
+          {onClose && (
             <button
               type="button"
               onClick={onClose}
@@ -164,55 +191,66 @@ export function LogsModal({
             >
               ✕
             </button>
-          </div>
-        </div>
-
-        {/* Área de logs */}
-        <div className="flex-1 overflow-y-auto p-3 font-mono text-xs text-text-primary space-y-0.5">
-          {error && <p className="text-state-error">{error}</p>}
-          {lineasFiltradas.length === 0 && !error && (
-            <p className="text-text-muted">Esperando logs…</p>
           )}
-          {lineasFiltradas.map((entry, i) => {
-            const parsed = parseLine(entry.line);
-            return (
-              <p
-                key={i}
-                className="whitespace-pre-wrap break-all leading-relaxed"
-              >
-                <span className="text-primary-400 mr-2">
-                  [{entry.servicio}]
-                </span>
-                {mostrarTs && parsed.ts && (
-                  <span className="text-text-muted mr-2">{parsed.ts}</span>
-                )}
-                {parsed.msg}
-              </p>
-            );
-          })}
-          <div ref={bottomRef} />
         </div>
+      </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border">
-          <label className="flex items-center gap-2 font-body text-xs text-text-muted cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
-              aria-label="Auto-scroll"
-            />
-            Auto-scroll
-          </label>
-          <button
-            type="button"
-            onClick={clear}
-            aria-label="Limpiar buffer"
-            className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors"
-          >
-            Limpiar buffer
-          </button>
-        </div>
+      {/* Área de logs */}
+      <div
+        ref={areaRef}
+        className="flex-1 overflow-y-auto p-3 font-mono text-xs text-text-primary space-y-0.5"
+      >
+        {error && <p className="text-state-error">{error}</p>}
+        {sinContenedores ? (
+          <p className="text-text-muted">
+            El proyecto no tiene contenedores en marcha.
+          </p>
+        ) : (
+          lineasFiltradas.length === 0 &&
+          !error &&
+          !finalizado && <p className="text-text-muted">Esperando logs…</p>
+        )}
+        {lineasFiltradas.map((entry, i) => {
+          const parsed = parseLine(entry.line);
+          return (
+            <p
+              key={i}
+              className="whitespace-pre-wrap break-all leading-relaxed"
+            >
+              <span className="text-primary-400 mr-2">[{entry.servicio}]</span>
+              {mostrarTs && parsed.ts && (
+                <span className="text-text-muted mr-2">{parsed.ts}</span>
+              )}
+              {parsed.msg}
+            </p>
+          );
+        })}
+        {finalizado && (
+          <p className="pt-2 text-text-muted">
+            Los contenedores se han detenido.
+          </p>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-4 py-2 border-t border-border">
+        <label className="flex items-center gap-2 font-body text-xs text-text-muted cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={autoScroll}
+            onChange={(e) => setAutoScroll(e.target.checked)}
+            aria-label="Auto-scroll"
+          />
+          Auto-scroll
+        </label>
+        <button
+          type="button"
+          onClick={clear}
+          aria-label="Limpiar buffer"
+          className="font-body text-xs px-2 py-1 rounded-[var(--radius-sm)] border border-border text-text-muted hover:border-primary-300 transition-colors"
+        >
+          Limpiar buffer
+        </button>
       </div>
     </div>
   );

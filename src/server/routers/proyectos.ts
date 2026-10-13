@@ -1,16 +1,23 @@
 // src/server/routers/proyectos.ts
+import { captureException } from "@sentry/nextjs";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { ejecutarDeploy } from "@/lib/docker/deploys";
+import {
+  cancelarDeploy,
+  ejecutarDeploy,
+  limpiarDeploysHuerfanos,
+} from "@/lib/docker/deploys";
 import { prepararRepo } from "@/lib/docker/deploy";
 import { descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
+import { TIMEOUT_DEPLOY_POR_DEFECTO } from "@/server/routers/configuracion";
 import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
   detenerProyecto,
+  estadoContenedores,
   iniciarProyecto,
   restartProyecto,
 } from "@/lib/docker/proyectos";
@@ -27,7 +34,7 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
-import { leerCertificados, leerEstadoSSL } from "@/lib/ssl/acme";
+import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { ultimasLineas } from "@/lib/deploy-stream";
 
@@ -82,9 +89,10 @@ export async function lanzarDeploy(
     origen: "manual" | "webhook" | "rollback";
   },
 ) {
-  const [variablesDB, volumenesDB] = await Promise.all([
+  const [variablesDB, volumenesDB, configDeploy] = await Promise.all([
     prisma.variableEntorno.findMany({ where: { proyectoId: proyecto.id } }),
     prisma.volumen.findMany({ where: { proyectoId: proyecto.id } }),
+    prisma.configuracionDeploy.findUnique({ where: { id: "default" } }),
   ]);
   // compose+content: build-time flag has no meaning (no docker build step),
   // all vars must reach the --env-file for ${VAR} substitution in the YAML.
@@ -140,17 +148,31 @@ export async function lanzarDeploy(
     startCommand: proyecto.startCommand,
     puerto: proyecto.puerto,
     volumenes,
+    timeoutMinutos: configDeploy?.timeoutMinutos ?? TIMEOUT_DEPLOY_POR_DEFECTO,
   })
-    .then(async ({ resultado, output }) => {
-      await prisma.proyecto.update({
-        where: { id: proyecto.id },
-        data: {
-          estado: resultado === "exito" ? "running" : "error",
-          ...(resultado === "exito"
-            ? { ultimoDeployEn: new Date(), ultimoDeployRama: opts.rama }
-            : {}),
-        },
-      });
+    .then(async ({ resultado, output, porTimeout }) => {
+      if (resultado === "cancelado") {
+        // Cancelling mid-build leaves the previous containers serving traffic.
+        const estado = await estadoContenedores(
+          proyecto.cliente.slug,
+          proyecto.nombre,
+        ).catch(() => "error" as const);
+        await prisma.proyecto.update({
+          where: { id: proyecto.id },
+          data: { estado },
+        });
+        if (!porTimeout) return;
+      } else {
+        await prisma.proyecto.update({
+          where: { id: proyecto.id },
+          data: {
+            estado: resultado === "exito" ? "running" : "error",
+            ...(resultado === "exito"
+              ? { ultimoDeployEn: new Date(), ultimoDeployRama: opts.rama }
+              : {}),
+          },
+        });
+      }
       void enviarNotificacion({
         proyectoNombre: proyecto.nombre,
         clienteSlug: proyecto.cliente.slug,
@@ -160,7 +182,10 @@ export async function lanzarDeploy(
         output,
       });
     })
-    .catch(async () => {
+    .catch(async (err: unknown) => {
+      // ejecutarDeploy already turns build failures into a result; reaching
+      // this point is a bug, and the fire-and-forget would otherwise hide it.
+      captureException(err, { tags: { proyectoId: proyecto.id } });
       await prisma.proyecto.update({
         where: { id: proyecto.id },
         data: { estado: "error" },
@@ -426,6 +451,22 @@ export const proyectosRouter = router({
       });
     }),
 
+  cancelarDeploy: protectedProcedure
+    .input(idInput)
+    .mutation(async ({ input, ctx }) => {
+      const proyecto = await findProyectoOrThrow(input.id);
+      const motivo = `Cancelado por ${ctx.session.user?.email ?? "un usuario"}`;
+      if (cancelarDeploy(proyecto.id, motivo)) return { ok: true };
+      if (proyecto.estado !== "deploying") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "El proyecto no tiene ningún deploy en curso",
+        });
+      }
+      await limpiarDeploysHuerfanos(motivo, proyecto.id);
+      return { ok: true };
+    }),
+
   toggleAutoDeploy: protectedProcedure
     .input(idInput)
     .mutation(async ({ input }) => {
@@ -605,12 +646,6 @@ export const proyectosRouter = router({
       ),
     };
   }),
-
-  estadoSSL: protectedProcedure
-    .input(z.object({ dominio: z.string() }))
-    .query(async ({ input }) => {
-      return leerEstadoSSL(input.dominio);
-    }),
 
   listar: protectedProcedure.query(async () => {
     const [clientes, certificados] = await Promise.all([

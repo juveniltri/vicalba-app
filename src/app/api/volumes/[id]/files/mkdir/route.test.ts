@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -7,7 +8,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { volumen: { findUnique: vi.fn() } },
 }));
 vi.mock("node:fs/promises", () => ({ mkdir: vi.fn() }));
-vi.mock("@/lib/volumenes", () => ({
+vi.mock("@/lib/volumenes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/volumenes")>()),
   rutaHostVolumen: vi
     .fn()
     .mockReturnValue("/repos/cliente/proyecto/volumes/galeria"),
@@ -91,9 +93,12 @@ describe("POST /api/volumes/[id]/files/mkdir", () => {
     });
 
     expect(res.status).toBe(201);
-    expect(mkdir).toHaveBeenCalledWith(expect.stringContaining("fotos/2024"), {
-      recursive: false,
-    });
+    expect(mkdir).toHaveBeenCalledWith(
+      expect.stringContaining(path.join("fotos", "2024")),
+      {
+        recursive: false,
+      },
+    );
   });
 
   it("devuelve 409 si la carpeta ya existe", async () => {

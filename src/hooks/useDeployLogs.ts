@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 type SseEvent =
   | { line: string }
-  | { tipo: "done"; resultado: "exito" | "error" }
+  | { tipo: "done"; resultado: "exito" | "error" | "cancelado" }
   | { tipo: "sin_deploy" };
 
 export function useDeployLogs(proyectoId: string | null, active: boolean) {
   const [lines, setLines] = useState<string[]>([]);
-  const [done, setDone] = useState<"exito" | "error" | null>(null);
+  const [done, setDone] = useState<"exito" | "error" | "cancelado" | null>(
+    null,
+  );
   const esRef = useRef<EventSource | null>(null);
 
   // Reset del estado al cambiar de proyecto (no al terminar un deploy):

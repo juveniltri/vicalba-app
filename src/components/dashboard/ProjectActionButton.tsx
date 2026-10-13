@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useToast } from "@/components/ui/Toast";
 
 type ActionResult = { error: string } | void | undefined;
@@ -9,6 +9,7 @@ export function ProjectActionButton({
   action,
   label,
   pendingLabel,
+  confirmLabel,
   successMessage,
   disabled,
   className,
@@ -17,6 +18,7 @@ export function ProjectActionButton({
   action: () => Promise<ActionResult>;
   label: string;
   pendingLabel: string;
+  confirmLabel?: string;
   successMessage: string;
   disabled?: boolean;
   className: string;
@@ -24,8 +26,14 @@ export function ProjectActionButton({
 }) {
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const [confirmando, setConfirmando] = useState(false);
 
   const handleClick = () => {
+    if (confirmLabel && !confirmando) {
+      setConfirmando(true);
+      return;
+    }
+    setConfirmando(false);
     startTransition(async () => {
       const result = await action();
       if (result && "error" in result) {
@@ -40,11 +48,12 @@ export function ProjectActionButton({
     <button
       type="button"
       onClick={handleClick}
+      onBlur={() => setConfirmando(false)}
       disabled={disabled || isPending}
       className={className}
     >
       {children}
-      {isPending ? pendingLabel : label}
+      {isPending ? pendingLabel : confirmando ? confirmLabel : label}
     </button>
   );
 }

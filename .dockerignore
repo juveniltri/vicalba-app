@@ -6,5 +6,7 @@ node_modules
 coverage
 docs
 *.md
+# The panel reads it at runtime for the Novedades page.
+!CHANGELOG.md
 .claude
 .agents

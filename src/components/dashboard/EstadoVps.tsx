@@ -33,11 +33,12 @@ export function EstadoVps({
   version,
   certificados,
 }: {
-  checks: { database: Check; docker: Check };
+  checks: { database: Check; docker: Check; proxy: Check; certificados: Check };
   version: string;
   certificados: Array<{ proyectoId: string; nombre: string; dias: number }>;
 }) {
   const n = certificados.length;
+  const ilegibles = checks.certificados === "error";
   return (
     <section
       aria-labelledby="estado-vps"
@@ -49,17 +50,34 @@ export function EstadoVps({
       <div className="flex flex-col gap-2.5">
         <Fila nombre="PostgreSQL" estado={checks.database} />
         <Fila nombre="Docker daemon" estado={checks.docker} />
+        <Fila nombre="Traefik" estado={checks.proxy} />
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
             <span
               aria-hidden="true"
-              className={`size-[7px] shrink-0 rounded-full ${n > 0 ? "bg-state-deploying" : "bg-state-running"}`}
+              className={`size-[7px] shrink-0 ${
+                ilegibles
+                  ? "rounded-[2px] bg-state-error"
+                  : n > 0
+                    ? "rounded-full bg-state-deploying"
+                    : "rounded-full bg-state-running"
+              }`}
             />
             <span>Certificados</span>
             <span
-              className={`ml-auto ${n > 0 ? "text-deploying-text" : "text-text-muted"}`}
+              className={`ml-auto ${
+                ilegibles
+                  ? "text-error-text"
+                  : n > 0
+                    ? "text-deploying-text"
+                    : "text-text-muted"
+              }`}
             >
-              {n > 0 ? `${n} caduca${n === 1 ? "" : "n"} pronto` : "vigentes"}
+              {ilegibles
+                ? "no se pueden leer"
+                : n > 0
+                  ? `${n} caduca${n === 1 ? "" : "n"} pronto`
+                  : "vigentes"}
             </span>
           </div>
           {certificados.map((c) => (
@@ -76,7 +94,9 @@ export function EstadoVps({
       </div>
       <div className="flex justify-between pt-3 border-t border-border text-xs text-text-muted">
         <span>Panel</span>
-        <span>v{version}</span>
+        <Link href="/novedades" className="hover:text-text-primary">
+          v{version}
+        </Link>
       </div>
     </section>
   );

@@ -1,21 +1,17 @@
-import * as Sentry from '@sentry/nextjs'
+import * as Sentry from "@sentry/nextjs";
 
-// Inicializacion de Sentry — importar en instrumentation.ts (Next.js 15+).
-
-export function initSentry() {
-  if (!process.env.SENTRY_DSN) {
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('[Sentry] SENTRY_DSN no configurado — los errores no se capturaran')
-    }
-    return
-  }
+// Server only: pages, route handlers and server actions reach Sentry through
+// onRequestError (src/instrumentation.ts); tRPC errors through the route's
+// onError. Without SENTRY_DSN nothing is sent.
+export function initSentry(): boolean {
+  const dsn = process.env.SENTRY_DSN;
+  if (!dsn) return false;
 
   Sentry.init({
-    dsn: process.env.SENTRY_DSN,
+    dsn,
     environment: process.env.NODE_ENV,
-    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    replaysOnErrorSampleRate: process.env.NODE_ENV === 'production' ? 1.0 : 0,
-    replaysSessionSampleRate: 0,
-    enabled: process.env.NODE_ENV === 'production',
-  })
+    release: process.env.npm_package_version,
+    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
+  });
+  return true;
 }

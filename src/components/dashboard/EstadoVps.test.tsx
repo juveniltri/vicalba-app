@@ -3,13 +3,18 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EstadoVps } from "./EstadoVps";
 
-const ok = { database: "ok" as const, docker: "ok" as const };
+const ok = {
+  database: "ok" as const,
+  docker: "ok" as const,
+  proxy: "ok" as const,
+  certificados: "ok" as const,
+};
 
 describe("EstadoVps", () => {
   it("muestra el estado de la base de datos y de Docker", () => {
     render(
       <EstadoVps
-        checks={{ database: "ok", docker: "error" }}
+        checks={{ ...ok, docker: "error" }}
         version="0.9.0"
         certificados={[]}
       />,
@@ -61,6 +66,41 @@ describe("EstadoVps", () => {
     expect(screen.getByText("1 caduca pronto")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /acme \/ web/ })).toHaveTextContent(
       "1 día",
+    );
+  });
+
+  it("muestra el estado de Traefik", () => {
+    render(
+      <EstadoVps
+        checks={{ ...ok, proxy: "error" }}
+        version="0.9.0"
+        certificados={[]}
+      />,
+    );
+    expect(screen.getByText("Traefik").parentElement).toHaveTextContent(
+      "sin conexión",
+    );
+  });
+
+  it("no da los certificados por vigentes si no se puede leer acme.json", () => {
+    render(
+      <EstadoVps
+        checks={{ ...ok, certificados: "error" }}
+        version="0.9.0"
+        certificados={[]}
+      />,
+    );
+    expect(screen.queryByText("vigentes")).not.toBeInTheDocument();
+    expect(screen.getByText("Certificados").parentElement).toHaveTextContent(
+      "no se pueden leer",
+    );
+  });
+
+  it("la versión del panel enlaza a las novedades", () => {
+    render(<EstadoVps checks={ok} version="2.1.0" certificados={[]} />);
+    expect(screen.getByRole("link", { name: "v2.1.0" })).toHaveAttribute(
+      "href",
+      "/novedades",
     );
   });
 });

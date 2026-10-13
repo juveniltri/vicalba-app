@@ -9,7 +9,7 @@ vi.mock("@/hooks/useContainerLogs", () => ({
   useContainerLogs: (...args: unknown[]) => mockUseContainerLogs(...args),
 }));
 
-import { LogsModal } from "./LogsModal";
+import { LogsModal, VisorLogs } from "./LogsModal";
 import type { LogLine } from "@/hooks/useContainerLogs";
 
 beforeAll(() => {
@@ -57,11 +57,10 @@ describe("LogsModal — visibilidad", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("pasa null a useContainerLogs cuando open es false", () => {
+  it("no abre la conexión de logs cuando open es false", () => {
     setup();
     render(<LogsModal {...defaultProps} open={false} />);
-    // El hook se llama siempre (regla de hooks), pero con null para no conectar
-    expect(mockUseContainerLogs).toHaveBeenCalledWith(null);
+    expect(mockUseContainerLogs).not.toHaveBeenCalledWith("p1");
   });
 
   it("pasa el proyectoId a useContainerLogs cuando open es true", () => {
@@ -236,5 +235,57 @@ describe("LogsModal — controles", () => {
     setup([], { connected: true });
     render(<LogsModal {...defaultProps} />);
     expect(screen.getByText(/Live/)).toBeInTheDocument();
+  });
+});
+
+describe("LogsModal — estado del stream", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("avisa de que no hay contenedores en vez de esperar logs", () => {
+    setup([], { sinContenedores: true });
+    render(<LogsModal {...defaultProps} />);
+    expect(
+      screen.getByText("El proyecto no tiene contenedores en marcha."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Esperando logs…")).not.toBeInTheDocument();
+  });
+
+  it("indica al final del log que los contenedores se han detenido", () => {
+    setup([{ servicio: "web", line: "apagando" }], { finalizado: true });
+    render(<LogsModal {...defaultProps} />);
+    expect(screen.getByText("apagando")).toBeInTheDocument();
+    expect(
+      screen.getByText("Los contenedores se han detenido."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("VisorLogs — incrustado en la página", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setup([{ servicio: "web", line: "arrancado" }], { connected: true });
+  });
+
+  it("muestra los logs del proyecto sin el marco del modal ni botón de cerrar", () => {
+    const { container } = render(
+      <VisorLogs proyectoId="p1" titulo="Logs del contenedor" />,
+    );
+
+    expect(mockUseContainerLogs).toHaveBeenCalledWith("p1");
+    expect(screen.getByText("Logs del contenedor")).toBeInTheDocument();
+    expect(screen.getByText("arrancado")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /cerrar logs modal/i }),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector(".fixed")).toBeNull();
+  });
+
+  it("el auto-scroll desplaza solo el área de logs, no la página", () => {
+    const scrollPagina = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollPagina;
+
+    render(<VisorLogs proyectoId="p1" titulo="Logs del contenedor" />);
+
+    expect(scrollPagina).not.toHaveBeenCalled();
   });
 });

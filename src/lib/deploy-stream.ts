@@ -2,15 +2,18 @@ import { EventEmitter } from "node:events";
 
 interface DeployEmitter extends EventEmitter {
   on(event: "line", listener: (line: string) => void): this;
-  on(event: "done", listener: (resultado: "exito" | "error") => void): this;
+  on(
+    event: "done",
+    listener: (resultado: "exito" | "error" | "cancelado") => void,
+  ): this;
   emit(event: "line", line: string): boolean;
-  emit(event: "done", resultado: "exito" | "error"): boolean;
+  emit(event: "done", resultado: "exito" | "error" | "cancelado"): boolean;
 }
 
 interface DeployStream {
   emitter: DeployEmitter;
   lineas: string[];
-  resultado: "exito" | "error" | null;
+  resultado: "exito" | "error" | "cancelado" | null;
 }
 
 // NOTE: Next.js bundles each route separately, so a module-level Map would not be
@@ -42,7 +45,7 @@ export function getOrCreateDeployEmitter(proyectoId: string): DeployEmitter {
 export function suscribirDeployLogs(
   proyectoId: string,
   onLine: (line: string) => void,
-  onDone: (resultado: "exito" | "error") => void,
+  onDone: (resultado: "exito" | "error" | "cancelado") => void,
 ): (() => void) | null {
   const stream = streams.get(proyectoId);
   if (!stream) return null;

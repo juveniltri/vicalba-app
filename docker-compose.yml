@@ -69,6 +69,7 @@ services:
       # Traefik fuerza permisos 600 en ese fichero y el panel corre como
       # usuario no-root, así que no puede leerlo aunque comparta el volumen.
       ACME_JSON_PATH: /letsencrypt/acme.json
+      SENTRY_DSN: ${SENTRY_DSN:-}
       NODE_ENV: production
     volumes:
       # Acceso al daemon Docker del host para gestionar contenedores de clientes

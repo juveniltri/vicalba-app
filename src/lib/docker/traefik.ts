@@ -1,6 +1,9 @@
 import { PassThrough } from "node:stream";
 import { env } from "@/env";
+import { logger } from "@/lib/logger";
 import { docker } from "./client";
+
+const log = logger.child({ module: "docker" });
 
 const nombreRed = (clienteSlug: string) => `cliente-${clienteSlug}-network`;
 
@@ -14,6 +17,15 @@ async function encontrarContenedorTraefik() {
   );
 }
 
+export async function estadoTraefik(): Promise<"ok" | "error"> {
+  try {
+    const traefik = await encontrarContenedorTraefik();
+    return traefik?.State === "running" ? "ok" : "error";
+  } catch {
+    return "error";
+  }
+}
+
 const TIMEOUT_MS = 5_000;
 
 // Traefik fuerza permisos 600 en su fichero de certificados (propiedad de su
@@ -22,9 +34,9 @@ const TIMEOUT_MS = 5_000;
 // exec` en el propio contenedor de Traefik, reutilizando el acceso al socket
 // Docker que el panel ya tiene para gestionar el resto de contenedores.
 //
-// leerEstadoSSL se llama una vez POR PROYECTO CON DOMINIO en el listado del
-// dashboard (justo donde redirige el login) — si el exec se queda colgado
-// (daemon saturado, socket sin responder), no puede bloquear el panel entero.
+// Dashboard, Proyectos, el detalle y el health check leen acme.json por aquí
+// (vía la caché de src/lib/ssl/acme.ts) — si el exec se queda colgado (daemon
+// saturado, socket sin responder), no puede bloquear el panel entero.
 export async function leerFicheroTraefik(ruta: string): Promise<string> {
   return Promise.race([
     leerFicheroTraefikSinTimeout(ruta),
@@ -96,9 +108,7 @@ export async function conectarTraefikARed(clienteSlug: string): Promise<void> {
     traefik = await encontrarContenedorTraefik();
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping conectarTraefikARed in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "conectarTraefikARed omitido en desarrollo");
     return;
   }
   if (!traefik) return;
@@ -119,9 +129,7 @@ export async function desconectarTraefikDeRed(
     traefik = await encontrarContenedorTraefik();
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn(
-      `[docker] Skipping desconectarTraefikDeRed in dev: ${(err as Error).message}`,
-    );
+    log.warn({ err }, "desconectarTraefikDeRed omitido en desarrollo");
     return;
   }
   if (!traefik) return;

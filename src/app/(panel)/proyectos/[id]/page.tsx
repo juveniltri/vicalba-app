@@ -25,6 +25,7 @@ import {
   EliminarProyectoButton,
 } from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
+import { VisorLogs } from "@/components/dashboard/LogsModal";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
 import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
@@ -35,6 +36,7 @@ import {
 } from "@/components/dashboard/AccionesProyecto";
 import { botonPrimario, botonSecundario } from "@/components/layout/PageHeader";
 import {
+  cancelarDeployAction,
   deployProyectoAction,
   detenerAction,
   iniciarAction,
@@ -47,6 +49,7 @@ import { IconRedeploy, IconStop, IconCheck } from "@/components/ui/icons";
 const PESTANAS = [
   "resumen",
   "deploys",
+  "logs",
   "variables",
   "volumenes",
   "compose",
@@ -95,6 +98,7 @@ export default async function DetalleProyectoPage({
   const etiquetas: Record<Pestana, string> = {
     resumen: "Resumen",
     deploys: `Deploys`,
+    logs: "Logs",
     variables: "Variables",
     volumenes: "Volúmenes",
     compose: "Compose",
@@ -194,6 +198,23 @@ export default async function DetalleProyectoPage({
           >
             <IconRedeploy className="w-[13px] h-[13px]" />
           </ProjectActionButton>
+          {isDeploying && (
+            <ProjectActionButton
+              action={async () => {
+                "use server";
+                const result = await cancelarDeployAction(id);
+                revalidatePath(`/proyectos/${id}`);
+                return result;
+              }}
+              label="Cancelar deploy"
+              pendingLabel="Cancelando…"
+              confirmLabel="¿Cancelar el deploy?"
+              successMessage="Deploy cancelado"
+              className={botonSecundario}
+            >
+              <IconStop className="w-[13px] h-[13px]" />
+            </ProjectActionButton>
+          )}
           <form
             action={async () => {
               "use server";
@@ -388,6 +409,14 @@ export default async function DetalleProyectoPage({
             }}
           />
         </Card>
+      )}
+
+      {pestana === "logs" && (
+        <VisorLogs
+          proyectoId={id}
+          titulo="Logs del contenedor"
+          className="h-[65vh]"
+        />
       )}
 
       {pestana === "variables" && (

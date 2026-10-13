@@ -14,10 +14,18 @@
 
 ### Core — 100%
 
+La fuente de verdad son los `thresholds` de `vitest.config.ts`; esta lista los refleja.
+
 ```
-src/server/routers/ ← tRPC routers (lógica de negocio, validaciones, guards)
-src/lib/schemas/    ← schemas Zod compartidos (validaciones del dominio)
-src/domain/         ← lógica de dominio pura (si existe)
+src/server/routers/       ← tRPC routers (lógica de negocio, validaciones, guards)
+src/lib/schemas/          ← schemas Zod compartidos (validaciones del dominio)
+src/lib/traefik/          ← generación de la config dinámica de Traefik
+src/lib/ssl/              ← lectura de acme.json (certificados y su caché)
+src/lib/notificaciones/   ← canales webhook / email / Telegram
+src/lib/github/ · src/lib/system/ · src/lib/formatHace.ts
+src/lib/changelog.ts      ← interpretación de CHANGELOG.md (página Novedades)
+src/lib/rate-limit.ts     ← límite de intentos de login
+src/domain/               ← lógica de dominio pura (si existe)
 ```
 
 ### Important — 80%
@@ -32,7 +40,6 @@ src/utils/          ← utilidades puras
 
 ```
 src/lib/docker/     ← integración dockerode — se mockea en tests de routers
-src/lib/traefik/    ← generación config Traefik — se mockea en tests de routers
 src/app/            ← Next.js App Router (pages, layouts, API routes)
 src/server/db/      ← queries Prisma
 src/env.ts          ← validación de variables de entorno al arranque
