@@ -7,8 +7,6 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Bugs conocidos
 
-- **`/api/*` redirige al login en `next dev`** — solo en desarrollo (Turbopack); con `next start` las rutas `/api` responden bien. Sospecha: conviven `middleware.ts` (raíz, NextAuth) y `src/proxy.ts` (CORS + rate limit), y Next 16 espera un único `src/proxy.ts`. Impide probar en local el log de deploy en vivo (SSE) y el webhook. Propuesta: unificar ambos en `src/proxy.ts`.
-
 ---
 
 ## Backlog
@@ -27,7 +25,7 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Hecho (antes en este backlog)
 
-- Estado de Traefik y certificados en el health check y el Dashboard · Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
+- Proxy único `src/proxy.ts` (`/api/*` ya no redirige al login en `next dev`) y límite de 10 intentos/min por IP en el login · Logs SSE sin contenedores · Estado de Traefik y certificados en el health check y el Dashboard · Cancelar deploy + timeout configurable + cierre de deploys huérfanos al arrancar (`feature/cancelar-deploy`) · Reiniciar ya usa `docker restart` · Gestión de usuarios (PR #20) · Logs de deploy en tiempo real (PR #19; visibles en el detalle desde PR #34) · Volúmenes + gestor de ficheros (PR #21) · Import masivo de variables (PR #17) · Vista de logs más grande (modal 80vw, PR #23) · Variables que no llegaban al contenedor (resuelto en los hotfix de variables y compose-env).
 
 ---
 
