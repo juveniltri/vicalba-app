@@ -25,6 +25,7 @@ import {
   EliminarProyectoButton,
 } from "@/components/dashboard/ProyectoForm";
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
+import { VisorLogs } from "@/components/dashboard/LogsModal";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
 import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
@@ -48,6 +49,7 @@ import { IconRedeploy, IconStop, IconCheck } from "@/components/ui/icons";
 const PESTANAS = [
   "resumen",
   "deploys",
+  "logs",
   "variables",
   "volumenes",
   "compose",
@@ -96,6 +98,7 @@ export default async function DetalleProyectoPage({
   const etiquetas: Record<Pestana, string> = {
     resumen: "Resumen",
     deploys: `Deploys`,
+    logs: "Logs",
     variables: "Variables",
     volumenes: "Volúmenes",
     compose: "Compose",
@@ -406,6 +409,14 @@ export default async function DetalleProyectoPage({
             }}
           />
         </Card>
+      )}
+
+      {pestana === "logs" && (
+        <VisorLogs
+          proyectoId={id}
+          titulo="Logs del contenedor"
+          className="h-[65vh]"
+        />
       )}
 
       {pestana === "variables" && (
