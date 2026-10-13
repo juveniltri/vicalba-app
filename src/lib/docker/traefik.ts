@@ -56,6 +56,16 @@ async function leerFicheroTraefikSinTimeout(ruta: string): Promise<string> {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   docker.modem.demuxStream(stream, stdout, stderr);
+  // demuxStream never ends its targets: without this, reading them waits for
+  // the timeout on every call and the certificates always come back empty.
+  stream.on("end", () => {
+    stdout.end();
+    stderr.end();
+  });
+  stream.on("error", (err) => {
+    stdout.destroy(err);
+    stderr.destroy(err);
+  });
 
   const [stdoutContent, stderrContent] = await Promise.all([
     leerStream(stdout),

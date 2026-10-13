@@ -1,3 +1,4 @@
+import { PassThrough } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -150,15 +151,23 @@ describe("leerFicheroTraefik", () => {
     mockExecStart.mockResolvedValue({});
   });
 
+  // Like docker-modem's real demuxStream: writes to out/err but never ends
+  // them — only the raw exec stream ends.
   function mockSalida(stdout: string, stderr = "") {
+    const raw = new PassThrough();
+    mockExecStart.mockResolvedValue(raw);
     mockDemuxStream.mockImplementation(
       (
         _raw: unknown,
-        out: { end: (chunk?: Buffer) => void },
-        err: { end: (chunk?: Buffer) => void },
+        out: { write: (chunk: Buffer) => void },
+        err: { write: (chunk: Buffer) => void },
       ) => {
-        out.end(stdout ? Buffer.from(stdout) : undefined);
-        err.end(stderr ? Buffer.from(stderr) : undefined);
+        raw.resume();
+        setImmediate(() => {
+          if (stdout) out.write(Buffer.from(stdout));
+          if (stderr) err.write(Buffer.from(stderr));
+          raw.end();
+        });
       },
     );
   }
