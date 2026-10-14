@@ -33,6 +33,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
 COPY --from=builder --chown=nextjs:nodejs /app/CHANGELOG.md ./
+COPY --from=builder --chown=nextjs:nodejs /app/docs/guia-usuario.md ./docs/guia-usuario.md
 
 USER nextjs
 

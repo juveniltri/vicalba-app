@@ -85,6 +85,14 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("renderiza el enlace Guía", () => {
+    render(<Sidebar proyectos={proyectos} usuario={usuario} />);
+    expect(screen.getByRole("link", { name: "Guía" })).toHaveAttribute(
+      "href",
+      "/guia",
+    );
+  });
+
   it("renderiza el enlace Novedades", () => {
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
     expect(screen.getByRole("link", { name: "Novedades" })).toHaveAttribute(

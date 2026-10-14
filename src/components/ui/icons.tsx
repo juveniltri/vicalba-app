@@ -61,6 +61,12 @@ export const IconClock = (p: IconProps) => (
     <path d="M12 7v5l3 2" />
   </svg>
 );
+export const IconBook = (p: IconProps) => (
+  <svg {...S(p)}>
+    <path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z" />
+    <path d="M4 21V5M8 7h7" />
+  </svg>
+);
 export const IconRedeploy = (p: IconProps) => (
   <svg {...S(p)}>
     <path d="M4 12a8 8 0 0114-5M20 12a8 8 0 01-14 5" />
