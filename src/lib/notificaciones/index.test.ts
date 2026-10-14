@@ -36,7 +36,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { child: () => ({ error: mockLogError, warn: mockLogWarn }) },
 }));
 
-import { enviarEmailDePrueba, enviarNotificacion } from "./index";
+import {
+  enviarEmailDePrueba,
+  enviarNotificacion,
+  notificarFalloBackup,
+} from "./index";
 
 const configBase = {
   id: "default",
@@ -379,5 +383,52 @@ describe("enviarEmailDePrueba", () => {
     expect(res.ok).toBe(false);
     expect(!res.ok && res.error).toMatch(/contraseña SMTP.*destinatario/);
     expect(mockEnviarEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("notificarFalloBackup", () => {
+  const configSoloWebhook = {
+    ...configBase,
+    webhookHabilitado: true,
+    webhookUrl: "https://hooks.ejemplo.com",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEnviarWebhook.mockResolvedValue(undefined);
+  });
+
+  it("envía un payload de backup con el motivo como salida", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "copia",
+      origen: "programado",
+      error: "403 Forbidden",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      {
+        evento: "backup",
+        proyectoNombre: "panel",
+        clienteSlug: "backups",
+        rama: "copia programada",
+        sha: null,
+        resultado: "error",
+        output: "403 Forbidden",
+      },
+    );
+  });
+
+  it("describe la restauración sin origen", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "restauracion",
+      origen: "manual",
+      error: "pg_restore falló",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      expect.objectContaining({ rama: "restauración" }),
+    );
   });
 });

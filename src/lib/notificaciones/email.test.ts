@@ -99,3 +99,22 @@ describe("enviarEmail", () => {
     );
   });
 });
+
+describe("enviarEmail — avisos de backup", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateTransport.mockReturnValue({ sendMail: mockSendMail });
+    mockSendMail.mockResolvedValue({});
+  });
+
+  it("titula «Backup» los avisos de backup", async () => {
+    await enviarEmail(smtpConfig, {
+      ...payload,
+      proyectoNombre: "panel",
+      evento: "backup",
+      resultado: "error",
+    });
+    const { subject } = mockSendMail.mock.calls[0][0] as { subject: string };
+    expect(subject).toBe("[vicalba] Backup error — panel");
+  });
+});

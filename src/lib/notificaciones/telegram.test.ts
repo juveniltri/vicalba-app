@@ -134,3 +134,23 @@ describe("enviarTelegram", () => {
     ).rejects.toThrow("Telegram respondió 502");
   });
 });
+
+describe("enviarTelegram — avisos de backup", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+  });
+
+  it("titula «Backup» los avisos de backup", async () => {
+    await enviarTelegram("token", "chat", {
+      ...payload,
+      proyectoNombre: "panel",
+      evento: "backup",
+      resultado: "error",
+    });
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.text.split("\n")[0]).toBe("❌ Backup error — panel");
+  });
+});
