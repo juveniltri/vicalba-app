@@ -30,6 +30,7 @@ Panel de control de infraestructura al estilo Coolify, diseñado para uso intern
 - **Logs en tiempo real** — streaming SSE de logs de contenedores directamente en el panel
 - **Notificaciones** — webhooks, email (SMTP) y Telegram al completar o fallar un deploy
 - **Variables de entorno** — almacenadas cifradas en BD, revelables con timeout de 30 s en la UI
+- **Backups** — copia diaria cifrada de la BD del panel y de Traefik a S3 o SFTP (restic), restauración desde el panel y recuperación en otra VPS (`docs/recuperacion.md`)
 - **Métricas del sistema** — CPU, RAM y disco del host vía `/api/system/metrics`
 - **CI/CD propio** — GitHub Actions con lint, type-check y tests en cada PR
 
@@ -114,7 +115,7 @@ Resumen:
 # En la VPS (Ubuntu):
 curl -fsSL https://get.docker.com | sh
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
-touch /var/vicalba/traefik/acme.json && chmod 600 /var/vicalba/traefik/acme.json
+chown -R 1001:1001 /var/vicalba   # el panel corre como uid 1001
 
 git clone git@github.com:juveniltri/vicalba-app.git /opt/vicalba-app
 cd /opt/vicalba-app

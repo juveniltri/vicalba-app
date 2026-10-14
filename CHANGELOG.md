@@ -17,6 +17,7 @@ Copias de seguridad automáticas del Panel.
 - **Restaurar** una copia desde el Panel, con una copia automática previa para poder deshacerlo.
 - **Kit de recuperación** para reconstruir el Panel en otra VPS (ver `docs/recuperacion.md`).
 - Aviso en el Dashboard y por los canales de notificación si una copia falla.
+- Si cambias el destino a otro repositorio, el Panel vuelve a mostrar el kit para que guardes el nuevo.
 
 ### Al actualizar
 

@@ -190,6 +190,15 @@ En cada repo que quieras conectar: **Settings → Webhooks → Add webhook**
 
 ---
 
+## 12. Activar los backups
+
+En **Configuración → Backups**: elegir destino (S3 compatible o SFTP con una credencial SSH del
+panel) y pulsar «Probar y guardar». El panel muestra el **kit de recuperación**: guárdalo fuera
+de la VPS junto con la `ENCRYPTION_KEY` del `.env`; sin los dos no se puede recuperar nada. Después,
+activa la copia diaria y elige la hora. Para recuperar el panel en otra VPS: `docs/recuperacion.md`.
+
+---
+
 ## Actualizaciones futuras
 
 ```bash
