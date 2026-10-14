@@ -10,3 +10,7 @@ export type ActividadDashboard = RouterOutput["proyectos"]["actividad"];
 export type ProyectoAtencion = ActividadDashboard["atencion"][number];
 export type DeployReciente = ActividadDashboard["recientes"][number];
 export type ProyectoIndice = RouterOutput["proyectos"]["indice"][number];
+export type ConfiguracionBackupVista =
+  RouterOutput["backups"]["obtenerConfiguracion"];
+export type EjecucionBackup = RouterOutput["backups"]["historial"][number];
+export type CopiaBackup = RouterOutput["backups"]["copias"][number];

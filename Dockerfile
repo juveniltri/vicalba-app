@@ -23,7 +23,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apk add --no-cache libc6-compat git openssh-client docker-cli docker-cli-compose && \
+RUN apk add --no-cache libc6-compat git openssh-client docker-cli docker-cli-compose restic postgresql16-client && \
     addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs -G nodejs
 
 COPY --from=builder --chown=nextjs:nodejs /app/package*.json ./

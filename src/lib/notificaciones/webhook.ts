@@ -28,7 +28,8 @@ function destinoDe(url: string): Destino {
 }
 
 function titulo(p: PayloadNotificacion): string {
-  return `${ICONO[p.resultado]} Deploy ${p.resultado} — ${p.clienteSlug} / ${p.proyectoNombre}`;
+  const evento = p.evento === "backup" ? "Backup" : "Deploy";
+  return `${ICONO[p.resultado]} ${evento} ${p.resultado} — ${p.clienteSlug} / ${p.proyectoNombre}`;
 }
 
 function bloqueLog(output: string): string {

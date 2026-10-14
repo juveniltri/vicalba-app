@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { comprobarSalud } from "@/lib/health";
 import { leerChangelog } from "@/lib/changelog";
+import { avisoBackups } from "@/lib/backups/aviso";
 import { diasHasta } from "@/lib/formatHace";
 import { createServerCaller } from "@/server/caller";
 import { MetricasSistema } from "@/components/metricas-sistema";
@@ -24,12 +25,14 @@ export default async function DashboardPage() {
   if (!session) redirect("/login");
 
   const api = await createServerCaller();
-  const [clientes, actividad, salud, [ultimaVersion]] = await Promise.all([
-    api.proyectos.listar(),
-    api.proyectos.actividad(),
-    comprobarSalud(),
-    leerChangelog(),
-  ]);
+  const [clientes, actividad, salud, [ultimaVersion], resumenBackups] =
+    await Promise.all([
+      api.proyectos.listar(),
+      api.proyectos.actividad(),
+      comprobarSalud(),
+      leerChangelog(),
+      api.backups.resumen(),
+    ]);
   const proyectos = clientes.flatMap((c) =>
     c.proyectos.map((p) => ({ ...p, clienteNombre: c.nombre })),
   );
@@ -66,7 +69,10 @@ export default async function DashboardPage() {
         />
       )}
 
-      <AtencionPanel proyectos={actividad.atencion} />
+      <AtencionPanel
+        proyectos={actividad.atencion}
+        avisoBackups={avisoBackups(resumenBackups, new Date())}
+      />
 
       <StatsBar proyectos={proyectos} clientes={clientes.length} />
 
@@ -79,6 +85,10 @@ export default async function DashboardPage() {
             checks={salud.checks}
             version={salud.version}
             certificados={certificadosPorCaducar}
+            backups={{
+              habilitado: resumenBackups.habilitado,
+              ultimaCorrecta: resumenBackups.ultimaCorrecta,
+            }}
           />
           <MetricasSistema />
         </div>

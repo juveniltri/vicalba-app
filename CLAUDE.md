@@ -166,6 +166,7 @@ Antes de cada merge a `master`: invoca `/security-review`.
 - **Pino:** logging estructurado en JSON. Cada log con `level`, `msg`, `context` y `traceId`.
 - **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla. El healthcheck del contenedor en `docker-compose.yml` solo comprueba que responde (cualquier código): Traefik no enruta a un contenedor unhealthy.
 - **Logs de contenedor:** streaming vía SSE desde `GET /api/projects/[id]/logs` — nunca almacenar logs de contenedor en BD.
+- **Backups:** `src/lib/backups/` con restic (etiqueta `panel`, host `vicalba-panel`); programador en `src/instrumentation.ts` (comprobación cada minuto, estado en BD; al arrancar cierra las operaciones `en_curso` huérfanas); `/api/health` no los incluye a propósito (un 503 haría que Traefik dejara de enrutar el Panel).
 
 ---
 
@@ -193,6 +194,8 @@ npm run db:reset         # reset + migrate + seed
 ```bash
 # Crear directorios persistentes
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+# El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
+chown -R 1001:1001 /var/vicalba
 
 # Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
 ```
@@ -269,6 +272,17 @@ Endpoint `POST /api/webhooks/github`, content type `application/json` (también 
 secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
 https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
 GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
+
+### Nota — backups
+
+Configuración → Backups: destino S3 compatible o SFTP (credencial SSH del Panel), copia diaria a la
+hora elegida (Europe/Madrid), 7 diarias + 4 semanales. Cada copia es un snapshot de restic con
+`panel-db.dump` (`pg_dump -Fc`) y `traefik/` (dinámica + `acme.json`). La caché de restic y el
+`known_hosts` del destino SFTP viven en `<REPOS_DIR>/.backups/`. El kit de recuperación (repositorio
+y clave) se muestra una sola vez; sin él y sin la `ENCRYPTION_KEY` del `.env` no se recupera nada.
+Cambiar a otro repositorio (otro bucket, prefijo o servidor) conserva la clave pero vuelve a mostrar
+el kit, y las copias programadas esperan a que se confirme. Recuperar en una VPS nueva:
+`docs/recuperacion.md`.
 
 ---
 
@@ -363,6 +377,6 @@ Ver `CONTEXT.md` para el glosario completo.
     - Novedades: `CHANGELOG.md` + página `/novedades` + aviso en el Dashboard (ver «Versiones y changelog»)
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
   - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
-- **En construcción:** —
+- **En construcción:** v2.2.0 en `feature/v2.2` — fase A de los backups terminada y verificada en real (S3 con SeaweedFS, SFTP, fallos, reinicio a mitad de copia, restauración y simulacro de recuperación con `docs/recuperacion.md`); fases B (volúmenes) y C (BDs de Clientes) pendientes
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** release 2.1.1 a master (tag `v2.1.1`, primera Release automática); después, diseño de backups + E2E para la v2.2 (ver `docs/roadmap.md`)
+- **Próximo hito:** merge del PR #56 a `develop` y release 2.2.0 (`release/2.2.0` → `master`, tag `v2.2.0`) solo con la fase A; las fases B/C, E2E y el resto pasan a la 2.3.0 (ver `docs/roadmap.md`)

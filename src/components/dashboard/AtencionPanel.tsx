@@ -10,8 +10,10 @@ import { StatusBadge } from "./StatusBadge";
 
 export function AtencionPanel({
   proyectos,
+  avisoBackups = null,
 }: {
   proyectos: ProyectoAtencion[];
+  avisoBackups?: string | null;
 }) {
   return (
     <section aria-labelledby="atencion-titulo" className="flex flex-col gap-3">
@@ -28,10 +30,25 @@ export function AtencionPanel({
           </span>
         )}
       </div>
+      {avisoBackups && (
+        <article className="flex flex-wrap items-center gap-3 px-5 py-[18px] rounded-[var(--radius-lg)] border bg-error-bg border-error-border">
+          <span className="font-display text-[15px] font-semibold">
+            {avisoBackups}
+          </span>
+          <Link
+            href="/configuracion?seccion=backups"
+            className="ml-auto inline-flex items-center min-h-9 px-3.5 rounded-[var(--radius-md)] border border-error-border font-body text-[12.5px] text-error-text transition-colors hover:bg-error-border/30"
+          >
+            Ver backups
+          </Link>
+        </article>
+      )}
       {proyectos.length === 0 ? (
-        <p className="px-5 py-4 rounded-[var(--radius-lg)] bg-surface border border-border font-body text-[12.5px] text-text-secondary">
-          Todo en orden: ningún proyecto en error ni desplegando.
-        </p>
+        !avisoBackups && (
+          <p className="px-5 py-4 rounded-[var(--radius-lg)] bg-surface border border-border font-body text-[12.5px] text-text-secondary">
+            Todo en orden: ningún proyecto en error ni desplegando.
+          </p>
+        )
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {proyectos.map((p) => (

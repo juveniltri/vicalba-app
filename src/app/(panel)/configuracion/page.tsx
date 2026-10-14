@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
 import { createServerCaller } from "@/server/caller";
+import { ConfiguracionBackups } from "@/components/backups/ConfiguracionBackups";
 import { ConfiguracionDeploys } from "@/components/dashboard/ConfiguracionDeploys";
 import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
 import { GestionCredenciales } from "@/components/dashboard/GestionCredenciales";
@@ -11,6 +12,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 const SECCIONES = [
   { id: "notificaciones", etiqueta: "Notificaciones" },
   { id: "deploys", etiqueta: "Deploys" },
+  { id: "backups", etiqueta: "Backups" },
   { id: "credenciales", etiqueta: "Credenciales SSH" },
   { id: "webhook", etiqueta: "Webhook de GitHub" },
   { id: "sistema", etiqueta: "Sistema" },
@@ -35,6 +37,18 @@ export default async function ConfiguracionPage({
     api.credenciales.listar(),
     api.configuracion.obtenerDeploys(),
   ]);
+
+  // Only on this section: listing the copies queries the remote destination.
+  const backups =
+    seccion === "backups"
+      ? await Promise.all([
+          api.backups.obtenerConfiguracion(),
+          api.backups.historial(),
+          api.backups.copias().catch((e: unknown) => ({
+            error: e instanceof Error ? e.message : String(e),
+          })),
+        ])
+      : null;
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
 
@@ -93,6 +107,21 @@ export default async function ConfiguracionPage({
                   timeoutMinutos={configDeploys.timeoutMinutos}
                 />
               </Tarjeta>
+            </>
+          )}
+
+          {backups && (
+            <>
+              <Encabezado
+                titulo="Backups"
+                descripcion="Copia diaria cifrada de la BD del Panel y de la configuración de Traefik. Se conservan 7 diarias y 4 semanales."
+              />
+              <ConfiguracionBackups
+                config={backups[0]}
+                credenciales={credenciales}
+                historial={backups[1]}
+                copias={backups[2]}
+              />
             </>
           )}
 

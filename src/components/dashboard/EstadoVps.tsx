@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatHace } from "@/lib/formatHace";
 
 type Check = "ok" | "error";
 
@@ -23,6 +24,43 @@ function Fila({ nombre, estado }: { nombre: string; estado: Check }) {
   );
 }
 
+function FilaBackups({
+  habilitado,
+  ultimaCorrecta,
+}: {
+  habilitado: boolean;
+  ultimaCorrecta: Date | null;
+}) {
+  const sinCopia = habilitado && !ultimaCorrecta;
+  return (
+    <Link
+      href="/configuracion?seccion=backups"
+      className="flex items-center gap-2.5 hover:text-text-primary"
+    >
+      <span
+        aria-hidden="true"
+        className={`size-[7px] shrink-0 ${
+          sinCopia
+            ? "rounded-[2px] bg-state-error"
+            : habilitado
+              ? "rounded-full bg-state-running"
+              : "rounded-full bg-state-stopped"
+        }`}
+      />
+      <span>Backups</span>
+      <span
+        className={`ml-auto ${sinCopia ? "text-error-text" : "text-text-muted"}`}
+      >
+        {!habilitado
+          ? "Desactivados"
+          : ultimaCorrecta
+            ? formatHace(ultimaCorrecta)
+            : "ninguna correcta"}
+      </span>
+    </Link>
+  );
+}
+
 function textoDias(dias: number): string {
   if (dias <= 0) return "hoy";
   return `${dias} día${dias === 1 ? "" : "s"}`;
@@ -32,10 +70,12 @@ export function EstadoVps({
   checks,
   version,
   certificados,
+  backups,
 }: {
   checks: { database: Check; docker: Check; proxy: Check; certificados: Check };
   version: string;
   certificados: Array<{ proyectoId: string; nombre: string; dias: number }>;
+  backups?: { habilitado: boolean; ultimaCorrecta: Date | null };
 }) {
   const n = certificados.length;
   const ilegibles = checks.certificados === "error";
@@ -91,6 +131,7 @@ export function EstadoVps({
             </Link>
           ))}
         </div>
+        {backups && <FilaBackups {...backups} />}
       </div>
       <div className="flex justify-between pt-3 border-t border-border text-xs text-text-muted">
         <span>Panel</span>
