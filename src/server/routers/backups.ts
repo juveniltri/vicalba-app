@@ -44,6 +44,8 @@ const destinoInput = z.discriminatedUnion("tipo", [
   }),
 ]);
 
+export type DestinoInput = z.infer<typeof destinoInput>;
+
 const ID = "default";
 
 async function leerConfig() {
