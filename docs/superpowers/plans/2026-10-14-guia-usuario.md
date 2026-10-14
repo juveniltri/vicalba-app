@@ -641,7 +641,7 @@ git commit -m "feat(guia): página Guía en el Panel con su entrada en la navega
   export function esperarPanelSano(timeoutMs?: number): Promise<void>;
   export function prepararVolumenes(): void;
   export function generarClaveSsh(): { publica: string; privada: string };
-  export function arrancarSftp(clavePublica: string): void;
+  export function arrancarSftp(clavePublica: string): Promise<void>;
   export function arrancarContenedoresDemo(): void;
   export function limpiar(): void; // idempotente, nunca lanza
   ```
@@ -681,7 +681,7 @@ services:
 - [ ] **Step 2: `scripts/guia/entorno.ts`**
 
 ```ts
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -745,7 +745,12 @@ export function comprobarRequisitos(): void {
   if (/:(80|443)->/.test(puertos)) {
     throw new Error("Los puertos 80 o 443 están ocupados por otro contenedor.");
   }
-  execFileSync("ssh-keygen", ["-?"], { stdio: "ignore" }).toString();
+  // ssh-keygen has no --version and exits non-zero on usage: only check it exists.
+  if (spawnSync("ssh-keygen", ["-?"], { stdio: "ignore" }).error) {
+    throw new Error(
+      "Falta ssh-keygen en el PATH (viene con OpenSSH / Git for Windows).",
+    );
+  }
 }
 
 export function generarEnv(): EntornoGuia {
@@ -834,7 +839,7 @@ export function generarClaveSsh(): { publica: string; privada: string } {
   };
 }
 
-export function arrancarSftp(clavePublica: string): void {
+export async function arrancarSftp(clavePublica: string): Promise<void> {
   docker([
     "run",
     "-d",
@@ -853,7 +858,7 @@ export function arrancarSftp(clavePublica: string): void {
   // The image creates the user on first start; wait for it before preparing the folder.
   for (let i = 0; i < 30; i++) {
     if (docker(["exec", SFTP, "id", "copias"], { permitirFallo: true })) break;
-    execFileSync(process.execPath, ["-e", "setTimeout(()=>{},1000)"]);
+    await new Promise((r) => setTimeout(r, 1000));
   }
   docker([
     "exec",
@@ -892,15 +897,16 @@ export function arrancarContenedoresDemo(): void {
 }
 
 export function limpiar(): void {
+  // Demo containers first: the SFTP one keeps the demo network busy.
+  const demo = docker(["ps", "-aq", "--filter", "label=vicalba.guia=1"], {
+    permitirFallo: true,
+  });
+  if (demo) docker(["rm", "-f", ...demo.split("\n")], { permitirFallo: true });
   try {
     if (readFileSync(ENV, "utf-8")) compose(["down", "-v", "--remove-orphans"]);
   } catch {
     // No .env: nothing was started by compose.
   }
-  const demo = docker(["ps", "-aq", "--filter", "label=vicalba.guia=1"], {
-    permitirFallo: true,
-  });
-  if (demo) docker(["rm", "-f", ...demo.split("\n")], { permitirFallo: true });
   docker(["network", "rm", RED_DEMO], { permitirFallo: true });
   rmSync(TMP, { recursive: true, force: true });
 }
@@ -965,7 +971,7 @@ async function main(): Promise<void> {
     await esperarPanelSano();
     prepararVolumenes();
     const claveSftp = generarClaveSsh();
-    arrancarSftp(claveSftp.publica);
+    await arrancarSftp(claveSftp.publica);
     await sembrar(entorno, claveSftp);
     arrancarContenedoresDemo();
     if (process.argv.includes("--pausa")) {
@@ -1049,6 +1055,7 @@ export async function entrar(page: Page): Promise<void> {
     localStorage.setItem("vicalba-theme", "light"),
   );
   await abrir(page, "/login");
+  await page.screenshot({ path: path.join(DESTINO, "login.png") });
   await page.getByLabel("Email").fill(USUARIO_DEMO.email);
   await page.getByLabel("Contraseña").fill(USUARIO_DEMO.password);
   await page.getByRole("button", { name: "Entrar" }).click();
@@ -1086,7 +1093,7 @@ export async function imprimirPdf(page: Page): Promise<void> {
 }
 ```
 
-`entrar` captura antes la pantalla de login (`login.png`, página entera, sin sesión). Pasos (`ruta` → `preparar` → `elemento`); los nombres accesibles se confirman leyendo el componente indicado antes de escribir cada paso:
+`entrar` guarda también `login.png` (sin sesión) antes de entrar. Pasos (`ruta` → `preparar` → `elemento`); los nombres accesibles se confirman leyendo el componente indicado antes de escribir cada paso:
 
 | nombre                      | ruta                                      | preparar / elemento                                                                                                                                                                           |
 | --------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1121,7 +1128,7 @@ export async function imprimirPdf(page: Page): Promise<void> {
 
 Los `<id>` de proyecto se obtienen en el propio paso: desde `/proyectos`, `page.getByRole("link", { name: "web" })` dentro de la sección de ACME y leer su `href`.
 
-- [ ] **Step 3: `generar.ts`** — tras `arrancarContenedoresDemo()` (y fuera del modo `--pausa`):
+- [ ] **Step 3: `generar.ts`** — añadir a los imports `docker` (de `./entorno`) y `capturar`, `entrar`, `imprimirPdf` (de `./capturas`); y tras `arrancarContenedoresDemo()`, fuera del modo `--pausa`:
 
 ```ts
 const { chromium } = await import("@playwright/test");
