@@ -43,6 +43,12 @@ export default defineConfig({
           lines: 100,
           statements: 100,
         },
+        "src/lib/guia.ts": {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
         "src/lib/formatHace.ts": {
           branches: 100,
           functions: 100,

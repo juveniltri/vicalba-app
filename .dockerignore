@@ -8,5 +8,7 @@ docs
 *.md
 # The panel reads it at runtime for the Novedades page.
 !CHANGELOG.md
+# The panel reads it at runtime for the Guía page.
+!docs/guia-usuario.md
 .claude
 .agents

@@ -15,7 +15,7 @@ export default async function PanelLayout({
 
   return (
     <ToastProvider>
-      <div className="flex flex-col md:grid md:grid-cols-[232px_minmax(0,1fr)] min-h-screen bg-background text-text-primary font-body">
+      <div className="flex flex-col md:grid md:grid-cols-[232px_minmax(0,1fr)] print:block min-h-screen print:min-h-0 bg-background print:bg-white text-text-primary font-body">
         <Sidebar
           proyectos={proyectos}
           usuario={{
@@ -23,7 +23,7 @@ export default async function PanelLayout({
             email: session?.user?.email ?? null,
           }}
         />
-        <main className="min-w-0 overflow-x-hidden md:overflow-y-auto md:h-screen">
+        <main className="min-w-0 overflow-x-hidden md:overflow-y-auto md:h-screen print:h-auto print:overflow-visible">
           {children}
         </main>
       </div>

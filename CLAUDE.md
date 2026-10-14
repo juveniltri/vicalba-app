@@ -183,6 +183,7 @@ npm run test:e2e         # playwright
 npm run db:migrate       # ejecutar migraciones pendientes
 npm run db:seed          # poblar con datos de desarrollo
 npm run db:reset         # reset + migrate + seed
+npm run guia             # regenera capturas y PDF de la guía (Docker, puertos 80/443 libres)
 ```
 
 ---
@@ -272,6 +273,17 @@ Endpoint `POST /api/webhooks/github`, content type `application/json` (también 
 secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
 https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
 GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
+
+### Nota — guía de usuario
+
+La guía vive en `docs/guia-usuario.md` y el Panel la muestra en `/guia` (`src/lib/guia.ts` +
+`GuiaUsuario`, `react-markdown` sin HTML crudo); entra en la imagen por la excepción de
+`.dockerignore` y su `COPY`, como el CHANGELOG. Las capturas y el PDF (`public/guia/`) los
+genera `npm run guia` (`scripts/guia/`): levanta el stack de producción como proyecto
+`vicalba-guia` con volúmenes propios, un SFTP de demostración y datos ficticios, hace las capturas
+con Playwright e imprime `/guia` a PDF. `--pausa` deja el stack levantado para inspeccionarlo y
+`--limpiar` lo quita si se interrumpió. Regenerar cuando cambie la UI y revisar el diff de las
+imágenes; el texto se actualiza a mano.
 
 ### Nota — backups
 
@@ -377,6 +389,6 @@ Ver `CONTEXT.md` para el glosario completo.
     - Novedades: `CHANGELOG.md` + página `/novedades` + aviso en el Dashboard (ver «Versiones y changelog»)
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
   - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
-- **En construcción:** v2.2.0 en `feature/v2.2` — fase A de los backups terminada y verificada en real (S3 con SeaweedFS, SFTP, fallos, reinicio a mitad de copia, restauración y simulacro de recuperación con `docs/recuperacion.md`); fases B (volúmenes) y C (BDs de Clientes) pendientes
+- **En construcción:** v2.2.0 — backups fase A (PR #56, en `develop`) y guía de usuario con capturas y PDF (`feature/guia-usuario`, con los arreglos de los filtros de logs y del estado de certificados); fases B (volúmenes) y C (BDs de Clientes) pendientes para la 2.3.0
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
 - **Próximo hito:** merge del PR #56 a `develop` y release 2.2.0 (`release/2.2.0` → `master`, tag `v2.2.0`) solo con la fase A; las fases B/C, E2E y el resto pasan a la 2.3.0 (ver `docs/roadmap.md`)

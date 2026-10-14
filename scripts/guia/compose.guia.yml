@@ -1,0 +1,25 @@
+# Overrides for `npm run guia`: never touch host folders, expose the DB to seed it.
+networks:
+  vicalba-guia-demo:
+    name: vicalba-guia-demo
+
+volumes:
+  guia-repos:
+  guia-dynamic:
+
+services:
+  traefik:
+    volumes:
+      - guia-dynamic:/etc/traefik/dynamic
+  db:
+    ports:
+      - "127.0.0.1:5434:5432"
+  panel:
+    networks:
+      - vicalba-net
+      - vicalba-guia-demo
+    volumes:
+      - guia-dynamic:/etc/traefik/dynamic
+      - guia-repos:/var/vicalba/repos
+      # Docker Desktop cannot mount / with rslave.
+      - /tmp:/hostroot:ro
