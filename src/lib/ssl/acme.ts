@@ -16,7 +16,8 @@ const acmeSchema = z.record(
           certificate: z.string().optional(),
         }),
       )
-      .optional(),
+      // null once Traefik has registered its ACME account but holds no certificate yet.
+      .nullish(),
   }),
 );
 

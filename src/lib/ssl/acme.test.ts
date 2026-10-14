@@ -212,6 +212,16 @@ describe("estadoCertificados", () => {
     expect(await estadoCertificados()).toBe("ok");
   });
 
+  it("una cuenta registrada sin certificados todavía (Certificates: null) no es un error", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue(
+      JSON.stringify({
+        letsencrypt: { Account: { Email: "" }, Certificates: null },
+      }),
+    );
+    expect(await estadoCertificados()).toBe("ok");
+    expect(await leerCertificados()).toEqual({});
+  });
+
   it("devuelve error si acme.json no es JSON válido", async () => {
     mockLeerFicheroTraefik.mockResolvedValue("no-json");
     expect(await estadoCertificados()).toBe("error");
