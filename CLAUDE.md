@@ -194,6 +194,8 @@ npm run db:reset         # reset + migrate + seed
 ```bash
 # Crear directorios persistentes
 mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+# El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
+chown -R 1001:1001 /var/vicalba
 
 # Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
 ```
