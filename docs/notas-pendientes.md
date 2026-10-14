@@ -2,8 +2,9 @@
 
 ## Estado actual (octubre 2026)
 
-Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master y en producción.
-Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
+Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master. La 2.2.0
+(publicada el 14/10/2026) está pendiente de desplegar en la VPS: ver «Operación al desplegar la
+2.2.0». Este fichero recoge también la deuda técnica conocida y las decisiones pendientes.
 
 ---
 
