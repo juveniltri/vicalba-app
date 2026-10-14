@@ -7,13 +7,14 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Siguiente sesión
 
-Publicadas: **2.1.1** (14/10/2026, tag `v2.1.1`, primera Release automática), 2.1.0 y 2.0.1.
+Publicadas: **2.2.0** (14/10/2026, backups fase A y guía de usuario), 2.1.1, 2.1.0 y 2.0.1.
 Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
 
-Ahora: PR #56 (`feature/v2.2` → `develop`, backups fase A) y después `release/2.2.0` → `master`
-(fecha en `CHANGELOG.md`, `npm version 2.2.0 --no-git-tag-version`, tag `v2.2.0`).
+`develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI.
 
-### 2.2.0 — backups, fase A (PR #56) y guía de usuario
+Ahora: la 2.3.0.
+
+### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
 - [x] **Backups — fase A** — BD del Panel y config de Traefik a S3/SFTP con restic, copia diaria, restauración desde el Panel y recuperación sin VPS (`docs/recuperacion.md`). Verificada en real: S3 (SeaweedFS), SFTP, destino caído, reinicio a mitad de copia, restauración y simulacro de recuperación.
 - [x] **Guía de usuario** — página «Guía» y PDF con capturas regenerables (`npm run guia`); de paso, arreglados los filtros por nivel de los logs y el estado de certificados en instalaciones nuevas.
