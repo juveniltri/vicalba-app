@@ -122,3 +122,12 @@ export async function restaurarSnapshot(
 ): Promise<void> {
   await restic(r, ["restore", snapshotId, "--target", destino]);
 }
+
+// restic keeps retrying an unreachable or misconfigured backend for ~15 min and
+// only reports when killed; its last retry line says why.
+export function resumirErrorRestic(salida: string): string | null {
+  const reintentos = [
+    ...salida.matchAll(/returned error, retrying after [^:]+: (.*)$/gm),
+  ];
+  return reintentos.at(-1)?.[1] ?? null;
+}

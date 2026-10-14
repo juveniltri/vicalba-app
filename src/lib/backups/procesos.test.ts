@@ -35,6 +35,24 @@ describe("ejecutar", () => {
     await expect(promesa).rejects.toThrow();
   });
 
+  it("al cancelarse conserva lo último que escribió en stderr", async () => {
+    const controller = new AbortController();
+    const promesa = ejecutar(
+      node,
+      [
+        "-e",
+        "console.error('retrying: no such host'); setTimeout(() => {}, 10000)",
+      ],
+      { signal: controller.signal },
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    controller.abort();
+    const err = await promesa.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ErrorProceso);
+    expect((err as Error).name).toBe("AbortError");
+    expect((err as Error).message).toContain("retrying: no such host");
+  });
+
   it("hereda PATH y HOME del Panel, con valores por defecto si faltan", async () => {
     const leer = [
       "-e",

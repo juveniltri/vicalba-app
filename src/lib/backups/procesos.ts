@@ -39,17 +39,24 @@ export function ejecutar(
     let stderr = "";
     proc.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
     proc.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
-    proc.on("error", reject);
+    let cancelado = false;
+    proc.on("error", (err) => {
+      // Aborted: wait for "close" so the error keeps what the process said.
+      if (err.name === "AbortError") cancelado = true;
+      else reject(err);
+    });
     proc.on("close", (codigo) => {
-      if (codigo === 0) return resolve(stdout);
+      if (codigo === 0 && !cancelado) return resolve(stdout);
       const ultimas = stderr.trim().split("\n").slice(-LINEAS_ERROR).join("\n");
-      reject(
-        new ErrorProceso(
-          `${comando} terminó con código ${codigo}${ultimas ? `:\n${ultimas}` : ""}`,
-          codigo,
-          stdout,
-        ),
+      const motivo = cancelado ? "cancelado" : `terminó con código ${codigo}`;
+      const error = new ErrorProceso(
+        `${comando} ${motivo}${ultimas ? `:\n${ultimas}` : ""}`,
+        codigo,
+        stdout,
       );
+      // Keeps motivoDeFallo() recognising a cancellation.
+      if (cancelado) error.name = "AbortError";
+      reject(error);
     });
   });
 }

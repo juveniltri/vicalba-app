@@ -78,15 +78,16 @@ vi.mock("@/lib/backups/kit", async (o) => ({
   ...(await o<typeof import("@/lib/backups/kit")>()),
   generarClave: () => "CLAVE-NUEVA",
 }));
-vi.mock("@/lib/backups/restic", () => ({
+vi.mock("@/lib/backups/restic", async (o) => ({
+  ...(await o<typeof import("@/lib/backups/restic")>()),
   abrirOInicializar: m.abrir,
   listarSnapshots: m.listar,
 }));
 vi.mock("@/lib/backups/configuracion", async (o) => ({
   ...(await o<typeof import("@/lib/backups/configuracion")>()),
   cargarConfigResuelta: m.cargar,
-  conRestic: (_c: unknown, _s: unknown, fn: (r: unknown) => unknown) =>
-    fn({ env: {}, args: [] }),
+  conRestic: (_c: unknown, signal: unknown, fn: (r: unknown) => unknown) =>
+    fn({ env: {}, args: [], signal }),
 }));
 vi.mock("@/lib/backups/copia", () => ({ iniciarCopia: m.iniciarCopia }));
 vi.mock("@/lib/backups/restaurar", () => ({
@@ -494,7 +495,49 @@ describe("backups.guardarDestino — más casos", () => {
       caller().backups.guardarDestino(s3Input),
     ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "sin conexión" });
   });
+
+  it("si el destino no responde, corta a los 30 s y dice por qué", async () => {
+    m.configFind.mockResolvedValue(null);
+    m.abrir.mockRejectedValue(
+      cancelado(
+        "Stat(<config/>) returned error, retrying after 668ms: Stat: Access Denied",
+      ),
+    );
+    await expect(
+      caller().backups.guardarDestino(s3Input),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "El destino no responde (30 s): Stat: Access Denied",
+    });
+    expect(m.abrir.mock.calls[0]![0].signal).toBeInstanceOf(AbortSignal);
+    expect(m.configUpsert).not.toHaveBeenCalled();
+  });
 });
+
+describe("backups.copias — destino que no responde", () => {
+  it("corta a los 30 s con TIMEOUT", async () => {
+    m.cargar.mockResolvedValue({ clave: "c", destino: { tipo: "s3" } });
+    m.listar.mockRejectedValue(cancelado());
+    await expect(caller().backups.copias()).rejects.toMatchObject({
+      code: "TIMEOUT",
+      message: "El destino no responde (30 s)",
+    });
+    expect(m.listar.mock.calls[0]![0].signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+function cancelado(stderr?: string): Error {
+  const err = new Error(
+    `restic cancelado${
+      stderr
+        ? `:
+${stderr}`
+        : ""
+    }`,
+  );
+  err.name = "AbortError";
+  return err;
+}
 
 describe("backups — resto de procedures", () => {
   it("obtenerKit con destino SFTP", async () => {

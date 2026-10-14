@@ -13,7 +13,11 @@ import {
   urlRepositorio,
   type DestinoResuelto,
 } from "@/lib/backups/repositorio";
-import { abrirOInicializar, listarSnapshots } from "@/lib/backups/restic";
+import {
+  abrirOInicializar,
+  listarSnapshots,
+  resumirErrorRestic,
+} from "@/lib/backups/restic";
 import { iniciarRestauracion } from "@/lib/backups/restaurar";
 import { cifrar, descifrar } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
@@ -52,7 +56,18 @@ async function leerConfig() {
   return prisma.configuracionBackup.findUnique({ where: { id: ID } });
 }
 
+// Interactive calls (form, page render) must not wait for restic's retries.
+const LIMITE_CONSULTA_MS = 30_000;
+
+function sinRespuesta(err: unknown): string | null {
+  if (!(err instanceof Error) || err.name !== "AbortError") return null;
+  const motivo = resumirErrorRestic(err.message);
+  return `El destino no responde (${LIMITE_CONSULTA_MS / 1000} s)${motivo ? `: ${motivo}` : ""}`;
+}
+
 function errorTrpc(err: unknown): never {
+  const timeout = sinRespuesta(err);
+  if (timeout) throw new TRPCError({ code: "TIMEOUT", message: timeout });
   if (err instanceof OperacionEnCurso)
     throw new TRPCError({ code: "CONFLICT", message: err.message });
   if (err instanceof BackupsNoConfigurados)
@@ -168,13 +183,15 @@ export const backupsRouter = router({
       try {
         repositorio = await conRestic(
           { destino, clave },
-          undefined,
+          AbortSignal.timeout(LIMITE_CONSULTA_MS),
           abrirOInicializar,
         );
       } catch (err) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: err instanceof Error ? err.message : String(err),
+          message:
+            sinRespuesta(err) ??
+            (err instanceof Error ? err.message : String(err)),
         });
       }
 
@@ -303,7 +320,11 @@ export const backupsRouter = router({
   copias: protectedProcedure.query(async () => {
     try {
       const config = await cargarConfigResuelta();
-      return await conRestic(config, undefined, listarSnapshots);
+      return await conRestic(
+        config,
+        AbortSignal.timeout(LIMITE_CONSULTA_MS),
+        listarSnapshots,
+      );
     } catch (err) {
       errorTrpc(err);
     }

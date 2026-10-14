@@ -14,6 +14,7 @@ import {
   listarSnapshots,
   parsearResumenBackup,
   parsearSnapshots,
+  resumirErrorRestic,
   restaurarSnapshot,
   type Restic,
 } from "./restic";
@@ -188,5 +189,25 @@ describe("comandos", () => {
       "--target",
       "/tmp/restaurar",
     ]);
+  });
+});
+
+describe("resumirErrorRestic", () => {
+  it("se queda con el motivo del último reintento", () => {
+    expect(
+      resumirErrorRestic(
+        [
+          "restic cancelado:",
+          "Stat(<config/>) returned error, retrying after 668.7ms: Stat: Access Denied",
+          'Stat(<config/>) returned error, retrying after 2.89s: Stat: Get "https://noexiste:8333/b/?location=": dial tcp: lookup noexiste: no such host',
+        ].join("\n"),
+      ),
+    ).toBe(
+      'Stat: Get "https://noexiste:8333/b/?location=": dial tcp: lookup noexiste: no such host',
+    );
+  });
+
+  it("sin reintentos en la salida no hay motivo", () => {
+    expect(resumirErrorRestic("restic cancelado")).toBeNull();
   });
 });
