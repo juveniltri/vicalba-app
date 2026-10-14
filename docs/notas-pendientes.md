@@ -23,6 +23,34 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ---
 
+## Operación al desplegar la 2.1.1 (espacio en disco)
+
+La 2.1.1 limita los logs (3 × 10 MB por contenedor) y limpia imágenes y caché tras cada deploy,
+pero los contenedores que ya existen conservan su configuración de logs hasta que se recrean.
+
+1. **Ver qué ocupa espacio y liberarlo ya** (los contenedores siguen funcionando):
+
+   ```bash
+   df -h /
+   docker system df
+   sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -h | tail'
+   sudo sh -c 'truncate -s 0 /var/lib/docker/containers/*/*-json.log'
+   docker image prune -f
+   docker builder prune -f --filter until=168h
+   ```
+
+2. **Actualizar el stack completo**, no solo el panel, para que Traefik y PostgreSQL también
+   tengan el límite: `git pull && docker compose up -d --build` (los recrea; segundos sin servicio).
+3. **Redesplegar cada proyecto** una vez para que sus contenedores tengan el límite.
+4. **Opcional — red de seguridad para cualquier contenedor**, también los no creados por el panel:
+   `/etc/docker/daemon.json` con
+   `{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }` y
+   `sudo systemctl restart docker` (reinicia todos los contenedores; vuelven solos por su
+   `restart`). Solo afecta a contenedores creados después.
+5. Todos los usuarios tendrán que volver a iniciar sesión una vez.
+
+---
+
 ## Operación pendiente tras desplegar la 2.1.0
 
 - **Activar Sentry**: crear el proyecto en sentry.io (Next.js) y poner `SENTRY_DSN` en el `.env` de la VPS. Sin DSN el panel funciona igual y no envía errores.

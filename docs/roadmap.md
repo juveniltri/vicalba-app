@@ -22,9 +22,9 @@ Hecho:
 
 Pendiente (revisión del 14/10/2026):
 
-- [ ] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
-- [ ] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.
-- [ ] **Limpieza de imágenes tras el deploy** — cada build deja imágenes y caché de build; no hay ningún `prune`. Limpiar tras un deploy correcto sin romper el rollback.
+- [x] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
+- [x] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.
+- [x] **Limpieza de imágenes tras el deploy** — cada build deja imágenes y caché de build; no hay ningún `prune`. Limpiar tras un deploy correcto sin romper el rollback.
 - [ ] **Prisma alineado** — CLI 7.10 y `@prisma/client` 7.8.
 - [ ] **Dependencias menores al día** (tRPC, Zod, Sentry, nodemailer, dockerode, pg, pino, Tailwind) + `npm audit fix` (`@vitest/mocker`).
 - [ ] **Healthcheck del contenedor del panel** en `docker-compose.yml` sobre `/api/health`.

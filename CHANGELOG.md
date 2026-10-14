@@ -34,6 +34,8 @@ Las notificaciones de deploy vuelven a llegar a Discord.
 
 - La migración de base de datos se aplica sola al arrancar el panel.
 - Todos los usuarios tendrán que volver a iniciar sesión una vez.
+- Para liberar ya el espacio ocupado y aplicar el límite de logs a Traefik, PostgreSQL y los
+  proyectos existentes, sigue los pasos de `docs/notas-pendientes.md`.
 
 ## [2.1.0] - 2026-10-14
 
