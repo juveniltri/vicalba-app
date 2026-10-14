@@ -1,4 +1,5 @@
 import { router } from "@/server/trpc";
+import { backupsRouter } from "./backups";
 import { clientesRouter } from "./clientes";
 import { configuracionRouter } from "./configuracion";
 import { credencialesRouter } from "./credenciales";
@@ -8,6 +9,7 @@ import { variablesRouter } from "./variables";
 import { volumenesRouter } from "./volumenes";
 
 export const appRouter = router({
+  backups: backupsRouter,
   clientes: clientesRouter,
   configuracion: configuracionRouter,
   credenciales: credencialesRouter,
