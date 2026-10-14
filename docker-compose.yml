@@ -1,3 +1,10 @@
+# Docker no limita los logs de los contenedores: sin esto llenan el disco de la VPS.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 networks:
   vicalba-net:
     name: vicalba-net
@@ -14,6 +21,7 @@ services:
     image: traefik:v3
     container_name: traefik
     restart: unless-stopped
+    logging: *logging
     command:
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
     networks:
@@ -32,6 +40,7 @@ services:
     image: postgres:16-alpine
     container_name: vicalba-db
     restart: unless-stopped
+    logging: *logging
     networks:
       - vicalba-net
     environment:
@@ -51,6 +60,7 @@ services:
     build: .
     container_name: vicalba-panel
     restart: unless-stopped
+    logging: *logging
     networks:
       - vicalba-net
     environment:

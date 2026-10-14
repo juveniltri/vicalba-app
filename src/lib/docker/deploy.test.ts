@@ -548,6 +548,30 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     );
   });
 
+  it("limita los logs de los servicios con un segundo -f de override", async () => {
+    mockReadFile.mockResolvedValueOnce(composeYaml);
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    const override = "/var/vicalba/repos/acme/.panel/web-app.logging.yml";
+    const escrito = mockWriteFile.mock.calls.find((c) => c[0] === override);
+    expect(escrito?.[1]).not.toContain("&");
+    expect(escrito?.[1]).toMatch(/web:\n {4}logging:[\s\S]*api:\n {4}logging:/);
+    expect(escrito?.[1]).toContain("max-size: 10m");
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs.join(" ")).toContain(
+      `-f /var/vicalba/repos/acme/.panel/web-app.docker-compose.yml -f ${override}`,
+    );
+  });
+
+  it("no añade override de logs si todos los servicios ya configuran el suyo", async () => {
+    const conLogging = `services:\n  web:\n    image: nginx\n    logging:\n      driver: local\n`;
+    mockReadFile.mockResolvedValueOnce(conLogging);
+    await deployProyecto({ ...baseParams, composeContent: conLogging });
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs.filter((a) => a === "-f")).toHaveLength(1);
+  });
+
   it("escribe env vars en panelDir como .env con --env-file cuando hay composeContent", async () => {
     await deployProyecto({
       ...baseParams,
@@ -714,6 +738,30 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     );
     expect(compose?.[1]).not.toMatch(/args:[\s\S]*DATABASE_URL[\s\S]*ports:/);
   });
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el compose generado limita los logs a 3 ficheros de 10 MB",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:alpine",
+      });
+
+      const [compose] = writesTo(
+        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain(
+        [
+          "    logging:",
+          "      driver: json-file",
+          "      options:",
+          '        max-size: "10m"',
+          '        max-file: "3"',
+        ].join("\n"),
+      );
+    },
+  );
 
   const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
   const nodejs = {

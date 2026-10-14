@@ -18,6 +18,10 @@ Las notificaciones de deploy vuelven a llegar a Discord.
 - Si un webhook rechaza una notificación, Configuración muestra el motivo que da el destino y no
   solo el código de error.
 
+- Los logs de los contenedores ya no crecen sin límite hasta **llenar el disco** de la VPS: cada
+  contenedor guarda como máximo 3 ficheros de 10 MB. Se aplica a cada proyecto en su próximo
+  deploy; si un compose define su propio `logging`, se respeta.
+
 ### Seguridad
 
 - Al **eliminar un usuario** o **cambiarle la contraseña**, sus sesiones abiertas se cierran al

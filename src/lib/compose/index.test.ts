@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { encontrarServicioPorPuerto, extraerServicios } from "./index";
+import { parse } from "yaml";
+import {
+  encontrarServicioPorPuerto,
+  extraerServicios,
+  generarOverrideLogging,
+} from "./index";
 
 describe("extraerServicios", () => {
   it("extrae nombres de servicios de un compose válido", () => {
@@ -152,5 +157,53 @@ services:
 
   it("devuelve undefined con string vacío", () => {
     expect(encontrarServicioPorPuerto("", 8000)).toBeUndefined();
+  });
+});
+
+describe("generarOverrideLogging", () => {
+  it("limita los logs de cada servicio a 3 ficheros de 10 MB", () => {
+    const override = generarOverrideLogging(`
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+`);
+    const limite = {
+      driver: "json-file",
+      options: { "max-size": "10m", "max-file": "3" },
+    };
+    expect(parse(override!)).toEqual({
+      services: { web: { logging: limite }, db: { logging: limite } },
+    });
+  });
+
+  it("respeta los servicios que ya configuran su logging", () => {
+    const override = generarOverrideLogging(`
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+    logging:
+      driver: local
+`);
+    expect(Object.keys(parse(override!).services)).toEqual(["web"]);
+  });
+
+  it("no genera override si no hay ningún servicio sin limitar", () => {
+    expect(
+      generarOverrideLogging(
+        "services:\n  db:\n    logging:\n      driver: local\n",
+      ),
+    ).toBeNull();
+    expect(generarOverrideLogging("services: {}")).toBeNull();
+    expect(generarOverrideLogging("version: '3'")).toBeNull();
+    expect(generarOverrideLogging("{ invalid: yaml: content")).toBeNull();
+  });
+
+  it("limita también un servicio declarado sin definición", () => {
+    const override = generarOverrideLogging("services:\n  web:\n");
+    expect(Object.keys(parse(override!).services)).toEqual(["web"]);
   });
 });
