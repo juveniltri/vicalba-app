@@ -7,7 +7,7 @@ Correcciones y Seguridad.
 
 ## [2.2.0] - AAAA-MM-DD
 
-Copias de seguridad automáticas del Panel.
+Copias de seguridad automáticas del Panel y guía de uso con capturas.
 
 ### Novedades
 
@@ -18,6 +18,15 @@ Copias de seguridad automáticas del Panel.
 - **Kit de recuperación** para reconstruir el Panel en otra VPS (ver `docs/recuperacion.md`).
 - Aviso en el Dashboard y por los canales de notificación si una copia falla.
 - Si cambias el destino a otro repositorio, el Panel vuelve a mostrar el kit para que guardes el nuevo.
+- **Guía de uso** en el Panel (menú «Guía»): tareas paso a paso, referencia de cada pantalla y
+  capturas. También se descarga en PDF.
+
+### Correcciones
+
+- Los filtros por nivel de los logs (ERR, WARN, INFO, DEBUG) no filtraban: las líneas en JSON se
+  mostraban en bruto. Ahora se ven con su hora y su mensaje y se filtran por nivel.
+- En una instalación nueva, antes de emitirse el primer certificado, el Dashboard decía
+  «Certificados: no se pueden leer». Ahora dice que están vigentes.
 
 ### Al actualizar
 
