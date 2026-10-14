@@ -4,7 +4,7 @@
 
 Panel de control de infraestructura al estilo Coolify/cPanel, diseñado para uso interno de un equipo técnico de 2 personas. Gestiona todos los proyectos Docker en una única VPS: proxy inverso Traefik, SSL automático con Let's Encrypt, deploys desde GitHub vía webhooks y logs en tiempo real. Cada cliente tiene sus servicios aislados en redes Docker dedicadas.
 
-**Stack:** Next.js 15 (App Router) + TypeScript + tRPC + PostgreSQL + Prisma + NextAuth v5 + dockerode + Traefik
+**Stack:** Next.js 16 (App Router) + TypeScript + tRPC + PostgreSQL + Prisma 7 + NextAuth v5 + dockerode + Traefik
 **Hosting:** Contenedor Docker en la misma VPS que gestiona
 
 ---
@@ -14,14 +14,15 @@ Panel de control de infraestructura al estilo Coolify/cPanel, diseñado para uso
 ### Ramas
 
 ```
-main          → producción (tags: vX.X.X)
+master        → producción (tags: vX.X.X)
 develop       → integración continua
 feature/XXX   → funcionalidad nueva (desde develop)
-hotfix/XXX    → fix urgente (desde main, PR directo a main + merge a develop)
-release/X.X.X → preparación de release (desde develop)
+hotfix/XXX    → fix urgente (desde master, PR directo a master + merge a develop)
+release/X.X.X → preparación de release (desde develop; en una versión de parche, desde
+                master para agrupar hotfix y mantenimiento en un solo PR a master)
 ```
 
-**Regla:** nunca se hace commit directo a `main` ni a `develop`. Todo entra por PR.
+**Regla:** nunca se hace commit directo a `master` ni a `develop`. Todo entra por PR.
 
 ### Commits — Conventional Commits
 
@@ -153,8 +154,9 @@ NOTE:  contexto que sorprendería a un futuro lector
 - CSP: definida y activa en producción
 - TLS: mínimo TLS 1.2 — Traefik gestiona la negociación
 - Webhook secret de GitHub: validar HMAC-SHA256 en cada petición entrante
+- Sesión: JWT de 7 días validado contra la BD en cada `auth()` (`sesionVigente`, `src/lib/sesion.ts`): un usuario eliminado o con la contraseña cambiada (`User.sesionesDesde`) pierde la sesión al momento
 
-Antes de cada merge a `main`: invoca `/security-review`.
+Antes de cada merge a `master`: invoca `/security-review`.
 
 ---
 
@@ -162,7 +164,7 @@ Antes de cada merge a `main`: invoca `/security-review`.
 
 - **Sentry:** solo servidor y solo si `SENTRY_DSN` está definido (`.env` de la VPS; vacío = desactivado). `src/instrumentation.ts` lo inicializa y exporta `onRequestError` (páginas, rutas API, server actions); la ruta de tRPC envía los `INTERNAL_SERVER_ERROR` desde su `onError`, y `lanzarDeploy` las excepciones inesperadas del deploy en segundo plano. Sin source maps subidos.
 - **Pino:** logging estructurado en JSON. Cada log con `level`, `msg`, `context` y `traceId`.
-- **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla.
+- **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla. El healthcheck del contenedor en `docker-compose.yml` solo comprueba que responde (cualquier código): Traefik no enruta a un contenedor unhealthy.
 - **Logs de contenedor:** streaming vía SSE desde `GET /api/projects/[id]/logs` — nunca almacenar logs de contenedor en BD.
 
 ---
@@ -253,6 +255,14 @@ commit desplegado) a las variables build-time; si el usuario define una con ese 
 - **Dockerfile:** van como `build.args` en el compose generado.
 - **Node.js:** las build-time y `GIT_SHA_SHORT` van a `.env.local` del stage builder; el Dockerfile multi-stage lo borra antes del stage final.
 
+### Nota — espacio en disco
+
+Cada contenedor guarda como máximo 3 ficheros de log de 10 MB (`LIMITE_LOGS` en `src/lib/compose`):
+los composes generados lo llevan escrito y los compose del usuario reciben un segundo `-f` con
+`<proyecto>.logging.yml` para los servicios sin `logging` propio. Tras cada deploy correcto se
+borran las imágenes colgantes y la caché de build sin usar en 7 días (`limpiarDisco`); el rollback
+reconstruye desde el commit, así que no las necesita.
+
 ### Nota — webhook de GitHub
 
 Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
@@ -273,7 +283,7 @@ GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha
 | `/handoff`                       | Fin de sesión o contexto largo — compactar para continuar |
 | `/to-issues`                     | Convertir un plan en issues accionables                   |
 | `/zoom-out`                      | Revisión de arquitectura a alto nivel                     |
-| `/security-review`               | Antes de merge a `main` si hay cambios sensibles          |
+| `/security-review`               | Antes de merge a `master` si hay cambios sensibles        |
 | `/improve-codebase-architecture` | Oportunidades de refactor en el proyecto                  |
 | `/triage`                        | Procesar issues entrantes                                 |
 | `/qa`                            | Checklist de calidad antes de entregar                    |
@@ -352,7 +362,7 @@ Ver `CONTEXT.md` para el glosario completo.
     - Sentry en servidor (ver Observabilidad), avisos de `src/lib` por Pino, Telegram con ⏱️ para cancelado
     - Novedades: `CHANGELOG.md` + página `/novedades` + aviso en el Dashboard (ver «Versiones y changelog»)
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
-  - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; `.gitattributes` (LF en todo el repo); Dependabot (`.github/dependabot.yml`); Release automática al subir un tag (`release.yml` + `notasDeRelease`)
+  - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
 - **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
 - **Próximo hito:** release 2.1.1 a master (tag `v2.1.1`, primera Release automática); después, diseño de backups + E2E para la v2.2 (ver `docs/roadmap.md`)

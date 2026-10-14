@@ -25,10 +25,10 @@ Pendiente (revisión del 14/10/2026):
 - [x] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
 - [x] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.
 - [x] **Limpieza de imágenes tras el deploy** — cada build deja imágenes y caché de build; no hay ningún `prune`. Limpiar tras un deploy correcto sin romper el rollback.
-- [ ] **Prisma alineado** — CLI 7.10 y `@prisma/client` 7.8.
-- [ ] **Dependencias menores al día** (tRPC, Zod, Sentry, nodemailer, dockerode, pg, pino, Tailwind) + `npm audit fix` (`@vitest/mocker`).
-- [ ] **Healthcheck del contenedor del panel** en `docker-compose.yml` sobre `/api/health`.
-- [ ] **CLAUDE.md al día** — dice Next.js 15 (es 16) y `main` (es `master`).
+- [x] **Prisma alineado** — CLI 7.10 y `@prisma/client` 7.8.
+- [x] **Dependencias menores al día** (tRPC, Zod, Sentry, nodemailer, dockerode, pg, pino, Tailwind). Vitest 4.1.11 (`npm audit`: `@vitest/mocker`, moderado, solo desarrollo) queda para Dependabot: npm en Windows falla con «edgesOut» al resolver el peer opcional `canvas` de jsdom.
+- [x] **Healthcheck del contenedor del panel** en `docker-compose.yml` sobre `/api/health`.
+- [x] **CLAUDE.md al día** — dice Next.js 15 (es 16) y `main` (es `master`).
 
 Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a `develop` (cierra el #45).
 
