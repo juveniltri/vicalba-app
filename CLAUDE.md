@@ -24,6 +24,12 @@ release/X.X.X → preparación de release (desde develop; en una versión de par
 
 **Regla:** nunca se hace commit directo a `master` ni a `develop`. Todo entra por PR.
 
+GitHub lo obliga: las dos ramas están protegidas (PR obligatorio sin aprobaciones, los 7 checks de
+CI en verde, también para administradores; sin force-push ni borrado). Con
+`gh pr merge <n> --auto --merge` (o «Enable auto-merge») el PR se mergea solo al pasar la CI, y
+GitHub borra la rama de trabajo al mergear. Los ajustes del repositorio (protección, auto-merge)
+los cambia el usuario: Claude Code tiene bloqueado modificarlos.
+
 ### Commits — Conventional Commits
 
 ```
@@ -52,6 +58,9 @@ Dashboard (`src/lib/changelog.ts` lo interpreta). En cada release, antes del PR 
    (`git tag vX.Y.Z && git push origin vX.Y.Z`). El workflow `release.yml` crea la Release
    de GitHub con esa sección del CHANGELOG (`scripts/notas-release.mjs`) y el PR del merge;
    falla si el tag no coincide con `package.json`.
+4. Sincronizar `develop`: PR de `master` a `develop` con auto-merge (como #47 y #59).
+
+Antes del PR a `master`, `/security-review` de la rama de release.
 
 El fichero entra en la imagen por la excepción `!CHANGELOG.md` de `.dockerignore` y su `COPY`
 en el `Dockerfile`; si falta, Novedades sale vacía pero el panel funciona.

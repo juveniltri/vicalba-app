@@ -10,9 +10,9 @@ Para convertir items en issues de GitHub: `/to-issues`.
 Publicadas: **2.2.0** (14/10/2026, backups fase A y guía de usuario), 2.1.1, 2.1.0 y 2.0.1.
 Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
 
-`develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI.
+`develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-Ahora: la 2.3.0.
+Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `docs/notas-pendientes.md`) y después la 2.3.0.
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
