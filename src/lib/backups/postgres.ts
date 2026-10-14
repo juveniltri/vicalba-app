@@ -18,10 +18,16 @@ export async function pgDump(
   fichero: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  await ejecutar("pg_dump", ["--format=custom", "--file", fichero], {
-    env: entornoPg(databaseUrl),
-    signal,
-  });
+  // Uncompressed: a compressed dump changes entirely with any row, so restic
+  // could not deduplicate between copies. restic compresses it anyway.
+  await ejecutar(
+    "pg_dump",
+    ["--format=custom", "--compress=0", "--file", fichero],
+    {
+      env: entornoPg(databaseUrl),
+      signal,
+    },
+  );
 }
 
 export async function pgRestore(

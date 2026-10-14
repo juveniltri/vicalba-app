@@ -33,7 +33,12 @@ describe("pgDump y pgRestore", () => {
     await pgDump(URL_BD, "/tmp/c/panel-db.dump");
     const [comando, args, opciones] = mockEjecutar.mock.calls[0]!;
     expect(comando).toBe("pg_dump");
-    expect(args).toEqual(["--format=custom", "--file", "/tmp/c/panel-db.dump"]);
+    expect(args).toEqual([
+      "--format=custom",
+      "--compress=0",
+      "--file",
+      "/tmp/c/panel-db.dump",
+    ]);
     expect(JSON.stringify(args)).not.toContain("p@ss");
     expect(opciones.env.PGPASSWORD).toBe("p@ss");
   });
