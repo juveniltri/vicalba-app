@@ -131,3 +131,24 @@ export function resumirErrorRestic(salida: string): string | null {
   ];
   return reintentos.at(-1)?.[1] ?? null;
 }
+
+export const LIMITE_CONSULTA_MS = 30_000;
+
+export function mensajeSinRespuesta(err: unknown): string | null {
+  if (!(err instanceof Error) || err.name !== "AbortError") return null;
+  const motivo = resumirErrorRestic(err.message);
+  return `El destino no responde (${LIMITE_CONSULTA_MS / 1000} s)${motivo ? `: ${motivo}` : ""}`;
+}
+
+// Fails in seconds when the destination is down, instead of after restic's
+// ~15 minutes of retries.
+export async function comprobarDestino(r: Restic): Promise<void> {
+  const limite = AbortSignal.timeout(LIMITE_CONSULTA_MS);
+  const signal = r.signal ? AbortSignal.any([r.signal, limite]) : limite;
+  try {
+    await restic({ ...r, signal }, ["cat", "config"]);
+  } catch (err) {
+    const mensaje = r.signal?.aborted ? null : mensajeSinRespuesta(err);
+    throw mensaje ? new Error(mensaje) : err;
+  }
+}

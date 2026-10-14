@@ -15,8 +15,9 @@ import {
 } from "@/lib/backups/repositorio";
 import {
   abrirOInicializar,
+  LIMITE_CONSULTA_MS,
   listarSnapshots,
-  resumirErrorRestic,
+  mensajeSinRespuesta,
 } from "@/lib/backups/restic";
 import { iniciarRestauracion } from "@/lib/backups/restaurar";
 import { cifrar, descifrar } from "@/lib/crypto";
@@ -56,17 +57,8 @@ async function leerConfig() {
   return prisma.configuracionBackup.findUnique({ where: { id: ID } });
 }
 
-// Interactive calls (form, page render) must not wait for restic's retries.
-const LIMITE_CONSULTA_MS = 30_000;
-
-function sinRespuesta(err: unknown): string | null {
-  if (!(err instanceof Error) || err.name !== "AbortError") return null;
-  const motivo = resumirErrorRestic(err.message);
-  return `El destino no responde (${LIMITE_CONSULTA_MS / 1000} s)${motivo ? `: ${motivo}` : ""}`;
-}
-
 function errorTrpc(err: unknown): never {
-  const timeout = sinRespuesta(err);
+  const timeout = mensajeSinRespuesta(err);
   if (timeout) throw new TRPCError({ code: "TIMEOUT", message: timeout });
   if (err instanceof OperacionEnCurso)
     throw new TRPCError({ code: "CONFLICT", message: err.message });
@@ -190,7 +182,7 @@ export const backupsRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            sinRespuesta(err) ??
+            mensajeSinRespuesta(err) ??
             (err instanceof Error ? err.message : String(err)),
         });
       }

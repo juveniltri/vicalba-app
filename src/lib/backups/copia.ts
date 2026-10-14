@@ -16,7 +16,7 @@ import {
 } from "./operacion";
 import { pgDump } from "./postgres";
 import type { ConfigResuelta } from "./repositorio";
-import { aplicarRetencion, crearSnapshot } from "./restic";
+import { aplicarRetencion, comprobarDestino, crearSnapshot } from "./restic";
 
 const log = logger.child({ module: "backups" });
 
@@ -31,6 +31,7 @@ export async function hacerCopia(
   const carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-backup-"));
   const dir = (...p: string[]) => path.posix.join(carpeta, ...p);
   try {
+    await conRestic(config, signal, comprobarDestino);
     await pgDump(env.DATABASE_URL, dir("panel-db.dump"), signal);
     await mkdir(dir("traefik"), { recursive: true });
     await cp(env.TRAEFIK_DYNAMIC_DIR, dir("traefik", "dynamic"), {

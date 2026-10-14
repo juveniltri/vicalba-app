@@ -14,6 +14,8 @@ import {
   listarSnapshots,
   parsearResumenBackup,
   parsearSnapshots,
+  comprobarDestino,
+  mensajeSinRespuesta,
   resumirErrorRestic,
   restaurarSnapshot,
   type Restic,
@@ -209,5 +211,59 @@ describe("resumirErrorRestic", () => {
 
   it("sin reintentos en la salida no hay motivo", () => {
     expect(resumirErrorRestic("restic cancelado")).toBeNull();
+  });
+});
+
+describe("comprobarDestino", () => {
+  const cancelado = (stderr: string) =>
+    Object.assign(new ErrorProceso(`restic cancelado:\n${stderr}`, null, ""), {
+      name: "AbortError",
+    });
+
+  it("abre el repositorio con un límite propio de tiempo", async () => {
+    mockEjecutar.mockResolvedValueOnce("{}");
+    await comprobarDestino(r);
+    const [, args, opciones] = mockEjecutar.mock.calls[0]!;
+    expect(args).toEqual(["-o", "sftp.command=ssh", "cat", "config"]);
+    expect(opciones.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("si no responde, explica el motivo del último reintento", async () => {
+    mockEjecutar.mockRejectedValueOnce(
+      cancelado(
+        "Stat(<config/>) returned error, retrying after 1s: Stat: Access Denied",
+      ),
+    );
+    await expect(comprobarDestino(r)).rejects.toThrow(
+      "El destino no responde (30 s): Stat: Access Denied",
+    );
+  });
+
+  it("sin motivo legible lo dice igualmente", async () => {
+    mockEjecutar.mockRejectedValueOnce(cancelado("sin más"));
+    await expect(comprobarDestino(r)).rejects.toThrow(
+      /^El destino no responde \(30 s\)$/,
+    );
+  });
+
+  it("propaga los demás errores (clave incorrecta, red)", async () => {
+    mockEjecutar.mockRejectedValueOnce(new ErrorProceso("mala clave", 12, ""));
+    await expect(comprobarDestino(r)).rejects.toThrow("mala clave");
+  });
+
+  it("si se cancela la operación de fuera, no lo disfraza de destino caído", async () => {
+    const controller = new AbortController();
+    controller.abort("Cancelado: superó 60 minutos");
+    mockEjecutar.mockRejectedValueOnce(cancelado("lo que sea"));
+    await expect(
+      comprobarDestino({ ...r, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("mensajeSinRespuesta", () => {
+  it("solo traduce las cancelaciones", () => {
+    expect(mensajeSinRespuesta(new Error("otra cosa"))).toBeNull();
+    expect(mensajeSinRespuesta("texto")).toBeNull();
   });
 });

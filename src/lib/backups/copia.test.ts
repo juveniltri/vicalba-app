@@ -6,6 +6,7 @@ const m = vi.hoisted(() => ({
   cargar: vi.fn(),
   crearSnapshot: vi.fn(),
   retencion: vi.fn(),
+  comprobar: vi.fn(),
   pgDump: vi.fn(),
   leerTraefik: vi.fn(),
   notificar: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("./configuracion", () => ({
 vi.mock("./restic", () => ({
   crearSnapshot: m.crearSnapshot,
   aplicarRetencion: m.retencion,
+  comprobarDestino: m.comprobar,
 }));
 vi.mock("./postgres", () => ({ pgDump: m.pgDump }));
 
@@ -62,6 +64,7 @@ beforeEach(() => {
   m.cargar.mockResolvedValue({ clave: "c", destino: { tipo: "s3" } });
   m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
   m.pgDump.mockResolvedValue(undefined);
+  m.comprobar.mockResolvedValue(undefined);
   m.leerTraefik.mockResolvedValue('{"letsencrypt":{}}');
   m.crearSnapshot.mockResolvedValue({
     snapshotId: "snap1",
@@ -97,6 +100,10 @@ describe("iniciarCopia", () => {
       "/tmp/vicalba-backup-x",
     );
     expect(m.retencion).toHaveBeenCalled();
+    // A dead destination must fail in seconds, not after restic's retries.
+    expect(m.comprobar.mock.invocationCallOrder[0]!).toBeLessThan(
+      m.pgDump.mock.invocationCallOrder[0]!,
+    );
     expect(m.update).toHaveBeenCalledWith({
       where: { id: "b1" },
       data: {
@@ -145,6 +152,23 @@ describe("iniciarCopia", () => {
     });
     expect(m.fs.rm).toHaveBeenCalled();
     expect(hayOperacionEnCurso()).toBe(false);
+  });
+
+  it("con el destino caído falla enseguida, sin hacer el dump", async () => {
+    m.comprobar.mockRejectedValue(
+      new Error("El destino no responde (30 s): Stat: no such host"),
+    );
+    await iniciarCopia("manual");
+    await esperar();
+    expect(m.pgDump).not.toHaveBeenCalled();
+    expect(m.update).toHaveBeenCalledWith({
+      where: { id: "b1" },
+      data: {
+        resultado: "error",
+        error: "El destino no responde (30 s): Stat: no such host",
+        finalizadoEn: expect.any(Date),
+      },
+    });
   });
 
   it("rechaza una segunda copia mientras hay otra en curso sin crear otra fila", async () => {
@@ -247,6 +271,7 @@ describe("hacerCopia", () => {
     vi.clearAllMocks();
     m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
     m.pgDump.mockResolvedValue(undefined);
+    m.comprobar.mockResolvedValue(undefined);
     m.update.mockResolvedValue({});
     m.crearSnapshot.mockResolvedValue({ snapshotId: "s", bytesAnadidos: 1 });
   });
