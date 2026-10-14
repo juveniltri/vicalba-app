@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import path from "node:path";
 
 export const PROYECTO = "vicalba-guia";
@@ -48,7 +49,17 @@ export function compose(args: string[]): void {
   );
 }
 
-export function comprobarRequisitos(): void {
+// A host process (IIS, a local nginx) holding a port is invisible to `docker ps`.
+function puertoLibre(puerto: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const servidor = createServer()
+      .once("error", () => resolve(false))
+      .once("listening", () => servidor.close(() => resolve(true)));
+    servidor.listen(puerto);
+  });
+}
+
+export async function comprobarRequisitos(): Promise<void> {
   docker(["info", "--format", "{{.ServerVersion}}"]);
   const existentes = docker(["ps", "-a", "--format", "{{.Names}}"]).split("\n");
   const ocupados = CONTENEDORES_FIJOS.filter((n) => existentes.includes(n));
@@ -58,9 +69,10 @@ export function comprobarRequisitos(): void {
         "(o ejecuta `npm run guia -- --limpiar` si son de una ejecución anterior).",
     );
   }
-  const puertos = docker(["ps", "--format", "{{.Ports}}"]);
-  if (/:(80|443)->/.test(puertos)) {
-    throw new Error("Los puertos 80 o 443 están ocupados por otro contenedor.");
+  for (const puerto of [80, 443, 5434]) {
+    if (!(await puertoLibre(puerto))) {
+      throw new Error(`El puerto ${puerto} está ocupado en este equipo.`);
+    }
   }
   // ssh-keygen has no --version and exits non-zero on usage: only check it exists.
   if (spawnSync("ssh-keygen", ["-?"], { stdio: "ignore" }).error) {
@@ -219,11 +231,14 @@ export function limpiar(): void {
     permitirFallo: true,
   });
   if (demo) docker(["rm", "-f", ...demo.split("\n")], { permitirFallo: true });
+  // By project name only, so it works even without the generated .env.
+  let bajado = true;
   try {
-    if (readFileSync(ENV, "utf-8")) compose(["down", "-v", "--remove-orphans"]);
+    docker(["compose", "-p", PROYECTO, "down", "-v", "--remove-orphans"]);
   } catch {
-    // No .env: nothing was started by compose.
+    bajado = false;
   }
   docker(["network", "rm", RED_DEMO], { permitirFallo: true });
-  rmSync(TMP, { recursive: true, force: true });
+  // Keep .tmp (the .env) while the stack may still be up, so --limpiar can retry.
+  if (bajado) rmSync(TMP, { recursive: true, force: true });
 }

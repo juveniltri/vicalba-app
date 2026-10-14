@@ -189,7 +189,7 @@ Objetivo: ver en tiempo real qué está haciendo la aplicación.
 Objetivo: volver al último commit que funcionaba cuando un deploy sale mal.
 
 1. Cuando un deploy falla, el Proyecto aparece en **Requiere atención** del Dashboard con el
-   final de su log y el botón **Rollback a <commit>**, que redespliega el último commit
+   final de su log y el botón **Rollback a** seguido del commit (por ejemplo `Rollback a 5d1e9b4`), que redespliega el último commit
    desplegado correctamente.
 2. También puedes elegir cualquier deploy anterior: en la pestaña **Deploys**, pulsa
    **Rollback** en el que quieras.
@@ -277,7 +277,7 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
 
 - **Aviso de novedades**: aparece tras actualizar el Panel; enlaza a Novedades.
 - **Requiere atención**: Proyectos con el último deploy en error (con el final del log, «Ver
-  log del deploy» y «Rollback a <commit>») y Proyectos desplegándose («Seguir en vivo»). También
+  log del deploy» y «Rollback a» seguido del commit) y Proyectos desplegándose («Seguir en vivo»). También
   avisa si la última copia de seguridad falló o no hay ninguna correcta en 26 horas.
 - **Contadores**: Proyectos totales, en marcha, parados y con error.
 - **Últimos deploys**: los más recientes de todos los Proyectos, con commit, origen (manual,

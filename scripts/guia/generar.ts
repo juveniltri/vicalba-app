@@ -13,13 +13,29 @@ import {
 import { capturar, entrar, imprimirPdf } from "./capturas";
 import { sembrar } from "./datos-demo";
 
+let limpiado = false;
+function limpiarUnaVez(): void {
+  if (limpiado) return;
+  limpiado = true;
+  limpiar();
+}
+
+// Node exits on Ctrl+C without running `finally`: clean up here too.
+for (const senal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(senal, () => {
+    console.log("Interrumpido: limpiando el entorno de la guía…");
+    limpiarUnaVez();
+    process.exit(130);
+  });
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--limpiar")) {
-    limpiar();
+    limpiarUnaVez();
     console.log("Entorno de la guía eliminado.");
     return;
   }
-  comprobarRequisitos();
+  await comprobarRequisitos();
   try {
     const entorno = generarEnv();
     compose(["up", "-d", "--build"]);
@@ -67,7 +83,7 @@ async function main(): Promise<void> {
       await navegador.close();
     }
   } finally {
-    limpiar();
+    limpiarUnaVez();
   }
 }
 
