@@ -125,6 +125,11 @@ describe("leerCertificados", () => {
     await expect(leerCertificados()).resolves.toEqual({});
   });
 
+  it("devuelve un objeto vacío si acme.json está vacío", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue("");
+    expect(await leerCertificados()).toEqual({});
+  });
+
   it("devuelve un objeto vacío si no se puede leer acme.json", async () => {
     mockLeerFicheroTraefik.mockRejectedValue(new Error("no such container"));
 
@@ -196,6 +201,15 @@ describe("estadoCertificados", () => {
       new Error("Tiempo de espera agotado"),
     );
     expect(await estadoCertificados()).toBe("error");
+  });
+
+  it("acme.json vacío (Traefik aún no ha emitido ningún certificado) no es un error", async () => {
+    mockLeerFicheroTraefik.mockResolvedValue("");
+    expect(await estadoCertificados()).toBe("ok");
+    mockLeerFicheroTraefik.mockResolvedValue("  \n");
+    vi.resetModules();
+    ({ estadoCertificados } = await import("./acme"));
+    expect(await estadoCertificados()).toBe("ok");
   });
 
   it("devuelve error si acme.json no es JSON válido", async () => {

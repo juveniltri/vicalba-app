@@ -54,9 +54,10 @@ function leerAcme(): Promise<string> {
 
 export async function estadoCertificados(): Promise<"ok" | "error"> {
   try {
-    return acmeSchema.safeParse(JSON.parse(await leerAcme())).success
-      ? "ok"
-      : "error";
+    const contenido = await leerAcme();
+    // Traefik creates the file empty and only writes it with the first certificate.
+    if (!contenido.trim()) return "ok";
+    return acmeSchema.safeParse(JSON.parse(contenido)).success ? "ok" : "error";
   } catch {
     return "error";
   }
