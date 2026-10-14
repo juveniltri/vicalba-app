@@ -111,7 +111,8 @@ export async function aplicarRetencion(r: Restic): Promise<void> {
 
 export async function listarSnapshots(r: Restic): Promise<Snapshot[]> {
   return parsearSnapshots(
-    await restic(r, ["snapshots", "--json", "--tag", ETIQUETA]),
+    // Read-only listing: without a lock it does not fail while a copy prunes.
+    await restic(r, ["snapshots", "--json", "--tag", ETIQUETA, "--no-lock"]),
   );
 }
 

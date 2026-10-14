@@ -203,4 +203,27 @@ describe("ConfiguracionBackups", () => {
     expect(await screen.findByText("Configura el destino")).toBeInTheDocument();
     expect(interruptor).toHaveAttribute("aria-checked", "false");
   });
+
+  it("mientras hay una operación en curso se refresca sola hasta que acaba", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = renderizar({ ...lista, enCurso: true });
+      vi.advanceTimersByTime(6000);
+      expect(a.refresh).toHaveBeenCalledTimes(2);
+      rerender(
+        <ToastProvider>
+          <ConfiguracionBackups
+            config={lista}
+            credenciales={[]}
+            historial={[ejecucion({})]}
+            copias={[]}
+          />
+        </ToastProvider>,
+      );
+      vi.advanceTimersByTime(6000);
+      expect(a.refresh).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

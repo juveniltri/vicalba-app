@@ -7,6 +7,7 @@ import {
   lanzarCopiaBackupAction,
   obtenerKitBackupAction,
 } from "@/app/(panel)/actions";
+import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { Listbox } from "@/components/ui/Listbox";
 import { useToast } from "@/components/ui/Toast";
 import { formatHace } from "@/lib/formatHace";
@@ -92,6 +93,8 @@ export function ConfiguracionBackups({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Copies and restores run in the background: follow them until done. */}
+      <DeployPoller isDeploying={config.enCurso} />
       <Tarjeta titulo="Estado">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Dato etiqueta="Última copia" valor={textoUltimaCopia(historial)} />

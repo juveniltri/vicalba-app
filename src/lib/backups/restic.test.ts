@@ -177,6 +177,7 @@ describe("comandos", () => {
       "--json",
       "--tag",
       "panel",
+      "--no-lock",
     ]);
   });
 
