@@ -90,7 +90,7 @@ export const usuariosRouter = router({
       const passwordHash = await bcrypt.hash(input.password, 12);
       await prisma.user.update({
         where: { id: input.id },
-        data: { passwordHash },
+        data: { passwordHash, sesionesDesde: new Date() },
       });
     }),
 

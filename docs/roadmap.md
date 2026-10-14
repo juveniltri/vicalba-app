@@ -5,12 +5,46 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ---
 
-## Siguiente sesión (acordado el 14/10/2026)
+## Siguiente sesión
 
-1. **Cerrar la release 2.1.0** — mergear el PR #43 (`develop` → `master`); después, tag `v2.1.0` sobre el commit de merge en `master` y Release de GitHub con la sección `2.1.0` de `CHANGELOG.md` (líneas partidas unidas en una sola: GitHub muestra cada salto de línea) más un bloque «Al actualizar» (migración automática, `SENTRY_DSN` opcional, Node 22 en el próximo deploy).
-2. **Decidir:** tag y Release retroactivos `v2.0.1` sobre `54834b0` (merge del hotfix #40 en `master`), para que GitHub coincida con la página Novedades.
-3. **Releases automáticas** y **Dependabot** (ver Técnico).
-4. **Diseñar los backups** con el usuario como base de la v2.2, junto con los tests E2E.
+Hecho el 14/10/2026: release **2.1.0** (tag `v2.1.0` sobre `755ec6c`, Release de GitHub marcada como última) y release retroactiva **2.0.1** (tag `v2.0.1` sobre `54834b0`, el merge del hotfix #40).
+
+Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
+
+### 2.1.1 — `release/2.1.1`, PR #46
+
+Hecho:
+
+- [x] Notificaciones a Discord (embed) y Slack (`{ text }`), con el motivo del rechazo en el error.
+- [x] `.gitattributes` con LF en todo el repo.
+- [x] Dependabot (npm, Actions, Docker; PRs semanales contra `develop`).
+- [x] Release de GitHub automática al subir un tag (`.github/workflows/release.yml`).
+
+Hecho tras la revisión del 14/10/2026:
+
+- [x] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
+- [x] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.
+- [x] **Limpieza de imágenes tras el deploy** — cada build deja imágenes y caché de build; no hay ningún `prune`. Limpiar tras un deploy correcto sin romper el rollback.
+- [x] **Prisma alineado** — CLI 7.10 y `@prisma/client` 7.8.
+- [x] **Dependencias menores al día** (tRPC, Zod, Sentry, nodemailer, dockerode, pg, pino, Tailwind). Vitest 4.1.11 (`npm audit`: `@vitest/mocker`, moderado, solo desarrollo) queda para Dependabot: npm en Windows falla con «edgesOut» al resolver el peer opcional `canvas` de jsdom.
+- [x] **Healthcheck del contenedor del panel** en `docker-compose.yml` sobre `/api/health`.
+- [x] **CLAUDE.md al día** — dice Next.js 15 (es 16) y `main` (es `master`).
+
+Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a `develop` (cierra el #45).
+
+### 2.2.0
+
+- [ ] **Backups** (ver Backlog).
+- [ ] **Tests E2E** (ver Técnico).
+- [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
+- [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
+- [ ] Revisar los primeros PRs de Dependabot.
+
+### Más adelante
+
+- [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
+- [ ] **2FA (TOTP)** en el login.
+- [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
 ---
 
@@ -24,14 +58,12 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ### Features
 
-- **Backups (siguiente prioridad tras v2.1)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
+- **Backups (v2.2)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
 - **Secciones Clientes y Proxy en Configuración** — aparecían en el mockup; todavía no hay pantallas detrás.
 - **Documentación OpenAPI** — ver «Decisiones pendientes» en `docs/notas-pendientes.md` (alcance: solo REST o también tRPC).
 
 ### Técnico / Refactor
 
-- **Releases automáticas** — workflow que, al subir un tag `vX.Y.Z`, cree la Release de GitHub con la sección de esa versión de `CHANGELOG.md`. El proceso queda en: changelog → `npm version` → tag.
-- **Dependabot** — no hay nada que avise de dependencias desactualizadas o vulnerables aparte del `npm audit` del CI. Configurar para npm, Docker y GitHub Actions.
 - **Tests E2E** — `CLAUDE.md` habla de Playwright + axe-core, pero no hay configuración, ni tests, ni la dependencia. Base mínima: login, Dashboard, detalle de proyecto, cancelar deploy, Novedades.
 
 ---

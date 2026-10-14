@@ -1,4 +1,4 @@
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 
 export function extraerServicios(content: string): string[] {
   if (!content.trim()) return [];
@@ -48,4 +48,30 @@ export function encontrarServicioPorPuerto(
     return undefined;
   }
   return undefined;
+}
+
+// Docker keeps container logs forever by default; a chatty container fills
+// the VPS disk. 3 × 10 MB per container is plenty for the logs viewer.
+export const LIMITE_LOGS = {
+  driver: "json-file",
+  options: { "max-size": "10m", "max-file": "3" },
+} as const;
+
+export function generarOverrideLogging(content: string): string | null {
+  let services: unknown;
+  try {
+    services = (parse(content) as { services?: unknown } | null)?.services;
+  } catch {
+    // An invalid compose fails in `docker compose` with its own error.
+    return null;
+  }
+  if (!services || typeof services !== "object") return null;
+  const sinLimite = Object.entries(
+    services as Record<string, { logging?: unknown } | null>,
+  ).filter(([, definicion]) => !definicion?.logging);
+  if (!sinLimite.length) return null;
+  const override = Object.fromEntries(
+    sinLimite.map(([nombre]) => [nombre, { logging: LIMITE_LOGS }]),
+  );
+  return stringify({ services: override }, { aliasDuplicateObjects: false });
 }

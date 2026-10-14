@@ -548,6 +548,30 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     );
   });
 
+  it("limita los logs de los servicios con un segundo -f de override", async () => {
+    mockReadFile.mockResolvedValueOnce(composeYaml);
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    const override = "/var/vicalba/repos/acme/.panel/web-app.logging.yml";
+    const escrito = mockWriteFile.mock.calls.find((c) => c[0] === override);
+    expect(escrito?.[1]).not.toContain("&");
+    expect(escrito?.[1]).toMatch(/web:\n {4}logging:[\s\S]*api:\n {4}logging:/);
+    expect(escrito?.[1]).toContain("max-size: 10m");
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs.join(" ")).toContain(
+      `-f /var/vicalba/repos/acme/.panel/web-app.docker-compose.yml -f ${override}`,
+    );
+  });
+
+  it("no añade override de logs si todos los servicios ya configuran el suyo", async () => {
+    const conLogging = `services:\n  web:\n    image: nginx\n    logging:\n      driver: local\n`;
+    mockReadFile.mockResolvedValueOnce(conLogging);
+    await deployProyecto({ ...baseParams, composeContent: conLogging });
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs.filter((a) => a === "-f")).toHaveLength(1);
+  });
+
   it("escribe env vars en panelDir como .env con --env-file cuando hay composeContent", async () => {
     await deployProyecto({
       ...baseParams,
@@ -715,6 +739,30 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     expect(compose?.[1]).not.toMatch(/args:[\s\S]*DATABASE_URL[\s\S]*ports:/);
   });
 
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el compose generado limita los logs a 3 ficheros de 10 MB",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:alpine",
+      });
+
+      const [compose] = writesTo(
+        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain(
+        [
+          "    logging:",
+          "      driver: json-file",
+          "      options:",
+          '        max-size: "10m"',
+          '        max-file: "3"',
+        ].join("\n"),
+      );
+    },
+  );
+
   const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
   const nodejs = {
     ...baseParams,
@@ -823,5 +871,61 @@ describe("deployProyecto — cancelación", () => {
       expect.any(Array),
       expect.objectContaining({ signal }),
     );
+  });
+});
+
+describe("deployProyecto — limpieza de disco", () => {
+  const llamadasDocker = () =>
+    mockExecFile.mock.calls
+      .filter(([cmd]) => cmd === "docker")
+      .map(([, args]) => (args as string[]).join(" "));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("tras un deploy correcto borra las imágenes sin uso y la caché de build de más de 7 días", async () => {
+    await deployProyecto(baseParams);
+
+    expect(llamadasDocker()).toEqual([
+      "image prune -f",
+      "builder prune -f --filter until=168h",
+    ]);
+  });
+
+  it("un fallo al limpiar no hace fallar el deploy", async () => {
+    mockExecFile.mockImplementation(
+      (
+        cmd: string,
+        _args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) =>
+        cmd === "docker"
+          ? cb(new Error("daemon ocupado"), "", "")
+          : cb(null, "", ""),
+    );
+
+    await expect(deployProyecto(baseParams)).resolves.toMatchObject({
+      sha: expect.any(String),
+    });
+  });
+
+  it("no limpia si el deploy falla", async () => {
+    mockSpawn.mockImplementation(() => makeSpawnResult(1));
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow();
+    expect(llamadasDocker()).toEqual([]);
   });
 });

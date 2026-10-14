@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 const { mockReadFile } = vi.hoisted(() => ({ mockReadFile: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ readFile: mockReadFile }));
 
-import { leerChangelog, parsearChangelog } from "./changelog";
+import { leerChangelog, notasDeRelease, parsearChangelog } from "./changelog";
 
 const md = [
   "# Changelog",
@@ -84,6 +84,34 @@ describe("parsearChangelog", () => {
     );
     expect(v?.resumen).toBe("Resumen en dos líneas.");
     expect(v?.apartados[0]?.entradas).toEqual(["Entrada."]);
+  });
+});
+
+describe("notasDeRelease", () => {
+  it("escribe el resumen y cada apartado con sus entradas en una sola línea", () => {
+    const [v] = parsearChangelog(md);
+    expect(notasDeRelease(v!)).toBe(
+      [
+        "Cancelar deploys y estado de Traefik.",
+        "",
+        "### Novedades",
+        "",
+        "- Cancelar un deploy en curso.",
+        "- Pestaña **Logs** en el detalle, con filtros por nivel.",
+        "",
+        "### Correcciones",
+        "",
+        "- El SSL salía «sin certificado».",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("empieza por el primer apartado si la versión no tiene resumen", () => {
+    const [, anterior] = parsearChangelog(md);
+    expect(notasDeRelease(anterior!)).toBe(
+      "### Novedades\n\n- Panel inicial.\n",
+    );
   });
 });
 

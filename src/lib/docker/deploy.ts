@@ -3,7 +3,11 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
-import { encontrarServicioPorPuerto } from "@/lib/compose";
+import {
+  encontrarServicioPorPuerto,
+  generarOverrideLogging,
+  LIMITE_LOGS,
+} from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
 import { conectarTraefikARed } from "./traefik";
@@ -221,6 +225,15 @@ function serializarVolumes(
   ];
 }
 
+const LOGGING_YAML = [
+  "    logging:",
+  `      driver: ${LIMITE_LOGS.driver}`,
+  "      options:",
+  ...Object.entries(LIMITE_LOGS.options).map(
+    ([clave, valor]) => `        ${clave}: "${valor}"`,
+  ),
+];
+
 function generarDockerComposeConBuild(params: {
   context: string;
   dockerfile: string;
@@ -240,6 +253,7 @@ function generarDockerComposeConBuild(params: {
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    ...LOGGING_YAML,
   ].join("\n");
 }
 
@@ -257,6 +271,7 @@ function generarDockerComposeConImage(params: {
     `      - "${params.puerto}:${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    ...LOGGING_YAML,
   ].join("\n");
 }
 
@@ -301,6 +316,25 @@ function spawnDockerCompose(
 
     proc.on("error", reject);
   });
+}
+
+// Every build leaves the previous image untagged and adds build cache; without
+// pruning the VPS disk fills up. Rollback rebuilds from the commit, so the old
+// images are not needed; cache used in the last week is kept for fast builds.
+async function limpiarDisco(onLog?: (line: string) => void): Promise<void> {
+  onLog?.("→ Liberando espacio (imágenes sin uso y caché de build antigua)...");
+  try {
+    await execFileAsync("docker", ["image", "prune", "-f"]);
+    await execFileAsync("docker", [
+      "builder",
+      "prune",
+      "-f",
+      "--filter",
+      "until=168h",
+    ]);
+  } catch (err) {
+    log.warn({ err }, "No se pudo liberar espacio tras el deploy");
+  }
 }
 
 export async function deployProyecto(params: {
@@ -532,13 +566,23 @@ export async function deployProyecto(params: {
     // dockerfile/nodejs/image generan siempre un único servicio "app"; en compose
     // (repo o composeContent) hay que averiguar cuál de los servicios del YAML es
     // el que sirve el puerto configurado.
+    const composeUsuario =
+      tipo === "compose" ? await readFile(composeFile, "utf-8") : null;
     const servicioObjetivo =
-      tipo === "compose"
-        ? encontrarServicioPorPuerto(
-            await readFile(composeFile, "utf-8"),
-            puerto,
-          )
+      composeUsuario !== null
+        ? encontrarServicioPorPuerto(composeUsuario, puerto)
         : "app";
+
+    // Generated composes already carry the log limit; a user compose gets it
+    // through a second -f for the services that do not set their own logging.
+    const overrideLogging =
+      composeUsuario !== null ? generarOverrideLogging(composeUsuario) : null;
+    const overrideArgs: string[] = [];
+    if (overrideLogging) {
+      const overridePath = `${panelDir}/${proyectoNombre}.logging.yml`;
+      await writeFile(overridePath, overrideLogging, { encoding: "utf-8" });
+      overrideArgs.push("-f", overridePath);
+    }
 
     const envFileArgs =
       tipo === "compose" && composeContent && runtimeVars.length > 0
@@ -551,6 +595,7 @@ export async function deployProyecto(params: {
       projectSlug,
       "-f",
       composeFile,
+      ...overrideArgs,
       ...envFileArgs,
       "up",
       "--build",
@@ -586,6 +631,8 @@ export async function deployProyecto(params: {
         servicioObjetivo,
       );
     }
+
+    await limpiarDisco(onLog);
 
     onLog?.("✓ Deploy completado");
     return { output, sha: capturedSha };

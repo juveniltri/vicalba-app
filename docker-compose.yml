@@ -1,3 +1,10 @@
+# Docker no limita los logs de los contenedores: sin esto llenan el disco de la VPS.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 networks:
   vicalba-net:
     name: vicalba-net
@@ -14,6 +21,7 @@ services:
     image: traefik:v3
     container_name: traefik
     restart: unless-stopped
+    logging: *logging
     command:
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
     networks:
@@ -32,6 +40,7 @@ services:
     image: postgres:16-alpine
     container_name: vicalba-db
     restart: unless-stopped
+    logging: *logging
     networks:
       - vicalba-net
     environment:
@@ -51,6 +60,7 @@ services:
     build: .
     container_name: vicalba-panel
     restart: unless-stopped
+    logging: *logging
     networks:
       - vicalba-net
     environment:
@@ -84,6 +94,20 @@ services:
       - /:/hostroot:ro,rslave
     group_add:
       - "${DOCKER_GID}"
+    # Liveness only: any answer from /api/health counts, including its 503.
+    # Traefik stops routing to an unhealthy container, so a failing check
+    # (Traefik, certificates) must not lock us out of the panel.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/health').then(() => process.exit(0), () => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+      start_interval: 5s
     depends_on:
       db:
         condition: service_healthy

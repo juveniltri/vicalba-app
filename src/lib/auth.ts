@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 import { crearLimitador } from "./rate-limit";
+import { sesionVigente } from "./sesion";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -31,6 +32,14 @@ function ipCliente(request: Request): string {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    // Returning null drops the session: auth() then answers as logged out.
+    async jwt({ token, user }) {
+      if (user) return { ...token, iniciadaEn: Date.now() };
+      return (await sesionVigente(token)) ? token : null;
+    },
+  },
   providers: [
     Credentials({
       async authorize(credentials, request) {

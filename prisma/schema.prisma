@@ -112,11 +112,13 @@ model Volumen {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  nombre       String
-  creadoEn     DateTime @default(now())
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  nombre        String
+  creadoEn      DateTime @default(now())
+  // Sessions issued before this instant are rejected (password change).
+  sesionesDesde DateTime @default(now())
 }
 
 model Deploy {
@@ -143,24 +145,24 @@ model ConfiguracionDeploy {
 model ConfiguracionNotificacion {
   id String @id @default("default")
 
-  webhookHabilitado  Boolean @default(false)
-  webhookUrl         String?
+  webhookHabilitado Boolean @default(false)
+  webhookUrl        String?
 
-  emailHabilitado    Boolean @default(false)
-  emailSmtpHost      String?
-  emailSmtpPort      Int?
-  emailSmtpUser      String?
-  emailSmtpPass      String?
-  emailSmtpPassIv    String?
-  emailSmtpPassTag   String?
-  emailRemitente     String?
-  emailDestinatario  String?
+  emailHabilitado   Boolean @default(false)
+  emailSmtpHost     String?
+  emailSmtpPort     Int?
+  emailSmtpUser     String?
+  emailSmtpPass     String?
+  emailSmtpPassIv   String?
+  emailSmtpPassTag  String?
+  emailRemitente    String?
+  emailDestinatario String?
 
-  telegramHabilitado       Boolean @default(false)
-  telegramBotTokenCifrado  String?
-  telegramBotTokenIv       String?
-  telegramBotTokenTag      String?
-  telegramChatId           String?
+  telegramHabilitado      Boolean @default(false)
+  telegramBotTokenCifrado String?
+  telegramBotTokenIv      String?
+  telegramBotTokenTag     String?
+  telegramChatId          String?
 
   // Last delivery attempt per channel; error null means it succeeded.
   webhookUltimoEnvioEn  DateTime?

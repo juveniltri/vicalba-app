@@ -361,6 +361,10 @@ function CambiarPasswordForm({
       <h2 className="font-display text-sm font-semibold text-text-primary">
         Cambiar contraseña — {usuario.nombre}
       </h2>
+      <p className="font-body text-xs text-text-muted">
+        Se cerrarán todas las sesiones abiertas de este usuario; si es tu
+        cuenta, tendrás que volver a iniciar sesión.
+      </p>
       {error && (
         <p role="alert" className="font-body text-xs text-state-error">
           {error}
