@@ -106,4 +106,21 @@ describe("AtencionPanel", () => {
     render(<AtencionPanel proyectos={[enError, desplegando]} />);
     expect(screen.getByText("2 proyectos")).toBeInTheDocument();
   });
+
+  it("avisa de los backups con un enlace a su configuración", () => {
+    render(
+      <AtencionPanel
+        proyectos={[]}
+        avisoBackups="La última copia de seguridad falló"
+      />,
+    );
+    expect(
+      screen.getByText("La última copia de seguridad falló"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ver backups" })).toHaveAttribute(
+      "href",
+      "/configuracion?seccion=backups",
+    );
+    expect(screen.queryByText(/Todo en orden/)).not.toBeInTheDocument();
+  });
 });
