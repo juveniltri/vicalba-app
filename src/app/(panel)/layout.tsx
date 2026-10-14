@@ -15,7 +15,7 @@ export default async function PanelLayout({
 
   return (
     <ToastProvider>
-      <div className="flex flex-col md:grid md:grid-cols-[232px_minmax(0,1fr)] print:block min-h-screen bg-background text-text-primary font-body">
+      <div className="flex flex-col md:grid md:grid-cols-[232px_minmax(0,1fr)] print:block min-h-screen print:min-h-0 bg-background print:bg-white text-text-primary font-body">
         <Sidebar
           proyectos={proyectos}
           usuario={{

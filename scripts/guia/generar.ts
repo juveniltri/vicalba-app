@@ -3,12 +3,15 @@ import {
   arrancarSftp,
   comprobarRequisitos,
   compose,
+  docker,
   esperarPanelSano,
   generarClaveSsh,
   generarEnv,
   limpiar,
+  prepararCertificadosDemo,
   prepararVolumenes,
 } from "./entorno";
+import { capturar, entrar, imprimirPdf } from "./capturas";
 import { sembrar } from "./datos-demo";
 
 async function main(): Promise<void> {
@@ -23,6 +26,7 @@ async function main(): Promise<void> {
     compose(["up", "-d", "--build"]);
     await esperarPanelSano();
     prepararVolumenes();
+    prepararCertificadosDemo();
     const claveSftp = generarClaveSsh();
     await arrancarSftp(claveSftp.publica);
     await sembrar(entorno, claveSftp);
@@ -36,6 +40,33 @@ async function main(): Promise<void> {
         process.stdin.once("data", r);
         process.stdin.once("end", r);
       });
+      return;
+    }
+    const { chromium } = await import("@playwright/test");
+    const navegador = await chromium.launch();
+    try {
+      const contexto = await navegador.newContext({
+        ignoreHTTPSErrors: true,
+        viewport: { width: 1440, height: 900 },
+        colorScheme: "light",
+      });
+      const page = await contexto.newPage();
+      await entrar(page);
+      await capturar(page);
+      // The image was built before the captures: serve the fresh guide and PNGs.
+      docker([
+        "cp",
+        "docs/guia-usuario.md",
+        "vicalba-panel:/app/docs/guia-usuario.md",
+      ]);
+      docker(["cp", "public/guia/.", "vicalba-panel:/app/public/guia/"]);
+      docker(["restart", "vicalba-panel"]);
+      await esperarPanelSano();
+      await entrar(page);
+      await imprimirPdf(page);
+      console.log("Guía generada en public/guia/.");
+    } finally {
+      await navegador.close();
     }
   } finally {
     limpiar();

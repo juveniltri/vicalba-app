@@ -28,7 +28,7 @@ export function GuiaUsuario({ markdown }: { markdown: string }) {
     h2: ({ children }) => (
       <h2
         id={ancla(textoPlano(children))}
-        className="scroll-mt-6 font-display text-lg font-semibold pt-3 print:break-before-page"
+        className="scroll-mt-6 font-display text-lg font-semibold pt-3 print:break-before-page print:[h1+&]:break-before-avoid"
       >
         {children}
       </h2>
