@@ -7,18 +7,18 @@ import { logger } from "@/lib/logger";
 import { notificarFalloBackup } from "@/lib/notificaciones";
 import { prisma } from "@/lib/prisma";
 import { cargarConfigResuelta, conRestic } from "./configuracion";
-import { LIMITE_MS, soltarOperacion, tomarOperacion } from "./operacion";
+import {
+  LIMITE_MS,
+  MOTIVO_LIMITE,
+  motivoDeFallo,
+  soltarOperacion,
+  tomarOperacion,
+} from "./operacion";
 import { pgDump } from "./postgres";
 import type { ConfigResuelta } from "./repositorio";
 import { aplicarRetencion, crearSnapshot } from "./restic";
 
 const log = logger.child({ module: "backups" });
-const MOTIVO_LIMITE = "Cancelado: superó 60 minutos";
-
-function mensaje(err: unknown, signal: AbortSignal): string {
-  if (signal.aborted && signal.reason === MOTIVO_LIMITE) return MOTIVO_LIMITE;
-  return err instanceof Error ? err.message : String(err);
-}
 
 // Runs one backup into an existing Backup row. Used directly by the restore,
 // which already holds the operation lock.
@@ -26,6 +26,7 @@ export async function hacerCopia(
   backupId: string,
   config: ConfigResuelta,
   signal: AbortSignal,
+  { retencion = true }: { retencion?: boolean } = {},
 ): Promise<void> {
   const carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-backup-"));
   const dir = (...p: string[]) => path.posix.join(carpeta, ...p);
@@ -46,7 +47,7 @@ export async function hacerCopia(
     }
     const resumen = await conRestic(config, signal, async (r) => {
       const res = await crearSnapshot(r, carpeta);
-      await aplicarRetencion(r);
+      if (retencion) await aplicarRetencion(r);
       return res;
     });
     await prisma.backup.update({
@@ -66,7 +67,14 @@ export async function hacerCopia(
 export async function iniciarCopia(
   origen: "programado" | "manual",
 ): Promise<{ id: string }> {
-  const config = await cargarConfigResuelta();
+  let config: ConfigResuelta;
+  try {
+    config = await cargarConfigResuelta();
+  } catch (err) {
+    // Without a row the scheduler would retry (and fail) every minute, silently.
+    if (origen === "programado") await registrarFalloSinIniciar(err);
+    throw err;
+  }
   const controller = tomarOperacion();
   const backup = await prisma.backup
     .create({ data: { operacion: "copia", origen } })
@@ -78,7 +86,7 @@ export async function iniciarCopia(
   const limite = setTimeout(() => controller.abort(MOTIVO_LIMITE), LIMITE_MS);
   void hacerCopia(backup.id, config, controller.signal)
     .catch(async (err: unknown) => {
-      const error = mensaje(err, controller.signal);
+      const error = motivoDeFallo(err, controller.signal);
       log.error({ err, backupId: backup.id }, "Copia de seguridad fallida");
       await prisma.backup.update({
         where: { id: backup.id },
@@ -94,4 +102,22 @@ export async function iniciarCopia(
       soltarOperacion();
     });
   return { id: backup.id };
+}
+
+async function registrarFalloSinIniciar(err: unknown): Promise<void> {
+  const error = err instanceof Error ? err.message : String(err);
+  await prisma.backup.create({
+    data: {
+      operacion: "copia",
+      origen: "programado",
+      resultado: "error",
+      error,
+      finalizadoEn: new Date(),
+    },
+  });
+  await notificarFalloBackup({
+    operacion: "copia",
+    origen: "programado",
+    error,
+  });
 }

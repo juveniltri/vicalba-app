@@ -201,17 +201,18 @@ model Backup {
    SFTP, su `Credencial`.
 6. `pg_restore --clean --if-exists --single-transaction --no-owner` del dump: si falla, la BD
    queda como estaba.
-7. Reescribe `ConfiguracionBackup` y `Backup` con lo guardado en el paso 5 (la configuración del
+7. `prisma migrate deploy` (pone al día una copia de una versión anterior del Panel). Va antes
+   del paso 8 porque las filas guardadas tienen el esquema actual.
+8. Reescribe `ConfiguracionBackup` y `Backup` con lo guardado en el paso 5 (la configuración del
    destino, la clave y el historial no retroceden). Si la credencial SSH del destino SFTP no existe
    en la BD restaurada, se vuelve a crear desde la copia en memoria de esa credencial (también
    guardada en el paso 5), para no dejar los backups sin acceso al destino.
-8. `prisma migrate deploy` (pone al día una copia de una versión anterior del Panel).
 9. Sustituye el contenido de `TRAEFIK_DYNAMIC_DIR` por el de la copia. `acme.json` no se restaura.
 10. `prisma.$disconnect()` para que el pool no reutilice sentencias preparadas sobre las tablas
     recreadas.
 11. Marca la restauración como `exito`/`error`; si falla, aviso por los canales.
 
-NOTE: si el proceso muere entre los pasos 6 y 7, `ConfiguracionBackup` puede quedar con la
+NOTE: si el proceso muere entre los pasos 6 y 8, `ConfiguracionBackup` puede quedar con la
 versión de la copia. La clave no cambia en la fase A, así que solo afectaría a un destino editado
 después de esa copia; se documenta en `docs/recuperacion.md`.
 

@@ -64,6 +64,10 @@ vi.mock("./copia", () => ({ hacerCopia: m.hacerCopia }));
 vi.mock("./restic", () => ({ restaurarSnapshot: m.restaurarSnapshot }));
 vi.mock("./postgres", () => ({ pgRestore: m.pgRestore }));
 vi.mock("./procesos", () => ({ ejecutar: m.ejecutar }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = await original<typeof import("node:fs/promises")>();
+  return { ...real, mkdtemp: vi.fn(real.mkdtemp) };
+});
 
 import {
   buscarFichero,
@@ -137,10 +141,16 @@ describe("iniciarRestauracion", () => {
     expect(m.backupCreate).toHaveBeenNthCalledWith(1, {
       data: { operacion: "copia", origen: "antes_de_restaurar" },
     });
+    // Retention on the safety copy could prune the very snapshot being restored.
     expect(m.hacerCopia).toHaveBeenCalledWith(
       "previa",
       expect.anything(),
       expect.any(AbortSignal),
+      { retencion: false },
+    );
+    // Migrate first: the saved rows have the current schema.
+    expect(m.ejecutar.mock.invocationCallOrder[0]!).toBeLessThan(
+      m.transaction.mock.invocationCallOrder[0]!,
     );
     expect(m.backupCreate).toHaveBeenNthCalledWith(2, {
       data: {
@@ -256,7 +266,8 @@ describe("iniciarRestauracion", () => {
     m.hacerCopia.mockImplementation(
       (_id: string, _c: unknown, signal: AbortSignal) =>
         new Promise((_, rej) => {
-          const cancelar = () => rej(new Error(signal.reason));
+          const cancelar = () =>
+            rej(new DOMException("This operation was aborted", "AbortError"));
           if (signal.aborted) cancelar();
           else signal.addEventListener("abort", cancelar);
         }),
@@ -267,8 +278,19 @@ describe("iniciarRestauracion", () => {
     await terminar();
     expect(m.notificar).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: expect.stringContaining("Cancelado: superó 60 minutos"),
+        error:
+          "No se restauró: falló la copia previa (Cancelado: superó 60 minutos)",
       }),
+    );
+  });
+
+  it("si no se puede crear la carpeta temporal, falla y suelta la operación", async () => {
+    vi.mocked(mkdtemp).mockRejectedValueOnce(new Error("ENOSPC"));
+    await iniciarRestauracion("abc123");
+    await terminar();
+    expect(m.hacerCopia).not.toHaveBeenCalled();
+    expect(m.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "ENOSPC" }),
     );
   });
 

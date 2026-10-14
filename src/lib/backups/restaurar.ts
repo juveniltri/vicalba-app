@@ -7,7 +7,13 @@ import { notificarFalloBackup } from "@/lib/notificaciones";
 import { prisma } from "@/lib/prisma";
 import { cargarConfigResuelta, conRestic } from "./configuracion";
 import { hacerCopia } from "./copia";
-import { LIMITE_MS, soltarOperacion, tomarOperacion } from "./operacion";
+import {
+  LIMITE_MS,
+  MOTIVO_LIMITE,
+  motivoDeFallo,
+  soltarOperacion,
+  tomarOperacion,
+} from "./operacion";
 import { pgRestore } from "./postgres";
 import { ejecutar } from "./procesos";
 import { restaurarSnapshot } from "./restic";
@@ -54,6 +60,12 @@ async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
   const historial = await prisma.backup.findMany();
 
   await pgRestore(env.DATABASE_URL, dump, signal);
+  // Bring an older copy up to the current schema before writing back rows
+  // that have the current shape.
+  await ejecutar("npx", ["prisma", "migrate", "deploy"], {
+    env: { DATABASE_URL: env.DATABASE_URL },
+    signal,
+  });
 
   const ops = [];
   if (credencial) {
@@ -89,10 +101,7 @@ export async function iniciarRestauracion(
   const config = await cargarConfigResuelta();
   const controller = tomarOperacion();
   const { signal } = controller;
-  const limite = setTimeout(
-    () => controller.abort("Cancelado: superó 60 minutos"),
-    LIMITE_MS,
-  );
+  const limite = setTimeout(() => controller.abort(MOTIVO_LIMITE), LIMITE_MS);
   let restauracionId = "";
 
   const fallo = async (error: string) => {
@@ -118,12 +127,14 @@ export async function iniciarRestauracion(
     restauracionId = restauracion.id;
 
     void (async () => {
-      const carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-restaurar-"));
+      let carpeta: string | null = null;
       try {
+        carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-restaurar-"));
+        const destino = carpeta;
         try {
-          await hacerCopia(previa.id, config, signal);
+          await hacerCopia(previa.id, config, signal, { retencion: false });
         } catch (err) {
-          const motivo = err instanceof Error ? err.message : String(err);
+          const motivo = motivoDeFallo(err, signal);
           await prisma.backup.update({
             where: { id: previa.id },
             data: {
@@ -135,16 +146,12 @@ export async function iniciarRestauracion(
           throw new Error(`No se restauró: falló la copia previa (${motivo})`);
         }
         await conRestic(config, signal, (r) =>
-          restaurarSnapshot(r, snapshotId, carpeta),
+          restaurarSnapshot(r, snapshotId, destino),
         );
-        const dump = await buscarFichero(carpeta, "panel-db.dump");
+        const dump = await buscarFichero(destino, "panel-db.dump");
         if (!dump) throw new Error("La copia no contiene panel-db.dump");
 
         await restaurarBd(dump, signal);
-        await ejecutar("npx", ["prisma", "migrate", "deploy"], {
-          env: { DATABASE_URL: env.DATABASE_URL },
-          signal,
-        });
 
         const dinamica = path.join(path.dirname(dump), "traefik", "dynamic");
         await reemplazarConfigTraefik(dinamica, env.TRAEFIK_DYNAMIC_DIR).catch(
@@ -158,9 +165,9 @@ export async function iniciarRestauracion(
           data: { resultado: "exito", finalizadoEn: new Date() },
         });
       } catch (err) {
-        await fallo(err instanceof Error ? err.message : String(err));
+        await fallo(motivoDeFallo(err, signal));
       } finally {
-        await rm(carpeta, { recursive: true, force: true });
+        if (carpeta) await rm(carpeta, { recursive: true, force: true });
         clearTimeout(limite);
         soltarOperacion();
       }

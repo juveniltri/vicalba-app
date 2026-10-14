@@ -1,6 +1,19 @@
 import { prisma } from "@/lib/prisma";
 
 export const LIMITE_MS = 60 * 60 * 1000;
+export const MOTIVO_LIMITE = "Cancelado: superó 60 minutos";
+
+// An aborted child process rejects with a generic AbortError; say why instead.
+export function motivoDeFallo(err: unknown, signal: AbortSignal): string {
+  if (
+    err instanceof Error &&
+    err.name === "AbortError" &&
+    signal.reason === MOTIVO_LIMITE
+  ) {
+    return MOTIVO_LIMITE;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 export class OperacionEnCurso extends Error {
   constructor() {

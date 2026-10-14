@@ -45,7 +45,7 @@ vi.mock("./restic", () => ({
 }));
 vi.mock("./postgres", () => ({ pgDump: m.pgDump }));
 
-import { iniciarCopia } from "./copia";
+import { hacerCopia, iniciarCopia } from "./copia";
 import {
   OperacionEnCurso,
   hayOperacionEnCurso,
@@ -156,6 +156,38 @@ describe("iniciarCopia", () => {
     expect(m.create).toHaveBeenCalledTimes(1);
   });
 
+  it("programada sin configuración válida: deja la fila en error y avisa", async () => {
+    m.cargar.mockRejectedValue(
+      new Error("Backups sin configurar: destino SFTP incompleto"),
+    );
+    await expect(iniciarCopia("programado")).rejects.toThrow(
+      "destino SFTP incompleto",
+    );
+    expect(m.create).toHaveBeenCalledWith({
+      data: {
+        operacion: "copia",
+        origen: "programado",
+        resultado: "error",
+        error: "Backups sin configurar: destino SFTP incompleto",
+        finalizadoEn: expect.any(Date),
+      },
+    });
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "copia",
+      origen: "programado",
+      error: "Backups sin configurar: destino SFTP incompleto",
+    });
+    expect(hayOperacionEnCurso()).toBe(false);
+  });
+
+  it("programada con un fallo que no es Error también lo registra", async () => {
+    m.cargar.mockRejectedValue("clave ilegible");
+    await expect(iniciarCopia("programado")).rejects.toBe("clave ilegible");
+    expect(m.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ error: "clave ilegible" }),
+    });
+  });
+
   it("sin configuración no toma la operación ni crea fila", async () => {
     m.cargar.mockRejectedValue(
       new Error("Backups sin configurar: no hay destino"),
@@ -190,7 +222,9 @@ describe("iniciarCopia", () => {
     m.crearSnapshot.mockImplementation(
       (r: { signal: AbortSignal }) =>
         new Promise((_, rej) =>
-          r.signal.addEventListener("abort", () => rej(new Error("aborted"))),
+          r.signal.addEventListener("abort", () =>
+            rej(new DOMException("This operation was aborted", "AbortError")),
+          ),
         ),
     );
     await iniciarCopia("manual");
@@ -205,5 +239,26 @@ describe("iniciarCopia", () => {
         }),
       }),
     );
+  });
+});
+
+describe("hacerCopia", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
+    m.pgDump.mockResolvedValue(undefined);
+    m.update.mockResolvedValue({});
+    m.crearSnapshot.mockResolvedValue({ snapshotId: "s", bytesAnadidos: 1 });
+  });
+
+  it("sin retención no poda el repositorio (la copia previa a restaurar)", async () => {
+    await hacerCopia(
+      "b1",
+      { clave: "c", destino: { tipo: "s3" } } as never,
+      new AbortController().signal,
+      { retencion: false },
+    );
+    expect(m.crearSnapshot).toHaveBeenCalled();
+    expect(m.retencion).not.toHaveBeenCalled();
   });
 });
