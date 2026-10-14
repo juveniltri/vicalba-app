@@ -29,6 +29,7 @@ export function ejecutar(
       cwd: opciones.cwd,
       signal: opciones.signal,
       env: {
+        NODE_ENV: process.env.NODE_ENV,
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "/tmp",
         ...opciones.env,
