@@ -34,7 +34,9 @@ Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a 
 
 ### 2.2.0
 
-- [ ] **Backups** (ver Backlog).
+- [x] **Backups — fase A** — BD del Panel y config de Traefik a S3/SFTP con restic, copia diaria, restauración desde el Panel y recuperación sin VPS (`docs/recuperacion.md`).
+- [ ] **Backups — fase B (volúmenes)** de los Proyectos.
+- [ ] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración.
 - [ ] **Tests E2E** (ver Técnico).
 - [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
@@ -46,6 +48,7 @@ Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a 
 
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
 - [ ] **2FA (TOTP)** en el login.
+- [ ] **Backups — más adelante**: cambiar la clave de cifrado, varios destinos a la vez, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
 ---

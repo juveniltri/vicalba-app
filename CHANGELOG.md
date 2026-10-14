@@ -5,6 +5,25 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [2.2.0] - AAAA-MM-DD
+
+Copias de seguridad automáticas del Panel.
+
+### Novedades
+
+- **Backups** en Configuración: copia diaria cifrada de la base de datos del Panel y de la
+  configuración de Traefik a un almacenamiento S3 compatible (Backblaze B2, Cloudflare R2,
+  Hetzner, AWS…) o a un servidor SFTP. Se conservan 7 copias diarias y 4 semanales.
+- **Restaurar** una copia desde el Panel, con una copia automática previa para poder deshacerlo.
+- **Kit de recuperación** para reconstruir el Panel en otra VPS (ver `docs/recuperacion.md`).
+- Aviso en el Dashboard y por los canales de notificación si una copia falla.
+
+### Al actualizar
+
+- La migración de base de datos se aplica sola al arrancar el Panel.
+- Los backups vienen desactivados: actívalos en Configuración → Backups y guarda el kit de
+  recuperación **y** la `ENCRYPTION_KEY` del `.env` fuera de la VPS.
+
 ## [2.1.1] - 2026-10-14
 
 Discord vuelve a recibir los avisos de deploy, el disco de la VPS deja de llenarse y las sesiones se cierran al eliminar un usuario o cambiar su contraseña.
