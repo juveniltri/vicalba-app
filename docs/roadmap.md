@@ -20,7 +20,7 @@ Hecho:
 - [x] Dependabot (npm, Actions, Docker; PRs semanales contra `develop`).
 - [x] Release de GitHub automática al subir un tag (`.github/workflows/release.yml`).
 
-Pendiente (revisión del 14/10/2026):
+Hecho tras la revisión del 14/10/2026:
 
 - [x] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
 - [x] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.

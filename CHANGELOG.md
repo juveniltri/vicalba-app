@@ -7,7 +7,7 @@ Correcciones y Seguridad.
 
 ## [2.1.1] - 2026-10-14
 
-Las notificaciones de deploy vuelven a llegar a Discord.
+Discord vuelve a recibir los avisos de deploy, el disco de la VPS deja de llenarse y las sesiones se cierran al eliminar un usuario o cambiar su contraseña.
 
 ### Correcciones
 
