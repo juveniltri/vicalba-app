@@ -183,6 +183,38 @@ describe("LogsModal — toggle timestamps", () => {
     ).toBeInTheDocument();
   });
 
+  it("filtra por nivel las líneas JSON que Docker prefija con su marca de tiempo", () => {
+    const lines: LogLine[] = [
+      {
+        servicio: "app",
+        line: `2026-10-14T18:31:32.144219483Z ${JSON.stringify({ level: 50, msg: "error msg", time: 0 })}`,
+      },
+      {
+        servicio: "app",
+        line: `2026-10-14T18:31:33.144219483Z ${JSON.stringify({ level: 30, msg: "info msg", time: 0 })}`,
+      },
+    ];
+    setup(lines);
+    render(<LogsModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /Filtro ERR/ }));
+    expect(screen.getByText("error msg")).toBeInTheDocument();
+    expect(screen.queryByText("info msg")).not.toBeInTheDocument();
+  });
+
+  it("en las líneas de texto usa la hora de Docker y no la repite en el mensaje", () => {
+    setup([
+      {
+        servicio: "app",
+        line: "2026-10-14T18:31:32.144219483Z servidor listo",
+      },
+    ]);
+    render(<LogsModal {...defaultProps} />);
+    expect(screen.getByText("18:31:32")).toBeInTheDocument();
+    expect(screen.getByText("servidor listo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /toggle timestamps/i }));
+    expect(screen.queryByText(/18:31:32/)).not.toBeInTheDocument();
+  });
+
   it("muestra el timestamp de una línea JSON cuando TS está activo", () => {
     const ts = new Date("2024-01-15T14:32:01.000Z").getTime();
     const lines: LogLine[] = [

@@ -51,6 +51,13 @@ const PAGINAS: Opcion[] = [
     detalle: "página",
     buscable: "configuración configuracion notificaciones credenciales",
   },
+  {
+    id: "pag-guia",
+    href: "/guia",
+    etiqueta: "Guía",
+    detalle: "página",
+    buscable: "guía guia ayuda manual documentación",
+  },
 ];
 
 export function CommandPalette({ proyectos }: { proyectos: ProyectoIndice[] }) {

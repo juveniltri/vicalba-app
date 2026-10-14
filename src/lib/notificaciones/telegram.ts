@@ -11,8 +11,9 @@ export async function enviarTelegram(
   const emoji = { exito: "✅", error: "❌", cancelado: "⏱️" }[
     payload.resultado
   ];
+  const titulo = payload.evento === "backup" ? "Backup" : "Deploy";
   const text = [
-    `${emoji} Deploy ${payload.resultado} — ${payload.proyectoNombre}`,
+    `${emoji} ${titulo} ${payload.resultado} — ${payload.proyectoNombre}`,
     `Rama: ${payload.rama}`,
     `SHA: ${payload.sha ?? "—"}`,
     "",

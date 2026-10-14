@@ -44,15 +44,16 @@ model Cliente {
 }
 
 model Credencial {
-  id                  String     @id @default(cuid())
-  nombre              String     @unique
-  clavePublica        String
-  clavePrivadaCifrada String
-  iv                  String
-  authTag             String
-  proyectos           Proyecto[]
-  creadoEn            DateTime   @default(now())
-  actualizadoEn       DateTime   @updatedAt
+  id                    String                @id @default(cuid())
+  nombre                String                @unique
+  clavePublica          String
+  clavePrivadaCifrada   String
+  iv                    String
+  authTag               String
+  proyectos             Proyecto[]
+  configuracionesBackup ConfiguracionBackup[]
+  creadoEn              DateTime              @default(now())
+  actualizadoEn         DateTime              @updatedAt
 }
 
 model Proyecto {
@@ -171,4 +172,70 @@ model ConfiguracionNotificacion {
   emailUltimoError      String?
   telegramUltimoEnvioEn DateTime?
   telegramUltimoError   String?
+}
+
+enum DestinoBackup {
+  s3
+  sftp
+}
+
+enum OperacionBackup {
+  copia
+  restauracion
+}
+
+enum OrigenBackup {
+  programado
+  manual
+  antes_de_restaurar
+}
+
+enum ResultadoBackup {
+  en_curso
+  exito
+  error
+}
+
+model ConfiguracionBackup {
+  id          String         @id @default("default")
+  habilitado  Boolean        @default(false)
+  // 0-23, Europe/Madrid
+  hora        Int            @default(3)
+  tipoDestino DestinoBackup?
+
+  s3Endpoint         String?
+  s3Bucket           String?
+  s3Region           String?
+  s3Prefijo          String?
+  s3AccessKeyId      String?
+  s3SecretKeyCifrada String?
+  s3SecretKeyIv      String?
+  s3SecretKeyTag     String?
+
+  sftpHost         String?
+  sftpPuerto       Int         @default(22)
+  sftpUsuario      String?
+  sftpRuta         String?
+  sftpCredencialId String?
+  sftpCredencial   Credencial? @relation(fields: [sftpCredencialId], references: [id], onDelete: SetNull)
+
+  claveCifrada              String?
+  claveIv                   String?
+  claveTag                  String?
+  claveConfirmadaEn         DateTime?
+  repositorioInicializadoEn DateTime?
+}
+
+model Backup {
+  id            String          @id @default(cuid())
+  operacion     OperacionBackup @default(copia)
+  origen        OrigenBackup
+  resultado     ResultadoBackup @default(en_curso)
+  iniciadoEn    DateTime        @default(now())
+  finalizadoEn  DateTime?
+  snapshotId    String?
+  bytesAnadidos BigInt?
+  error         String?         @db.Text
+
+  @@index([iniciadoEn])
 }

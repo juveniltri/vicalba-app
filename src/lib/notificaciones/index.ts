@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 const log = logger.child({ module: "notificaciones" });
 
 export interface PayloadNotificacion {
+  evento?: "deploy" | "backup";
   proyectoNombre: string;
   clienteSlug: string;
   rama: string;
@@ -69,6 +70,31 @@ function resolverConfigEmail(config: ConfigNotificacion): ConfigEmailResuelta {
       destinatario,
     },
   };
+}
+
+const ORIGEN_BACKUP = {
+  programado: "programada",
+  manual: "manual",
+  antes_de_restaurar: "antes de restaurar",
+} as const;
+
+export async function notificarFalloBackup(datos: {
+  operacion: "copia" | "restauracion";
+  origen: keyof typeof ORIGEN_BACKUP;
+  error: string;
+}): Promise<void> {
+  await enviarNotificacion({
+    evento: "backup",
+    proyectoNombre: "panel",
+    clienteSlug: "backups",
+    rama:
+      datos.operacion === "copia"
+        ? `copia ${ORIGEN_BACKUP[datos.origen]}`
+        : "restauración",
+    sha: null,
+    resultado: "error",
+    output: datos.error,
+  });
 }
 
 export async function enviarEmailDePrueba(): Promise<

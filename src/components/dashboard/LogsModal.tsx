@@ -8,9 +8,15 @@ type Nivel = "ALL" | "ERR" | "WARN" | "INFO" | "DEBUG";
 
 type ParsedLine = { level: number | null; ts: string | null; msg: string };
 
+// The logs route asks Docker for timestamps, so every line starts with one.
+const MARCA_DOCKER = /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2})[.\d]*Z ([\s\S]*)$/;
+
 function parseLine(raw: string): ParsedLine {
+  const docker = MARCA_DOCKER.exec(raw);
+  const tsDocker = docker ? docker[1]! : null;
+  const linea = docker ? docker[2]! : raw;
   try {
-    const obj = JSON.parse(raw) as {
+    const obj = JSON.parse(linea) as {
       level?: unknown;
       time?: unknown;
       msg?: unknown;
@@ -20,11 +26,11 @@ function parseLine(raw: string): ParsedLine {
       ts:
         typeof obj.time === "number"
           ? new Date(obj.time).toISOString().substring(11, 19)
-          : null,
-      msg: typeof obj.msg === "string" ? obj.msg : raw,
+          : tsDocker,
+      msg: typeof obj.msg === "string" ? obj.msg : linea,
     };
   } catch {
-    return { level: null, ts: null, msg: raw };
+    return { level: null, ts: tsDocker, msg: linea };
   }
 }
 

@@ -71,6 +71,13 @@ describe("CommandPalette", () => {
     expect(opciones[0]).toHaveTextContent("acme / web");
   });
 
+  it("encuentra la guía buscando «ayuda»", async () => {
+    render(<CommandPalette proyectos={proyectos} />);
+    const input = await abrir();
+    await userEvent.type(input, "ayuda");
+    expect(screen.getByRole("option", { name: /guía/i })).toBeInTheDocument();
+  });
+
   it("muestra también las páginas del panel", async () => {
     render(<CommandPalette proyectos={proyectos} />);
     const input = await abrir();

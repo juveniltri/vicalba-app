@@ -23,6 +23,17 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 
 ---
 
+## Operación al desplegar la 2.2.0 (backups)
+
+1. `git pull && docker compose up -d --build panel` — la migración de backups se aplica sola.
+2. En **Configuración → Backups**, configurar el destino y «Probar y guardar».
+3. Guardar el **kit de recuperación** y la `ENCRYPTION_KEY` del `.env` fuera de la VPS (gestor de
+   contraseñas) y confirmar en el panel.
+4. Activar la copia diaria; comprobar al día siguiente en el Historial que salió correcta.
+5. Recomendado: un simulacro de recuperación (`docs/recuperacion.md`) en una VPS de usar y tirar.
+
+---
+
 ## Operación al desplegar la 2.1.1 (espacio en disco)
 
 La 2.1.1 limita los logs (3 × 10 MB por contenedor) y limpia imágenes y caché tras cada deploy,

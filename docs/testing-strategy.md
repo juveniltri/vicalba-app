@@ -22,6 +22,7 @@ src/lib/schemas/          ← schemas Zod compartidos (validaciones del dominio)
 src/lib/traefik/          ← generación de la config dinámica de Traefik
 src/lib/ssl/              ← lectura de acme.json (certificados y su caché)
 src/lib/notificaciones/   ← canales webhook / email / Telegram
+src/lib/backups/          ← copias, restauración y programador (restic, pg_dump)
 src/lib/github/ · src/lib/system/ · src/lib/formatHace.ts
 src/lib/changelog.ts      ← interpretación de CHANGELOG.md (página Novedades)
 src/lib/rate-limit.ts     ← límite de intentos de login

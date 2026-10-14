@@ -27,4 +27,18 @@ export async function register() {
   } catch (err) {
     log.error({ err }, "No se pudieron cerrar los deploys interrumpidos");
   }
+
+  const { limpiarBackupsHuerfanos } = await import("@/lib/backups/operacion");
+  const { iniciarProgramador } = await import("@/lib/backups/programador");
+  try {
+    const huerfanos = await limpiarBackupsHuerfanos(
+      "Interrumpido por reinicio del panel",
+    );
+    if (huerfanos > 0) {
+      log.warn({ huerfanos }, "Copias de seguridad interrumpidas cerradas");
+    }
+  } catch (err) {
+    log.error({ err }, "No se pudieron cerrar las copias interrumpidas");
+  }
+  iniciarProgramador();
 }

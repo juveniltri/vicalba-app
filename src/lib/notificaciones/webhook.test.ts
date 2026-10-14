@@ -222,3 +222,34 @@ it("a Slack, sin commit conocido muestra un guion", async () => {
   });
   expect(cuerpoEnviado().text).toContain("Commit: —");
 });
+
+describe("enviarWebhook — avisos de backup", () => {
+  const backup = {
+    ...payload,
+    evento: "backup" as const,
+    proyectoNombre: "panel",
+    clienteSlug: "backups",
+    resultado: "error" as const,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true });
+  });
+
+  it("titula «Backup» el embed de Discord", async () => {
+    await enviarWebhook("https://discord.com/api/webhooks/1/t", backup);
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.embeds[0].title).toBe("❌ Backup error — backups / panel");
+  });
+
+  it("titula «Backup» el texto de Slack", async () => {
+    await enviarWebhook("https://hooks.slack.com/services/T/B/secret", backup);
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.text.split("\n")[0]).toBe("❌ Backup error — backups / panel");
+  });
+});

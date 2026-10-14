@@ -23,7 +23,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apk add --no-cache libc6-compat git openssh-client docker-cli docker-cli-compose && \
+RUN apk add --no-cache libc6-compat git openssh-client docker-cli docker-cli-compose restic postgresql16-client && \
     addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs -G nodejs
 
 COPY --from=builder --chown=nextjs:nodejs /app/package*.json ./
@@ -33,6 +33,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
 COPY --from=builder --chown=nextjs:nodejs /app/CHANGELOG.md ./
+COPY --from=builder --chown=nextjs:nodejs /app/docs/guia-usuario.md ./docs/guia-usuario.md
 
 USER nextjs
 

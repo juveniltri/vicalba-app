@@ -103,4 +103,49 @@ describe("EstadoVps", () => {
       "/novedades",
     );
   });
+
+  it("muestra cuándo fue la última copia correcta", () => {
+    render(
+      <EstadoVps
+        checks={ok}
+        version="2.2.0"
+        certificados={[]}
+        backups={{
+          habilitado: true,
+          ultimaCorrecta: new Date(Date.now() - 3 * 3_600_000),
+        }}
+      />,
+    );
+    expect(screen.getByText("Backups").parentElement).toHaveTextContent(
+      "hace 3h",
+    );
+  });
+
+  it("backups habilitados sin ninguna copia correcta", () => {
+    render(
+      <EstadoVps
+        checks={ok}
+        version="2.2.0"
+        certificados={[]}
+        backups={{ habilitado: true, ultimaCorrecta: null }}
+      />,
+    );
+    expect(screen.getByText("Backups").parentElement).toHaveTextContent(
+      "ninguna correcta",
+    );
+  });
+
+  it("backups desactivados", () => {
+    render(
+      <EstadoVps
+        checks={ok}
+        version="2.2.0"
+        certificados={[]}
+        backups={{ habilitado: false, ultimaCorrecta: null }}
+      />,
+    );
+    expect(screen.getByText("Backups").parentElement).toHaveTextContent(
+      "Desactivados",
+    );
+  });
 });

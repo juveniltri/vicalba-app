@@ -14,6 +14,7 @@ import {
   IconUsers,
   IconGear,
   IconClock,
+  IconBook,
 } from "@/components/ui/icons";
 
 const nav = [
@@ -27,6 +28,7 @@ const nav = [
     exact: false,
   },
   { href: "/novedades", label: "Novedades", icon: IconClock, exact: false },
+  { href: "/guia", label: "Guía", icon: IconBook, exact: false },
 ];
 
 function iniciales(texto: string): string {
@@ -61,7 +63,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex flex-col gap-6 bg-sidebar border-b md:border-b-0 md:border-r border-border px-3.5 py-4 md:py-5 min-h-0 md:h-screen md:overflow-y-auto">
+    <aside className="print:hidden flex flex-col gap-6 bg-sidebar border-b md:border-b-0 md:border-r border-border px-3.5 py-4 md:py-5 min-h-0 md:h-screen md:overflow-y-auto">
       <div className="flex items-center gap-2.5 px-2">
         <span className="font-display text-[17px] font-bold -tracking-[0.02em]">
           vicalba

@@ -2,6 +2,7 @@
 
 import { signOut } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
+import type { DestinoInput } from "@/server/routers/backups";
 
 function parseTRPCError(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) return fallback;
@@ -474,5 +475,73 @@ export async function guardarTelegramAction(
     });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al guardar Telegram") };
+  }
+}
+
+export async function guardarDestinoBackupAction(input: DestinoInput) {
+  try {
+    const api = await createServerCaller();
+    return await api.backups.guardarDestino(input);
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo guardar el destino") };
+  }
+}
+
+export async function obtenerKitBackupAction() {
+  try {
+    const api = await createServerCaller();
+    return await api.backups.obtenerKit();
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo obtener el kit") };
+  }
+}
+
+export async function confirmarClaveBackupAction() {
+  try {
+    const api = await createServerCaller();
+    await api.backups.confirmarClave();
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo confirmar") };
+  }
+}
+
+export async function guardarProgramacionBackupAction(
+  habilitado: boolean,
+  hora: number,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.backups.guardarProgramacion({ habilitado, hora });
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "No se pudo guardar la programación"),
+    };
+  }
+}
+
+export async function lanzarCopiaBackupAction() {
+  try {
+    const api = await createServerCaller();
+    return await api.backups.lanzarCopia();
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo lanzar la copia") };
+  }
+}
+
+export async function restaurarBackupAction(
+  snapshotId: string,
+  confirmacion: string,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.backups.restaurar({
+      snapshotId,
+      // Zod in the router rejects anything other than "RESTAURAR".
+      confirmacion: confirmacion as "RESTAURAR",
+    });
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "No se pudo iniciar la restauración"),
+    };
   }
 }
