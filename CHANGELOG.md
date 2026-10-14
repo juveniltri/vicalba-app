@@ -21,6 +21,8 @@ Las notificaciones de deploy vuelven a llegar a Discord.
 - Los logs de los contenedores ya no crecen sin límite hasta **llenar el disco** de la VPS: cada
   contenedor guarda como máximo 3 ficheros de 10 MB. Se aplica a cada proyecto en su próximo
   deploy; si un compose define su propio `logging`, se respeta.
+- Cada deploy correcto **libera espacio**: borra las imágenes que ya no usa ningún contenedor y la
+  caché de build que lleva más de 7 días sin usarse. Hacer rollback sigue funcionando igual.
 
 ### Seguridad
 

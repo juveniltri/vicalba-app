@@ -318,6 +318,25 @@ function spawnDockerCompose(
   });
 }
 
+// Every build leaves the previous image untagged and adds build cache; without
+// pruning the VPS disk fills up. Rollback rebuilds from the commit, so the old
+// images are not needed; cache used in the last week is kept for fast builds.
+async function limpiarDisco(onLog?: (line: string) => void): Promise<void> {
+  onLog?.("→ Liberando espacio (imágenes sin uso y caché de build antigua)...");
+  try {
+    await execFileAsync("docker", ["image", "prune", "-f"]);
+    await execFileAsync("docker", [
+      "builder",
+      "prune",
+      "-f",
+      "--filter",
+      "until=168h",
+    ]);
+  } catch (err) {
+    log.warn({ err }, "No se pudo liberar espacio tras el deploy");
+  }
+}
+
 export async function deployProyecto(params: {
   tipo: string;
   repoUrl?: string | null;
@@ -612,6 +631,8 @@ export async function deployProyecto(params: {
         servicioObjetivo,
       );
     }
+
+    await limpiarDisco(onLog);
 
     onLog?.("✓ Deploy completado");
     return { output, sha: capturedSha };

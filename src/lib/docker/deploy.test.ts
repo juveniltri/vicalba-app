@@ -873,3 +873,59 @@ describe("deployProyecto — cancelación", () => {
     );
   });
 });
+
+describe("deployProyecto — limpieza de disco", () => {
+  const llamadasDocker = () =>
+    mockExecFile.mock.calls
+      .filter(([cmd]) => cmd === "docker")
+      .map(([, args]) => (args as string[]).join(" "));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("tras un deploy correcto borra las imágenes sin uso y la caché de build de más de 7 días", async () => {
+    await deployProyecto(baseParams);
+
+    expect(llamadasDocker()).toEqual([
+      "image prune -f",
+      "builder prune -f --filter until=168h",
+    ]);
+  });
+
+  it("un fallo al limpiar no hace fallar el deploy", async () => {
+    mockExecFile.mockImplementation(
+      (
+        cmd: string,
+        _args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) =>
+        cmd === "docker"
+          ? cb(new Error("daemon ocupado"), "", "")
+          : cb(null, "", ""),
+    );
+
+    await expect(deployProyecto(baseParams)).resolves.toMatchObject({
+      sha: expect.any(String),
+    });
+  });
+
+  it("no limpia si el deploy falla", async () => {
+    mockSpawn.mockImplementation(() => makeSpawnResult(1));
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow();
+    expect(llamadasDocker()).toEqual([]);
+  });
+});
