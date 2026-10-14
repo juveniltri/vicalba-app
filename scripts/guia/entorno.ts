@@ -135,18 +135,6 @@ export function prepararVolumenes(): void {
   ]);
 }
 
-// Locally Traefik has no certificates; an empty store reads as "vigentes"
-// instead of an error on the Dashboard.
-export function prepararCertificadosDemo(): void {
-  docker([
-    "exec",
-    "traefik",
-    "sh",
-    "-c",
-    `echo '{"letsencrypt":{"Certificates":[]}}' > /letsencrypt/acme.json && chmod 600 /letsencrypt/acme.json`,
-  ]);
-}
-
 export function generarClaveSsh(): { publica: string; privada: string } {
   const fichero = path.join(TMP, "sftp_ed25519");
   rmSync(fichero, { force: true });

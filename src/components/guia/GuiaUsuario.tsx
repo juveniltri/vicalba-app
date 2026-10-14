@@ -47,7 +47,7 @@ export function GuiaUsuario({ markdown }: { markdown: string }) {
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="flex flex-col gap-1.5 pl-5 list-decimal marker:text-text-muted font-body text-[13.5px] leading-relaxed text-text-secondary">
+      <ol className="flex flex-col gap-1.5 pl-7 list-decimal marker:text-text-muted font-body text-[13.5px] leading-relaxed text-text-secondary">
         {children}
       </ol>
     ),
@@ -87,7 +87,7 @@ export function GuiaUsuario({ markdown }: { markdown: string }) {
             src={url}
             alt={alt ?? ""}
             loading="lazy"
-            className="w-full rounded-[var(--radius-md)] border border-border"
+            className="max-w-full h-auto rounded-[var(--radius-md)] border border-border"
           />
         </a>
       );

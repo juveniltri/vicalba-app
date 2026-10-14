@@ -81,6 +81,7 @@ const PASOS: Paso[] = [
     ruta: () => "/proyectos",
     preparar: async (page) => {
       await page.getByRole("button", { name: "Nuevo cliente" }).click();
+      await page.getByLabel("Slug").fill("panaderia-sol");
       await page.getByLabel("Nombre").fill("Panadería Sol");
     },
     elemento: (page) => caja(page, "Nuevo cliente"),
