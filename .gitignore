@@ -74,3 +74,6 @@ synth-entry.ts
 .design-sync/conventions.md
 .design-sync/NOTES.md
 .design-sync/previews/
+
+# npm run guia: generated .env and SSH keys
+scripts/guia/.tmp/
