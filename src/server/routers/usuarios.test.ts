@@ -290,10 +290,11 @@ describe("usuarios.cambiarPassword", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
   });
 
-  it("hashea la nueva contraseña y actualiza el usuario", async () => {
+  it("hashea la nueva contraseña y cierra las sesiones abiertas del usuario", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
     vi.mocked(prisma.user.update).mockResolvedValue(mockUser as never);
 
+    const antes = Date.now();
     const ctx = await createContext();
     await createCaller(ctx).usuarios.cambiarPassword({
       id: "u1",
@@ -303,8 +304,15 @@ describe("usuarios.cambiarPassword", () => {
     expect(bcrypt.hash).toHaveBeenCalledWith("newpassword123", 12);
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
-      data: { passwordHash: "hashed-password" },
+      data: {
+        passwordHash: "hashed-password",
+        sesionesDesde: expect.any(Date),
+      },
     });
+    const { data } = vi.mocked(prisma.user.update).mock.calls[0]![0];
+    expect((data.sesionesDesde as Date).getTime()).toBeGreaterThanOrEqual(
+      antes,
+    );
   });
 
   it("lanza NOT_FOUND si el usuario no existe", async () => {

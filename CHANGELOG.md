@@ -18,6 +18,17 @@ Las notificaciones de deploy vuelven a llegar a Discord.
 - Si un webhook rechaza una notificación, Configuración muestra el motivo que da el destino y no
   solo el código de error.
 
+### Seguridad
+
+- Al **eliminar un usuario** o **cambiarle la contraseña**, sus sesiones abiertas se cierran al
+  momento. Antes seguían funcionando hasta que caducaban, hasta 30 días después.
+- La sesión caduca tras **7 días** sin usar el panel (antes, 30).
+
+### Al actualizar
+
+- La migración de base de datos se aplica sola al arrancar el panel.
+- Todos los usuarios tendrán que volver a iniciar sesión una vez.
+
 ## [2.1.0] - 2026-10-14
 
 Control de los deploys, estado de Traefik en el Dashboard, logs en su propia pestaña y varias mejoras de seguridad.
