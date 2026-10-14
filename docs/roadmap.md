@@ -38,7 +38,9 @@ Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a 
 - [ ] **Tests E2E** (ver Técnico).
 - [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
-- [ ] Revisar los primeros PRs de Dependabot.
+- [ ] **Cobertura según la regla 100/80** — los umbrales de `vitest.config.ts` son una lista de ficheros; `src/lib/sesion.ts` y `src/lib/compose` (93 % de ramas por `puertoContenedorDe`) no están. Completar tests y añadirlos.
+- [ ] **Scripts muertos** — `test:integration` apunta a un `vitest.integration.config.ts` que no existe y `test:e2e` a Playwright, sin instalar. Se resuelve con los E2E.
+- [ ] **Fuentes locales** — `next/font/google` descarga las fuentes en cada build; si Google falla, falla el build (pasó en el CI del #47) y también el de la imagen en la VPS. Pasar a `next/font/local`.
 
 ### Más adelante
 
