@@ -9,13 +9,14 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 Hecho el 14/10/2026: release **2.1.0** (tag `v2.1.0` sobre `755ec6c`, Release de GitHub marcada como última) y release retroactiva **2.0.1** (tag `v2.0.1` sobre `54834b0`, el merge del hotfix #40).
 
-Pendiente, en este orden:
+En la **2.1.1** (`release/2.1.1`): notificaciones a Discord y Slack con su formato, `.gitattributes` con LF en todo el repo, Dependabot (npm, Actions, Docker; PRs semanales contra `develop`) y Releases automáticas al subir un tag (`.github/workflows/release.yml`, ver «Versiones y changelog» en `CLAUDE.md`).
 
-1. **Finales de línea (`.gitattributes`)** — en Windows (`core.autocrlf=true`, sin `.gitattributes`) git marca ficheros como modificados sin ningún cambio de contenido y bloquea el cambio de rama. Añadir `.gitattributes` con `* text=auto eol=lf` y renormalizar (`git add --renormalize .`) en un PR propio. Mientras tanto, no usar `checkout -f`: desharía cambios locales reales.
-2. **Releases automáticas** y **Dependabot** (ver Técnico).
-3. **Diseñar los backups** como base de la v2.2, junto con los tests E2E.
+Pendiente:
 
-Al publicar una Release: notas = sección de la versión en `CHANGELOG.md` con las líneas partidas unidas (GitHub muestra cada salto de línea) + bloque «Al actualizar» + pie con el PR técnico y el enlace al CHANGELOG del tag. Si el tag apunta a un commit antiguo, `gh release create --target` falla pidiendo el permiso `workflow` del token: crear el tag con `git tag` + `git push origin <tag>` y después `gh release create <tag> --verify-tag`.
+1. **Diseñar los backups** como base de la v2.2, junto con los tests E2E.
+2. Revisar los primeros PRs de Dependabot (el lunes): los menores de npm llegan agrupados en uno.
+
+Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
 
 ---
 
@@ -35,8 +36,6 @@ Al publicar una Release: notas = sección de la versión en `CHANGELOG.md` con l
 
 ### Técnico / Refactor
 
-- **Releases automáticas** — workflow que, al subir un tag `vX.Y.Z`, cree la Release de GitHub con la sección de esa versión de `CHANGELOG.md`. El proceso queda en: changelog → `npm version` → tag.
-- **Dependabot** — no hay nada que avise de dependencias desactualizadas o vulnerables aparte del `npm audit` del CI. Configurar para npm, Docker y GitHub Actions.
 - **Tests E2E** — `CLAUDE.md` habla de Playwright + axe-core, pero no hay configuración, ni tests, ni la dependencia. Base mínima: login, Dashboard, detalle de proyecto, cancelar deploy, Novedades.
 
 ---

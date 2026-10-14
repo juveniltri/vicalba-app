@@ -352,6 +352,7 @@ Ver `CONTEXT.md` para el glosario completo.
     - Sentry en servidor (ver Observabilidad), avisos de `src/lib` por Pino, Telegram con ⏱️ para cancelado
     - Novedades: `CHANGELOG.md` + página `/novedades` + aviso en el Dashboard (ver «Versiones y changelog»)
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
+  - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; `.gitattributes` (LF en todo el repo); Dependabot (`.github/dependabot.yml`); Release automática al subir un tag (`release.yml` + `notasDeRelease`)
 - **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** ver «Siguiente sesión» en `docs/roadmap.md` (`.gitattributes`, releases automáticas + Dependabot, y diseño de backups + E2E para la v2.2). Publicadas: v2.1.0 y v2.0.1
+- **Próximo hito:** release 2.1.1 a master (tag `v2.1.1`, primera Release automática); después, diseño de backups + E2E para la v2.2 (ver `docs/roadmap.md`)
