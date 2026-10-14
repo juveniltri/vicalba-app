@@ -5,12 +5,17 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ---
 
-## Siguiente sesión (acordado el 14/10/2026)
+## Siguiente sesión
 
-1. **Cerrar la release 2.1.0** — mergear el PR #43 (`develop` → `master`); después, tag `v2.1.0` sobre el commit de merge en `master` y Release de GitHub con la sección `2.1.0` de `CHANGELOG.md` (líneas partidas unidas en una sola: GitHub muestra cada salto de línea) más un bloque «Al actualizar» (migración automática, `SENTRY_DSN` opcional, Node 22 en el próximo deploy).
-2. **Decidir:** tag y Release retroactivos `v2.0.1` sobre `54834b0` (merge del hotfix #40 en `master`), para que GitHub coincida con la página Novedades.
-3. **Releases automáticas** y **Dependabot** (ver Técnico).
-4. **Diseñar los backups** con el usuario como base de la v2.2, junto con los tests E2E.
+Hecho el 14/10/2026: release **2.1.0** (tag `v2.1.0` sobre `755ec6c`, Release de GitHub marcada como última) y release retroactiva **2.0.1** (tag `v2.0.1` sobre `54834b0`, el merge del hotfix #40).
+
+Pendiente, en este orden:
+
+1. **Finales de línea (`.gitattributes`)** — en Windows (`core.autocrlf=true`, sin `.gitattributes`) git marca ficheros como modificados sin ningún cambio de contenido y bloquea el cambio de rama. Añadir `.gitattributes` con `* text=auto eol=lf` y renormalizar (`git add --renormalize .`) en un PR propio. Mientras tanto, no usar `checkout -f`: desharía cambios locales reales.
+2. **Releases automáticas** y **Dependabot** (ver Técnico).
+3. **Diseñar los backups** como base de la v2.2, junto con los tests E2E.
+
+Al publicar una Release: notas = sección de la versión en `CHANGELOG.md` con las líneas partidas unidas (GitHub muestra cada salto de línea) + bloque «Al actualizar» + pie con el PR técnico y el enlace al CHANGELOG del tag. Si el tag apunta a un commit antiguo, `gh release create --target` falla pidiendo el permiso `workflow` del token: crear el tag con `git tag` + `git push origin <tag>` y después `gh release create <tag> --verify-tag`.
 
 ---
 

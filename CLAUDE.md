@@ -350,4 +350,4 @@ Ver `CONTEXT.md` para el glosario completo.
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
 - **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** merge de `feature/v2.1` → develop y release 2.1.0 a master (tag `v2.1.0`); después, backups (ver `docs/roadmap.md`)
+- **Próximo hito:** ver «Siguiente sesión» en `docs/roadmap.md` (`.gitattributes`, releases automáticas + Dependabot, y diseño de backups + E2E para la v2.2). Publicadas: v2.1.0 y v2.0.1
