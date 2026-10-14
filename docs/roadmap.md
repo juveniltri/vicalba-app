@@ -9,14 +9,42 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 Hecho el 14/10/2026: release **2.1.0** (tag `v2.1.0` sobre `755ec6c`, Release de GitHub marcada como última) y release retroactiva **2.0.1** (tag `v2.0.1` sobre `54834b0`, el merge del hotfix #40).
 
-En la **2.1.1** (`release/2.1.1`): notificaciones a Discord y Slack con su formato, `.gitattributes` con LF en todo el repo, Dependabot (npm, Actions, Docker; PRs semanales contra `develop`) y Releases automáticas al subir un tag (`.github/workflows/release.yml`, ver «Versiones y changelog» en `CLAUDE.md`).
-
-Pendiente:
-
-1. **Diseñar los backups** como base de la v2.2, junto con los tests E2E.
-2. Revisar los primeros PRs de Dependabot (el lunes): los menores de npm llegan agrupados en uno.
-
 Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
+
+### 2.1.1 — `release/2.1.1`, PR #46
+
+Hecho:
+
+- [x] Notificaciones a Discord (embed) y Slack (`{ text }`), con el motivo del rechazo en el error.
+- [x] `.gitattributes` con LF en todo el repo.
+- [x] Dependabot (npm, Actions, Docker; PRs semanales contra `develop`).
+- [x] Release de GitHub automática al subir un tag (`.github/workflows/release.yml`).
+
+Pendiente (revisión del 14/10/2026):
+
+- [ ] **Sesiones que sobreviven al usuario (seguridad)** — la sesión es un JWT de 30 días que nunca se contrasta con la BD: un usuario borrado o con la contraseña cambiada sigue entrando hasta que caduca. Comprobar en cada petición que el usuario existe y que el token es posterior al último cambio de contraseña; `maxAge` más corto.
+- [ ] **Rotación de logs de contenedores** — ni los composes generados ni el daemon limitan los logs de Docker; un contenedor ruidoso llena el disco de la VPS. `logging` con `max-size`/`max-file` en los composes generados + `daemon.json` documentado para los compose desde repo.
+- [ ] **Limpieza de imágenes tras el deploy** — cada build deja imágenes y caché de build; no hay ningún `prune`. Limpiar tras un deploy correcto sin romper el rollback.
+- [ ] **Prisma alineado** — CLI 7.10 y `@prisma/client` 7.8.
+- [ ] **Dependencias menores al día** (tRPC, Zod, Sentry, nodemailer, dockerode, pg, pino, Tailwind) + `npm audit fix` (`@vitest/mocker`).
+- [ ] **Healthcheck del contenedor del panel** en `docker-compose.yml` sobre `/api/health`.
+- [ ] **CLAUDE.md al día** — dice Next.js 15 (es 16) y `main` (es `master`).
+
+Tras el merge: tag `v2.1.1` (primera Release automática) y merge de `master` a `develop` (cierra el #45).
+
+### 2.2.0
+
+- [ ] **Backups** (ver Backlog).
+- [ ] **Tests E2E** (ver Técnico).
+- [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
+- [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
+- [ ] Revisar los primeros PRs de Dependabot.
+
+### Más adelante
+
+- [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
+- [ ] **2FA (TOTP)** en el login.
+- [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
 ---
 
@@ -30,7 +58,7 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 
 ### Features
 
-- **Backups (siguiente prioridad tras v2.1)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
+- **Backups (v2.2)** — hoy no hay ninguna copia: ni de la BD del panel (proyectos, variables cifradas, credenciales SSH) ni de los volúmenes de los clientes. `pg_dump` programado + volúmenes, con retención y envío fuera de la VPS. Decidir antes qué se guarda, dónde y cada cuánto.
 - **Secciones Clientes y Proxy en Configuración** — aparecían en el mockup; todavía no hay pantallas detrás.
 - **Documentación OpenAPI** — ver «Decisiones pendientes» en `docs/notas-pendientes.md` (alcance: solo REST o también tRPC).
 
