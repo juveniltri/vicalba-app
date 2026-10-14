@@ -52,6 +52,16 @@ export function parsearChangelog(md: string): Version[] {
   return versiones;
 }
 
+// GitHub renders a line break inside a bullet as a hard break, so each entry
+// goes out on a single line, as the parser already joined it.
+export function notasDeRelease(version: Version): string {
+  const bloques = version.resumen ? [version.resumen] : [];
+  for (const { titulo, entradas } of version.apartados) {
+    bloques.push(`### ${titulo}`, entradas.map((e) => `- ${e}`).join("\n"));
+  }
+  return `${bloques.join("\n\n")}\n`;
+}
+
 // CHANGELOG.md is copied into the panel image (Dockerfile + .dockerignore
 // exception); if it is missing the panel just shows no history.
 export async function leerChangelog(): Promise<Version[]> {

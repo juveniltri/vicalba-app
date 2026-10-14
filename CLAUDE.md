@@ -45,8 +45,12 @@ Dashboard (`src/lib/changelog.ts` lo interpreta). En cada release, antes del PR 
 1. Añadir arriba la entrada `## [X.Y.Z] - AAAA-MM-DD` con un resumen de una línea y los apartados
    `### Novedades`, `### Correcciones`, `### Seguridad`. Redactada para quien usa el panel, no
    copiando commits (el borrador sale de `git log` de los `feat:`/`fix:` desde el último tag).
+   Si actualizar exige algo (migración, variable nueva en `.env`), añadir `### Al actualizar`.
 2. Subir la versión: `npm version X.Y.Z --no-git-tag-version` (package.json + lock).
-3. Tras el merge a `master`, crear el tag `vX.Y.Z`.
+3. Tras el merge a `master`, crear el tag `vX.Y.Z` sobre el merge y subirlo
+   (`git tag vX.Y.Z && git push origin vX.Y.Z`). El workflow `release.yml` crea la Release
+   de GitHub con esa sección del CHANGELOG (`scripts/notas-release.mjs`) y el PR del merge;
+   falla si el tag no coincide con `package.json`.
 
 El fichero entra en la imagen por la excepción `!CHANGELOG.md` de `.dockerignore` y su `COPY`
 en el `Dockerfile`; si falta, Novedades sale vacía pero el panel funciona.

@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release desde CHANGELOG.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # All tags, to know whether this one is the newest.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Comprobar la versión de package.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PAQUETE="$(node -p 'require("./package.json").version')"
+          if [ "$VERSION" != "$PAQUETE" ]; then
+            echo "::error::El tag $GITHUB_REF_NAME no coincide con package.json ($PAQUETE)"
+            exit 1
+          fi
+
+      - name: Notas de la versión
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/notas-release.mjs "${GITHUB_REF_NAME#v}" > notas.md
+
+          PR="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')"
+          CHANGELOG="[\`CHANGELOG.md\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md)"
+          {
+            echo
+            if [ -n "$PR" ]; then
+              echo "**Detalle técnico:** #$PR · **Historial completo:** $CHANGELOG"
+            else
+              echo "**Historial completo:** $CHANGELOG"
+            fi
+          } >> notas.md
+          cat notas.md
+
+      - name: Crear la Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A tag created after the fact for an older version must not become "Latest".
+          MAS_ALTO="$(git tag --list 'v*.*.*' --sort=-v:refname | head -n 1)"
+          if [ "$GITHUB_REF_NAME" = "$MAS_ALTO" ]; then LATEST=true; else LATEST=false; fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file notas.md --latest="$LATEST"
