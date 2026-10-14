@@ -57,6 +57,29 @@ async function leerConfig() {
   return prisma.configuracionBackup.findUnique({ where: { id: ID } });
 }
 
+type ConfigGuardada = NonNullable<Awaited<ReturnType<typeof leerConfig>>>;
+
+function repositorioGuardado(c: ConfigGuardada): string {
+  return c.tipoDestino === "s3"
+    ? urlRepositorio({
+        tipo: "s3",
+        endpoint: c.s3Endpoint ?? "",
+        bucket: c.s3Bucket ?? "",
+        prefijo: c.s3Prefijo,
+        region: null,
+        accessKeyId: "",
+        secretKey: "",
+      })
+    : urlRepositorio({
+        tipo: "sftp",
+        host: c.sftpHost ?? "",
+        puerto: c.sftpPuerto,
+        usuario: c.sftpUsuario ?? "",
+        ruta: c.sftpRuta ?? "",
+        clavePrivada: "",
+      });
+}
+
 function errorTrpc(err: unknown): never {
   const timeout = mensajeSinRespuesta(err);
   if (timeout) throw new TRPCError({ code: "TIMEOUT", message: timeout });
@@ -187,6 +210,9 @@ export const backupsRouter = router({
         });
       }
 
+      const mismoRepositorio =
+        actual !== null &&
+        repositorioGuardado(actual) === urlRepositorio(destino);
       const claveCif = cifrar(clave);
       const secret = destino.tipo === "s3" ? cifrar(destino.secretKey) : null;
       const datos = {
@@ -208,9 +234,11 @@ export const backupsRouter = router({
         claveIv: claveCif.iv,
         claveTag: claveCif.authTag,
         repositorioInicializadoEn: new Date(),
-        // A key typed in by the user comes from their kit: it is already saved.
+        // A new repository makes the saved kit point to the old one: show it
+        // again. A key typed in by the user comes from their kit: already saved.
         claveConfirmadaEn:
-          actual?.claveConfirmadaEn ?? (input.clave ? new Date() : null),
+          (mismoRepositorio ? actual?.claveConfirmadaEn : null) ??
+          (input.clave ? new Date() : null),
       };
       await prisma.configuracionBackup.upsert({
         where: { id: ID },
@@ -235,26 +263,7 @@ export const backupsRouter = router({
       });
     }
     const clave = descifrar(c.claveCifrada, c.claveIv, c.claveTag);
-    const repositorio =
-      c.tipoDestino === "s3"
-        ? urlRepositorio({
-            tipo: "s3",
-            endpoint: c.s3Endpoint ?? "",
-            bucket: c.s3Bucket ?? "",
-            prefijo: c.s3Prefijo,
-            region: null,
-            accessKeyId: "",
-            secretKey: "",
-          })
-        : urlRepositorio({
-            tipo: "sftp",
-            host: c.sftpHost ?? "",
-            puerto: c.sftpPuerto,
-            usuario: c.sftpUsuario ?? "",
-            ruta: c.sftpRuta ?? "",
-            clavePrivada: "",
-          });
-    return { kit: kitRecuperacion(repositorio, clave) };
+    return { kit: kitRecuperacion(repositorioGuardado(c), clave) };
   }),
 
   confirmarClave: protectedProcedure.mutation(async () => {

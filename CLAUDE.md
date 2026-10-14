@@ -280,7 +280,9 @@ hora elegida (Europe/Madrid), 7 diarias + 4 semanales. Cada copia es un snapshot
 `panel-db.dump` (`pg_dump -Fc`) y `traefik/` (dinámica + `acme.json`). La caché de restic y el
 `known_hosts` del destino SFTP viven en `<REPOS_DIR>/.backups/`. El kit de recuperación (repositorio
 y clave) se muestra una sola vez; sin él y sin la `ENCRYPTION_KEY` del `.env` no se recupera nada.
-Recuperar en una VPS nueva: `docs/recuperacion.md`.
+Cambiar a otro repositorio (otro bucket, prefijo o servidor) conserva la clave pero vuelve a mostrar
+el kit, y las copias programadas esperan a que se confirme. Recuperar en una VPS nueva:
+`docs/recuperacion.md`.
 
 ---
 

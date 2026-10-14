@@ -455,9 +455,13 @@ describe("backups.guardarDestino — más casos", () => {
     });
   });
 
-  it("S3 con región y prefijo, conservando una confirmación anterior", async () => {
+  it("S3 con región y prefijo en el mismo repositorio: conserva la confirmación", async () => {
     const confirmada = new Date("2026-10-01T00:00:00Z");
     m.configFind.mockResolvedValue({
+      tipoDestino: "s3",
+      s3Endpoint: "https://s3.ejemplo.com",
+      s3Bucket: "mi-bucket",
+      s3Prefijo: "vicalba",
       claveCifrada: "cif(K)",
       claveIv: "iv",
       claveTag: "tag",
@@ -474,6 +478,37 @@ describe("backups.guardarDestino — más casos", () => {
       s3Prefijo: "vicalba",
       claveCifrada: "cif(K)",
       claveConfirmadaEn: confirmada,
+    });
+  });
+
+  it("si cambia el repositorio, vuelve a pedir que se guarde el kit", async () => {
+    m.configFind.mockResolvedValue({
+      tipoDestino: "s3",
+      s3Endpoint: "https://s3.ejemplo.com",
+      s3Bucket: "mi-bucket",
+      s3Prefijo: null,
+      claveCifrada: "cif(K)",
+      claveIv: "iv",
+      claveTag: "tag",
+      claveConfirmadaEn: new Date("2026-10-01T00:00:00Z"),
+    });
+    m.credFind.mockResolvedValue({
+      clavePrivadaCifrada: "cif(PK)",
+      iv: "iv",
+      authTag: "tag",
+    });
+    m.abrir.mockResolvedValue("inicializado");
+    await caller().backups.guardarDestino({
+      tipo: "sftp",
+      host: "h",
+      puerto: 22,
+      usuario: "u",
+      ruta: "/r",
+      credencialId: "c1",
+    });
+    expect(m.configUpsert.mock.calls[0]![0].update).toMatchObject({
+      claveCifrada: "cif(K)",
+      claveConfirmadaEn: null,
     });
   });
 
