@@ -189,11 +189,25 @@ export const rutasRouter = router({
         ...r,
         middlewares: middlewaresSchema.parse(r.middlewares),
       }));
+      // Same YAML Traefik gets, but this one reaches the browser: no hashes.
       const yaml = generarConfigProyecto({
         proyectoId: proyecto.id,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
-        rutas,
+        rutas: rutas.map((r) => ({
+          ...r,
+          middlewares: {
+            ...r.middlewares,
+            ...(r.middlewares.basicAuth && {
+              basicAuth: {
+                usuarios: r.middlewares.basicAuth.usuarios.map((u) => ({
+                  usuario: u.usuario,
+                  hash: "(oculta)",
+                })),
+              },
+            }),
+          },
+        })),
         cloudflare,
       });
       return {

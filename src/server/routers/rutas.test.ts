@@ -508,7 +508,9 @@ describe("rutas — middlewares", () => {
     expect(lista[0].middlewares.basicAuth).toEqual({
       usuarios: [{ usuario: "ana" }],
     });
-    expect(yaml).toContain("ana:$2y$05$");
+    // The preview shows who can log in, never the hash (it reaches the browser).
+    expect(yaml).toContain("ana:(oculta)");
+    expect(yaml).not.toContain("$2y$");
   });
 
   it("al editar, un usuario sin contraseña nueva conserva la suya; uno nuevo sin contraseña es un error", async () => {
