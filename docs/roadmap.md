@@ -22,7 +22,8 @@ Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `do
 ### 2.3.0 — Proxy y servicios (`feature/2.3.0`, diseño en `docs/diseno-proxy.md`)
 
 - [x] **Acciones por Servicio** — iniciar, detener y reiniciar un Servicio del compose; tarjeta «Servicios» con su estado. Falta probarlo en navegador.
-- [ ] **Rutas múltiples** — varios dominios/paths por Proyecto, cada uno a un Servicio y puerto; YAML generado visible; corrige la colisión de `dynamic/<nombre>.yml` entre Clientes.
+- [x] **Rutas múltiples** — varios dominios/paths por Proyecto, cada uno a un Servicio y puerto; pestaña Dominios con el YAML generado; corrige la colisión de `dynamic/<nombre>.yml` entre Clientes. Falta verificar con Docker (migración en Postgres real, ruta de punta a punta con Traefik).
+- [ ] **Arreglos previos detectados** — los Proyectos `image` no se conectan a la red del Cliente; los composes generados publican `puerto:puerto` en el host (accesible sin pasar por Traefik).
 - [ ] **Middlewares por ruta** — www, auth básica, IPs permitidas, cabeceras, límite de peticiones, body máximo, compresión.
 - [ ] **Proxy editable** — Configuración → Proxy: cabeceras reenviadas, timeouts, TLS, log; aplicar con vuelta atrás automática y acceso de emergencia al Panel por `127.0.0.1:3000`.
 - [ ] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs`, certificados por DNS challenge, IP real en los middlewares.
