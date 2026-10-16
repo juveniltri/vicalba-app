@@ -18,11 +18,18 @@ type Estatico = {
   >;
   ping?: { entryPoint: string };
   providers: unknown;
-  certificatesResolvers: {
-    letsencrypt: {
-      acme: { email?: string; storage: string; tlsChallenge: object };
-    };
-  };
+  certificatesResolvers: Record<
+    string,
+    {
+      acme: {
+        email?: string;
+        storage: string;
+        tlsChallenge?: object;
+        httpChallenge?: object;
+        dnsChallenge?: object;
+      };
+    }
+  >;
   log: { level: string };
   accessLog?: unknown;
   api: unknown;
@@ -30,11 +37,12 @@ type Estatico = {
 
 const generar = (
   config = CONFIG_PROXY_POR_DEFECTO,
-  opciones: { acmeEmail?: string } = {},
+  opciones: { acmeEmail?: string; tokenCloudflare?: boolean } = {},
 ) =>
   parse(
     generarTraefikEstatico(config, {
       acmeStorage: "/letsencrypt/acme.json",
+      tokenCloudflare: false,
       ...opciones,
     }),
   ) as Estatico;
@@ -103,6 +111,71 @@ describe("generarTraefikEstatico", () => {
     });
     expect(c.log).toEqual({ level: "DEBUG" });
     expect(c.accessLog).toEqual({ format: "json" });
+  });
+});
+
+describe("generarTraefikEstatico — Cloudflare", () => {
+  it("siempre hay un resolver HTTP-01 además del TLS-ALPN; el de DNS solo con token", () => {
+    const sinToken = generar().certificatesResolvers;
+    expect(Object.keys(sinToken)).toEqual(["letsencrypt", "letsencrypt-http"]);
+    expect(sinToken["letsencrypt-http"].acme).toEqual({
+      storage: "/letsencrypt/acme.json",
+      httpChallenge: { entryPoint: "web" },
+    });
+
+    const conToken = generar(CONFIG_PROXY_POR_DEFECTO, {
+      tokenCloudflare: true,
+      acmeEmail: "ops@vicalba.com",
+    }).certificatesResolvers;
+    expect(conToken["letsencrypt-dns"].acme).toEqual({
+      email: "ops@vicalba.com",
+      storage: "/letsencrypt/acme.json",
+      dnsChallenge: { provider: "cloudflare" },
+    });
+  });
+
+  it("con Cloudflare delante confía en sus rangos además de en las IPs propias, sin repetir", () => {
+    const c = generar({
+      ...CONFIG_PROXY_POR_DEFECTO,
+      ipsConfianza: ["10.0.0.1", "173.245.48.0/20"],
+      cloudflare: {
+        delante: true,
+        rangos: ["173.245.48.0/20", "2400:cb00::/32"],
+      },
+    });
+    expect(c.entryPoints.websecure.forwardedHeaders?.trustedIPs).toEqual([
+      "10.0.0.1",
+      "173.245.48.0/20",
+      "2400:cb00::/32",
+    ]);
+  });
+
+  it("sin Cloudflare delante sus rangos no cuentan", () => {
+    const c = generar({
+      ...CONFIG_PROXY_POR_DEFECTO,
+      cloudflare: { delante: false, rangos: ["173.245.48.0/20"] },
+    });
+    expect(c.entryPoints.websecure.forwardedHeaders).toBeUndefined();
+  });
+
+  it("los valores por defecto traen los rangos publicados por Cloudflare y lo dejan desactivado", () => {
+    expect(CONFIG_PROXY_POR_DEFECTO.cloudflare.delante).toBe(false);
+    expect(CONFIG_PROXY_POR_DEFECTO.cloudflare.rangos).toContain(
+      "173.245.48.0/20",
+    );
+    expect(CONFIG_PROXY_POR_DEFECTO.cloudflare.rangos).toContain(
+      "2400:cb00::/32",
+    );
+  });
+
+  it("una configuración guardada antes de existir Cloudflare se lee con sus valores por defecto", () => {
+    const antigua: Partial<typeof CONFIG_PROXY_POR_DEFECTO> = {
+      ...CONFIG_PROXY_POR_DEFECTO,
+    };
+    delete antigua.cloudflare;
+    expect(configuracionProxySchema.parse(antigua).cloudflare).toEqual(
+      CONFIG_PROXY_POR_DEFECTO.cloudflare,
+    );
   });
 });
 

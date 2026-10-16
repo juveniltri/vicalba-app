@@ -10,7 +10,13 @@ vi.mock("@/lib/proxy/operacion", () => ({
   OperacionProxyEnCurso: EnCurso,
 }));
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
-const { mockLog } = vi.hoisted(() => ({ mockLog: vi.fn() }));
+const { mockLog, mockRangos } = vi.hoisted(() => ({
+  mockLog: vi.fn(),
+  mockRangos: vi.fn(),
+}));
+vi.mock("@/lib/proxy/cloudflare", () => ({
+  descargarRangosCloudflare: mockRangos,
+}));
 vi.mock("@/lib/docker/traefik", () => ({
   depsAplicarTraefik: () => ({ ultimasLineasLog: mockLog }),
 }));
@@ -58,8 +64,50 @@ describe("proxy", () => {
     expect(await (await caller()).aplicar(nueva)).toEqual({
       estado: "en_curso",
     });
-    expect(mockLanzar).toHaveBeenCalledWith(nueva);
+    expect(mockLanzar).toHaveBeenCalledWith(nueva, undefined);
     terminar();
+  });
+
+  it("aplicar pasa el token de Cloudflare (null lo borra) y valida su forma", async () => {
+    mockLanzar.mockResolvedValue({ terminado: Promise.resolve() });
+    const api = await caller();
+
+    await api.aplicar({
+      ...CONFIG_PROXY_POR_DEFECTO,
+      tokenCloudflare: " Ab_9-x ",
+    });
+    expect(mockLanzar).toHaveBeenLastCalledWith(
+      CONFIG_PROXY_POR_DEFECTO,
+      "Ab_9-x",
+    );
+    await api.aplicar({ ...CONFIG_PROXY_POR_DEFECTO, tokenCloudflare: null });
+    expect(mockLanzar).toHaveBeenLastCalledWith(CONFIG_PROXY_POR_DEFECTO, null);
+
+    await expect(
+      api.aplicar({
+        ...CONFIG_PROXY_POR_DEFECTO,
+        tokenCloudflare: "con espacio",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rangosCloudflare descarga la lista o explica por qué no", async () => {
+    mockRangos.mockResolvedValueOnce(["173.245.48.0/20"]);
+    expect(await (await caller()).rangosCloudflare()).toEqual([
+      "173.245.48.0/20",
+    ]);
+
+    mockRangos.mockRejectedValueOnce(new Error("Cloudflare respondió 503"));
+    await expect((await caller()).rangosCloudflare()).rejects.toMatchObject({
+      code: "BAD_GATEWAY",
+      message: "Cloudflare respondió 503",
+    });
+
+    mockRangos.mockRejectedValueOnce("timeout");
+    await expect((await caller()).rangosCloudflare()).rejects.toMatchObject({
+      code: "BAD_GATEWAY",
+      message: "timeout",
+    });
   });
 
   it("aplicar con otra en curso da CONFLICT", async () => {

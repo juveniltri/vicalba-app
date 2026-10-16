@@ -3,7 +3,10 @@ import { CONFIG_PROXY_POR_DEFECTO } from "@/lib/schemas/proxy";
 import { aplicarConfiguracionProxy, type DepsAplicar } from "./aplicar";
 import { generarTraefikEstatico } from "./estatico";
 
-const OPCIONES = { acmeStorage: "/letsencrypt/acme.json" };
+const OPCIONES = {
+  acmeStorage: "/letsencrypt/acme.json",
+  tokenCloudflare: false,
+};
 const ACTUAL = generarTraefikEstatico(CONFIG_PROXY_POR_DEFECTO, OPCIONES);
 const NUEVA = { ...CONFIG_PROXY_POR_DEFECTO, logNivel: "DEBUG" as const };
 
@@ -18,6 +21,7 @@ function traefikFalso(arrancaCon: (estatico: string | null) => boolean) {
     escribirEstatico: vi.fn(async (c: string) => {
       disco.estatico = c;
     }),
+    escribirTokenCloudflare: vi.fn(async () => {}),
     guardarPrevio: vi.fn(async (c: string) => {
       disco.previo = c;
     }),

@@ -9,6 +9,10 @@ import { asegurarRedCliente } from "@/lib/docker/networks";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { type Middlewares, middlewaresSchema } from "@/lib/schemas/middlewares";
+import {
+  CONFIG_PROXY_POR_DEFECTO,
+  configuracionProxySchema,
+} from "@/lib/schemas/proxy";
 
 const log = logger.child({ module: "traefik" });
 
@@ -22,16 +26,36 @@ export type RutaTraefik = {
   servicio: string | null;
   puerto: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  // Proxied by Cloudflare (orange cloud)
+  cloudflare: boolean;
   middlewares: Middlewares;
 };
 
+// From the applied Proxy config: which resolver Cloudflare routes use (DNS-01
+// needs the API token) and which ranges hide the visitor's real IP.
+export type ContextoCloudflare = {
+  resolver: "letsencrypt-dns" | "letsencrypt-http";
+  rangos: string[];
+};
+
 // Cheap rejections first (IP, rate) so bcrypt only runs for traffic that can pass.
-function cadenaMiddlewares(ruta: RutaTraefik): [string, unknown][] {
+function cadenaMiddlewares(
+  ruta: RutaTraefik,
+  cloudflare: ContextoCloudflare,
+): [string, unknown][] {
   const m = ruta.middlewares;
   const c = m.cabeceras;
+  // Behind Cloudflare the connection comes from its edge: the visitor is the
+  // last X-Forwarded-For address outside Cloudflare's ranges.
+  const estrategia = ruta.cloudflare
+    ? { ipStrategy: { excludedIPs: cloudflare.rangos } }
+    : {};
   const cadena: [string, unknown][] = [];
   if (m.ipPermitidas)
-    cadena.push(["ip", { ipAllowList: { sourceRange: m.ipPermitidas } }]);
+    cadena.push([
+      "ip",
+      { ipAllowList: { sourceRange: m.ipPermitidas, ...estrategia } },
+    ]);
   if (m.limitePeticiones)
     cadena.push([
       "limite",
@@ -40,6 +64,7 @@ function cadenaMiddlewares(ruta: RutaTraefik): [string, unknown][] {
           average: m.limitePeticiones.media,
           burst: m.limitePeticiones.rafaga,
           period: "1s",
+          ...(ruta.cloudflare && { sourceCriterion: estrategia }),
         },
       },
     ]);
@@ -99,6 +124,7 @@ export function generarConfigProyecto(params: {
   clienteSlug: string;
   proyectoNombre: string;
   rutas: RutaTraefik[];
+  cloudflare: ContextoCloudflare;
 }): string | null {
   if (params.rutas.length === 0) return null;
   const base = `${params.clienteSlug}-${params.proyectoNombre}`;
@@ -112,7 +138,12 @@ export function generarConfigProyecto(params: {
     const alias = ruta.servicio ? `${ruta.servicio}.${base}` : base;
     const nombre = `${base}-${ruta.id}`;
     const host = `Host(\`${limpiar(ruta.dominio)}\`)`;
-    const cadena = cadenaMiddlewares(ruta);
+    const cadena = cadenaMiddlewares(ruta, params.cloudflare);
+    const tls = {
+      certResolver: ruta.cloudflare
+        ? params.cloudflare.resolver
+        : "letsencrypt",
+    };
     for (const [tipo, definicion] of cadena)
       middlewares[`${nombre}-${tipo}`] = definicion;
     routers[nombre] = {
@@ -124,7 +155,7 @@ export function generarConfigProyecto(params: {
       ...(cadena.length > 0 && {
         middlewares: cadena.map(([tipo]) => `${nombre}-${tipo}`),
       }),
-      tls: { certResolver: "letsencrypt" },
+      tls,
     };
     services[nombre] = {
       loadBalancer: { servers: [{ url: `http://${alias}:${ruta.puerto}` }] },
@@ -140,7 +171,7 @@ export function generarConfigProyecto(params: {
         service: nombre,
         entryPoints: ["websecure"],
         middlewares: [redireccion],
-        tls: { certResolver: "letsencrypt" },
+        tls,
       };
       middlewares[redireccion] = {
         redirectRegex: {
@@ -157,6 +188,19 @@ export function generarConfigProyecto(params: {
       ? { routers, services, middlewares }
       : { routers, services };
   return `${CABECERA_GENERADO} proyecto=${params.proyectoId}\n${stringify({ http })}`;
+}
+
+export async function contextoCloudflare(): Promise<ContextoCloudflare> {
+  const fila = await prisma.configuracionProxy.findUnique({
+    where: { id: "default" },
+  });
+  const aplicada = fila
+    ? configuracionProxySchema.parse(fila.aplicada)
+    : CONFIG_PROXY_POR_DEFECTO;
+  return {
+    resolver: fila?.cfTokenCifrado ? "letsencrypt-dns" : "letsencrypt-http",
+    rangos: aplicada.cloudflare.rangos,
+  };
 }
 
 export async function sincronizarTraefikCliente(
@@ -179,9 +223,14 @@ export async function sincronizarTraefikCliente(
     })),
   }));
 
+  const cloudflare = await contextoCloudflare();
+
   let ficheros: { anteriores: number; escritos: number };
   try {
-    ficheros = await escribirFicherosCliente({ slug: cliente.slug, proyectos });
+    ficheros = await escribirFicherosCliente(
+      { slug: cliente.slug, proyectos },
+      cloudflare,
+    );
   } catch (err) {
     if (env.NODE_ENV === "production") throw err;
     log.warn(
@@ -198,10 +247,13 @@ export async function sincronizarTraefikCliente(
     await desconectarTraefikDeRed(cliente.slug);
 }
 
-async function escribirFicherosCliente(cliente: {
-  slug: string;
-  proyectos: { id: string; nombre: string; rutas: RutaTraefik[] }[];
-}): Promise<{ anteriores: number; escritos: number }> {
+async function escribirFicherosCliente(
+  cliente: {
+    slug: string;
+    proyectos: { id: string; nombre: string; rutas: RutaTraefik[] }[];
+  },
+  cloudflare: ContextoCloudflare,
+): Promise<{ anteriores: number; escritos: number }> {
   await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
   const nombres = await readdir(env.TRAEFIK_DYNAMIC_DIR);
   // "_" isn't allowed in slugs or Proyecto names, so the prefix is unambiguous.
@@ -216,6 +268,7 @@ async function escribirFicherosCliente(cliente: {
       clienteSlug: cliente.slug,
       proyectoNombre: proyecto.nombre,
       rutas: proyecto.rutas,
+      cloudflare,
     });
     if (!yaml) continue;
     const fichero = `${cliente.slug}_${proyecto.nombre}.yml`;

@@ -27,7 +27,7 @@ Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `do
 - [x] **Middlewares por ruta** — auth básica (bcrypt $2y$ coste 5, hashes nunca salen del servidor), IPs permitidas, límite de peticiones, body máximo, cabeceras, compresión, quitar prefijo y copiar de otra ruta. Verificado con Traefik v3.
 - [x] **Proxy editable** — Configuración → Proxy: IPs de confianza, timeouts, TLS mínimo, log y access log; aplicar en segundo plano con vuelta atrás automática; acceso de emergencia por `127.0.0.1:3000`; Traefik fijado a v3.7.15. Verificado con el stack de producción (`npm run guia`): arranque desde cero, aplicar, TLS 1.2 rechazado con mínimo 1.3 y recuperación de un `traefik.yml` roto entrando por el acceso de emergencia. De paso: `ACME_EMAIL` nunca llegaba a Traefik (ignoraba los flags de CLI) y sin su fichero arranca en silencio con la config por defecto.
 - [ ] **Visor de logs de Traefik en vivo** (SSE) en Configuración → Proxy; hoy solo las últimas 30 líneas.
-- [ ] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs`, certificados por DNS challenge, IP real en los middlewares.
+- [x] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs` (editables y actualizables), token cifrado y resolver DNS-01 (`CF_DNS_API_TOKEN_FILE`), HTTP-01 sin token, casilla por ruta e IP real en los middlewares (`ipStrategy.excludedIPs`). Verificado con Traefik v3 y un Cloudflare simulado (incluida la falsificación de `X-Forwarded-For`). **Falta en la VPS de desarrollo**: certificado real por DNS-01 con el token y por HTTP-01 a través del proxy naranja.
 
 ### 2.4.0
 

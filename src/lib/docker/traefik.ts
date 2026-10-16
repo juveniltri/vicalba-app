@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
@@ -179,6 +179,13 @@ export function depsAplicarTraefik(): DepsAplicar {
     escribirEstatico: async (contenido) => {
       await mkdir(env.TRAEFIK_STATIC_DIR, { recursive: true });
       await writeFile(estatico, contenido, "utf-8");
+    },
+    // Read by Traefik's Cloudflare DNS provider (CF_DNS_API_TOKEN_FILE).
+    escribirTokenCloudflare: async (token) => {
+      const fichero = `${env.TRAEFIK_STATIC_DIR}/cf-token`;
+      if (token === null) return rm(fichero, { force: true });
+      await mkdir(env.TRAEFIK_STATIC_DIR, { recursive: true });
+      await writeFile(fichero, token, { encoding: "utf-8", mode: 0o600 });
     },
     guardarPrevio: (contenido) =>
       writeFile(`${estatico}.prev`, contenido, "utf-8"),

@@ -27,6 +27,10 @@ services:
     # source: Traefik ignores CLI flags when a config file is present.
     command:
       - "--configFile=/etc/traefik/static/traefik.yml"
+    environment:
+      # Cloudflare API token for DNS-01, written by the Panel (Configuración →
+      # Proxy). A file, so changing it needs a restart, not a new container.
+      CF_DNS_API_TOKEN_FILE: /etc/traefik/static/cf-token
     networks:
       - vicalba-net
     ports:

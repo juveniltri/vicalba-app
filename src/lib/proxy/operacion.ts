@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { env } from "@/env";
+import { cifrar, descifrar } from "@/lib/crypto";
 import { depsAplicarTraefik } from "@/lib/docker/traefik";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -22,16 +23,30 @@ export class OperacionProxyEnCurso extends Error {
   }
 }
 
-const opcionesAcme = () => ({
+const opcionesAcme = (token: string | null) => ({
   acmeStorage: env.ACME_JSON_PATH,
   acmeEmail: env.ACME_EMAIL,
+  tokenCloudflare: token !== null,
 });
+
+type FilaToken = {
+  cfTokenCifrado: string | null;
+  cfTokenIv: string | null;
+  cfTokenAuthTag: string | null;
+} | null;
+
+const tokenGuardado = (fila: FilaToken) =>
+  fila?.cfTokenCifrado && fila.cfTokenIv && fila.cfTokenAuthTag
+    ? descifrar(fila.cfTokenCifrado, fila.cfTokenIv, fila.cfTokenAuthTag)
+    : null;
 
 export async function leerConfiguracionProxy() {
   const fila = await prisma.configuracionProxy.findUnique({
     where: { id: ID },
   });
   return {
+    // Never the token itself: it stays on the server.
+    hayTokenCloudflare: !!fila?.cfTokenCifrado,
     aplicada: fila
       ? configuracionProxySchema.parse(fila.aplicada)
       : CONFIG_PROXY_POR_DEFECTO,
@@ -46,8 +61,10 @@ export async function leerConfiguracionProxy() {
 
 // Answers before Traefik restarts: the request that asked for it goes through
 // Traefik too and would be cut. `terminado` is for tests and the startup path.
+// tokenCloudflare: undefined keeps the stored one, null removes it.
 export async function lanzarAplicacionProxy(
   config: ConfiguracionProxy,
+  tokenCloudflare?: string | null,
 ): Promise<{ terminado: Promise<void> }> {
   await prisma.configuracionProxy.upsert({
     where: { id: ID },
@@ -59,15 +76,32 @@ export async function lanzarAplicacionProxy(
     data: { estado: "en_curso", pendiente: config, mensaje: null, log: null },
   });
   if (count === 0) throw new OperacionProxyEnCurso();
+  if (tokenCloudflare !== undefined) {
+    const cifrado = tokenCloudflare === null ? null : cifrar(tokenCloudflare);
+    await prisma.configuracionProxy.update({
+      where: { id: ID },
+      data: {
+        cfTokenCifrado: cifrado?.valorCifrado ?? null,
+        cfTokenIv: cifrado?.iv ?? null,
+        cfTokenAuthTag: cifrado?.authTag ?? null,
+      },
+    });
+  }
   return { terminado: ejecutar(config) };
 }
 
 async function ejecutar(config: ConfiguracionProxy): Promise<void> {
   try {
+    const deps = depsAplicarTraefik();
+    const token = tokenGuardado(
+      await prisma.configuracionProxy.findUnique({ where: { id: ID } }),
+    );
+    // Before the restart, so a new DNS-01 resolver finds it.
+    await deps.escribirTokenCloudflare(token);
     const r = await aplicarConfiguracionProxy(
       config,
-      opcionesAcme(),
-      depsAplicarTraefik(),
+      opcionesAcme(token),
+      deps,
     );
     await prisma.configuracionProxy.update({
       where: { id: ID },
@@ -82,6 +116,12 @@ async function ejecutar(config: ConfiguracionProxy): Promise<void> {
             }
           : { estado: r.resultado, mensaje: r.mensaje, log: r.log },
     });
+    if (r.resultado === "aplicada") {
+      // Routes pick their resolver and IP strategy from this config. Imported
+      // here: the Traefik route module reads the Proxy config too.
+      const { regenerarConfigTraefik } = await import("@/lib/traefik/config");
+      await regenerarConfigTraefik();
+    }
   } catch (err) {
     log.error(
       { err },
@@ -119,7 +159,13 @@ export async function asegurarTraefikEstatico(): Promise<boolean> {
   const deps = depsAplicarTraefik();
   if ((await deps.leerEstatico()) !== null) return false;
   const { aplicada } = await leerConfiguracionProxy();
-  await deps.escribirEstatico(generarTraefikEstatico(aplicada, opcionesAcme()));
+  const token = tokenGuardado(
+    await prisma.configuracionProxy.findUnique({ where: { id: ID } }),
+  );
+  await deps.escribirTokenCloudflare(token);
+  await deps.escribirEstatico(
+    generarTraefikEstatico(aplicada, opcionesAcme(token)),
+  );
   await deps.escribirTls(generarTlsDinamico(aplicada));
   await deps.reiniciarTraefik();
   return true;

@@ -89,6 +89,10 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/traefik/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/traefik/config")>()),
   sincronizarTraefikCliente: mockSincronizar,
+  contextoCloudflare: async () => ({
+    resolver: "letsencrypt-dns",
+    rangos: ["173.245.48.0/20"],
+  }),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
@@ -441,6 +445,24 @@ it("editar sin Servicio en un compose deja la ruta apuntando al alias del Proyec
   await api.editar({ id: ruta.id, dominio: "a.com" });
 
   expect(rutas[0].servicio).toBeNull();
+});
+
+describe("rutas — Cloudflare", () => {
+  it("guarda si la ruta va detrás de Cloudflare y el YAML usa su resolver", async () => {
+    const api = await caller();
+    const ruta = await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      cloudflare: true,
+    });
+    expect(rutas[0].cloudflare).toBe(true);
+    expect((await api.listar({ proyectoId: "p1" })).yaml).toContain(
+      "certResolver: letsencrypt-dns",
+    );
+
+    await api.editar({ id: ruta.id, dominio: "a.com" });
+    expect(rutas[0].cloudflare).toBe(false);
+  });
 });
 
 describe("rutas — middlewares", () => {

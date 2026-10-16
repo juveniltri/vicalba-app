@@ -1,10 +1,12 @@
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import { depsAplicarTraefik } from "@/lib/docker/traefik";
 import {
   lanzarAplicacionProxy,
   leerConfiguracionProxy,
   OperacionProxyEnCurso,
 } from "@/lib/proxy/operacion";
+import { descargarRangosCloudflare } from "@/lib/proxy/cloudflare";
 import { configuracionProxySchema } from "@/lib/schemas/proxy";
 import { protectedProcedure, router } from "@/server/trpc";
 
@@ -19,12 +21,32 @@ export const proxyRouter = router({
       ),
   ),
 
+  rangosCloudflare: protectedProcedure.query(async () => {
+    try {
+      return await descargarRangosCloudflare();
+    } catch (err) {
+      throw new TRPCError({
+        code: "BAD_GATEWAY",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }),
+
   aplicar: protectedProcedure
-    .input(configuracionProxySchema)
-    .mutation(async ({ input }) => {
+    .input(
+      configuracionProxySchema.extend({
+        // undefined keeps the stored token, null removes it
+        tokenCloudflare: z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{1,200}$/, "Token de Cloudflare no válido")
+          .nullish(),
+      }),
+    )
+    .mutation(async ({ input: { tokenCloudflare, ...config } }) => {
       try {
         // The result lands in the DB; the UI polls `obtener` until it's there.
-        await lanzarAplicacionProxy(input);
+        await lanzarAplicacionProxy(config, tokenCloudflare);
       } catch (err) {
         if (err instanceof OperacionProxyEnCurso)
           throw new TRPCError({ code: "CONFLICT", message: err.message });

@@ -5,6 +5,7 @@ import {
   aplicarProxyAction,
   logProxyAction,
   obtenerProxyAction,
+  rangosCloudflareAction,
 } from "@/app/(panel)/actions";
 import type { ConfiguracionProxy as Config } from "@/lib/schemas/proxy";
 
@@ -14,6 +15,7 @@ export type EstadoProxy = {
   estado: "aplicada" | "en_curso" | "revertida" | "error";
   mensaje: string | null;
   log: string | null;
+  hayTokenCloudflare: boolean;
 };
 
 type Formulario = {
@@ -24,6 +26,11 @@ type Formulario = {
   logNivel: Config["logNivel"];
   accessLog: boolean;
   tlsMinima: Config["tlsMinima"];
+  cfDelante: boolean;
+  cfRangos: string;
+  // "" keeps the stored token
+  cfToken: string;
+  cfQuitarToken: boolean;
 };
 
 const aFormulario = (c: Config): Formulario => ({
@@ -34,10 +41,16 @@ const aFormulario = (c: Config): Formulario => ({
   logNivel: c.logNivel,
   accessLog: c.accessLog,
   tlsMinima: c.tlsMinima,
+  cfDelante: c.cloudflare.delante,
+  cfRangos: c.cloudflare.rangos.join("\n"),
+  cfToken: "",
+  cfQuitarToken: false,
 });
 
+const lineas = (texto: string) => texto.split(/[\s,]+/).filter(Boolean);
+
 const aConfig = (f: Formulario): Config => ({
-  ipsConfianza: f.ips.split(/[\s,]+/).filter(Boolean),
+  ipsConfianza: lineas(f.ips),
   timeouts: {
     lecturaSeg: Number(f.lectura),
     escrituraSeg: Number(f.escritura),
@@ -46,7 +59,11 @@ const aConfig = (f: Formulario): Config => ({
   logNivel: f.logNivel,
   accessLog: f.accessLog,
   tlsMinima: f.tlsMinima,
+  cloudflare: { delante: f.cfDelante, rangos: lineas(f.cfRangos) },
 });
+
+const tokenEnviado = (f: Formulario) =>
+  f.cfQuitarToken ? null : f.cfToken.trim() || undefined;
 
 const claseInput =
   "min-h-10 w-full px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]";
@@ -79,12 +96,30 @@ export function ConfiguracionProxy({ inicial }: { inicial: EstadoProxy }) {
     setConfirmando(false);
     setError(null);
     startTransition(async () => {
-      const r = await aplicarProxyAction(aConfig(form));
+      const token = tokenEnviado(form);
+      const r = await aplicarProxyAction(aConfig(form), token);
       if ("error" in r) setError(r.error);
-      else
-        setEstado({ ...estado, estado: "en_curso", mensaje: null, log: null });
+      else {
+        setEstado({
+          ...estado,
+          estado: "en_curso",
+          mensaje: null,
+          log: null,
+          hayTokenCloudflare:
+            token === undefined ? estado.hayTokenCloudflare : token !== null,
+        });
+        setForm({ ...form, cfToken: "", cfQuitarToken: false });
+      }
     });
   };
+
+  const actualizarRangos = () =>
+    startTransition(async () => {
+      setError(null);
+      const r = await rangosCloudflareAction();
+      if (r.rangos) setForm({ ...form, cfRangos: r.rangos.join("\n") });
+      else setError(r.error ?? "No se pudo descargar la lista de Cloudflare");
+    });
 
   const verLog = () =>
     startTransition(async () => setLog(await logProxyAction()));
@@ -222,6 +257,80 @@ export function ConfiguracionProxy({ inicial }: { inicial: EstadoProxy }) {
           mucho tráfico tapa los errores, actívalo solo para depurar)
         </label>
       </div>
+
+      <fieldset className="flex flex-col gap-3 border-t border-border pt-3">
+        <legend className="font-body text-xs font-semibold text-text-secondary">
+          Cloudflare
+        </legend>
+        <label className="inline-flex items-center gap-2 font-body text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={form.cfDelante}
+            onChange={(e) => set("cfDelante", e.target.checked)}
+          />
+          Hay dominios detrás del proxy de Cloudflare (nube naranja): confiar en
+          sus rangos para la IP real del visitante
+        </label>
+        <details className="font-body text-xs text-text-muted">
+          <summary className="cursor-pointer">
+            Rangos de Cloudflare ({lineas(form.cfRangos).length})
+          </summary>
+          <div className="flex flex-col gap-2 mt-2">
+            <textarea
+              aria-label="Rangos de Cloudflare"
+              rows={6}
+              value={form.cfRangos}
+              onChange={(e) => set("cfRangos", e.target.value)}
+              className={`${claseInput} py-2 font-mono`}
+            />
+            <button
+              type="button"
+              onClick={actualizarRangos}
+              disabled={enviando}
+              className="self-start underline hover:text-text-primary disabled:opacity-50"
+            >
+              Actualizar desde cloudflare.com
+            </button>
+          </div>
+        </details>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="proxy-cf-token"
+            className="font-body text-xs text-text-muted"
+          >
+            Token de la API de Cloudflare (permiso Zone → DNS → Edit)
+          </label>
+          <input
+            id="proxy-cf-token"
+            type="password"
+            autoComplete="off"
+            value={form.cfToken}
+            disabled={form.cfQuitarToken}
+            onChange={(e) => set("cfToken", e.target.value)}
+            placeholder={
+              estado.hayTokenCloudflare
+                ? "(guardado; escribe otro para cambiarlo)"
+                : "sin token"
+            }
+            className={`${claseInput} font-mono`}
+          />
+          {estado.hayTokenCloudflare && (
+            <label className="inline-flex items-center gap-2 font-body text-xs text-text-secondary">
+              <input
+                type="checkbox"
+                checked={form.cfQuitarToken}
+                onChange={(e) => set("cfQuitarToken", e.target.checked)}
+              />
+              Quitar el token
+            </label>
+          )}
+          <p className="font-body text-xs text-text-muted">
+            Con token, las rutas detrás de Cloudflare obtienen el certificado
+            por DNS; sin él, por HTTP. En Cloudflare, el modo SSL debe ser «Full
+            (strict)».
+          </p>
+        </div>
+      </fieldset>
 
       {confirmando ? (
         <div className="flex flex-wrap items-center gap-2">

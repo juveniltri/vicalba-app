@@ -14,17 +14,22 @@ import {
   INTERVALO_CONSULTA_MS,
 } from "./ConfiguracionProxy";
 
-const { aplicarProxyAction, obtenerProxyAction, logProxyAction } = vi.hoisted(
-  () => ({
-    aplicarProxyAction: vi.fn(),
-    obtenerProxyAction: vi.fn(),
-    logProxyAction: vi.fn(),
-  }),
-);
+const {
+  aplicarProxyAction,
+  obtenerProxyAction,
+  logProxyAction,
+  rangosCloudflareAction,
+} = vi.hoisted(() => ({
+  aplicarProxyAction: vi.fn(),
+  obtenerProxyAction: vi.fn(),
+  logProxyAction: vi.fn(),
+  rangosCloudflareAction: vi.fn(),
+}));
 vi.mock("@/app/(panel)/actions", () => ({
   aplicarProxyAction,
   obtenerProxyAction,
   logProxyAction,
+  rangosCloudflareAction,
 }));
 
 const APLICADA: EstadoProxy = {
@@ -33,6 +38,7 @@ const APLICADA: EstadoProxy = {
   estado: "aplicada",
   mensaje: null,
   log: null,
+  hayTokenCloudflare: false,
 };
 
 const cambiar = (etiqueta: RegExp, valor: string) =>
@@ -83,15 +89,18 @@ describe("ConfiguracionProxy", () => {
       screen.getByRole("button", { name: "Aplicar y reiniciar" }),
     );
 
-    await waitFor(() =>
-      expect(aplicarProxyAction).toHaveBeenCalledWith({
-        ipsConfianza: ["173.245.48.0/20", "2400:cb00::/32"],
-        timeouts: { lecturaSeg: 30, escrituraSeg: 120, inactividadSeg: 0 },
-        logNivel: "DEBUG",
-        accessLog: true,
-        tlsMinima: "VersionTLS13",
-      }),
-    );
+    await waitFor(() => expect(aplicarProxyAction).toHaveBeenCalled());
+    const [config, token] = aplicarProxyAction.mock.calls[0];
+    expect(config).toEqual({
+      ipsConfianza: ["173.245.48.0/20", "2400:cb00::/32"],
+      timeouts: { lecturaSeg: 30, escrituraSeg: 120, inactividadSeg: 0 },
+      logNivel: "DEBUG",
+      accessLog: true,
+      tlsMinima: "VersionTLS13",
+      cloudflare: CONFIG_PROXY_POR_DEFECTO.cloudflare,
+    });
+    // Without typing a token, the stored one is kept
+    expect(token).toBeUndefined();
     expect(await screen.findByRole("status")).toHaveTextContent(/reiniciando/);
     expect(screen.getByRole("button", { name: "Aplicando…" })).toBeDisabled();
   });
@@ -183,5 +192,73 @@ describe("ConfiguracionProxy", () => {
         "(vacío)",
       ),
     );
+  });
+
+  describe("Cloudflare", () => {
+    const aplicarYConfirmar = () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Aplicar y reiniciar" }),
+      );
+    };
+
+    it("activa Cloudflare delante con sus rangos y guarda un token nuevo", async () => {
+      render(<ConfiguracionProxy inicial={APLICADA} />);
+      fireEvent.click(screen.getByLabelText(/detrás del proxy de Cloudflare/));
+      cambiar(/Rangos de Cloudflare/, "173.245.48.0/20\n2400:cb00::/32");
+      cambiar(/Token de la API/, "  tok_123  ");
+      aplicarYConfirmar();
+
+      await waitFor(() => expect(aplicarProxyAction).toHaveBeenCalled());
+      const [config, token] = aplicarProxyAction.mock.calls[0];
+      expect(config.cloudflare).toEqual({
+        delante: true,
+        rangos: ["173.245.48.0/20", "2400:cb00::/32"],
+      });
+      expect(token).toBe("tok_123");
+      expect(await screen.findByLabelText(/Token de la API/)).toHaveAttribute(
+        "placeholder",
+        expect.stringMatching(/guardado/),
+      );
+    });
+
+    it("con token guardado se puede quitar", async () => {
+      render(
+        <ConfiguracionProxy
+          inicial={{ ...APLICADA, hayTokenCloudflare: true }}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("Quitar el token"));
+      expect(screen.getByLabelText(/Token de la API/)).toBeDisabled();
+      aplicarYConfirmar();
+
+      await waitFor(() =>
+        expect(aplicarProxyAction).toHaveBeenCalledWith(
+          expect.anything(),
+          null,
+        ),
+      );
+      expect(await screen.findByLabelText(/Token de la API/)).toHaveAttribute(
+        "placeholder",
+        "sin token",
+      );
+    });
+
+    it("actualiza los rangos desde cloudflare.com o muestra por qué no pudo", async () => {
+      rangosCloudflareAction
+        .mockResolvedValueOnce({ rangos: ["1.1.1.0/24"] })
+        .mockResolvedValueOnce({ error: "Cloudflare respondió 503" });
+      render(<ConfiguracionProxy inicial={APLICADA} />);
+      const boton = screen.getByRole("button", { name: /cloudflare\.com/ });
+
+      fireEvent.click(boton);
+      await waitFor(() =>
+        expect(screen.getByLabelText("Rangos de Cloudflare")).toHaveValue(
+          "1.1.1.0/24",
+        ),
+      );
+      fireEvent.click(boton);
+      expect(await screen.findByRole("alert")).toHaveTextContent("503");
+    });
   });
 });

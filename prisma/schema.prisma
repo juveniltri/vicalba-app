@@ -102,6 +102,8 @@ model RutaProyecto {
   servicio       String?
   puerto         Int
   redireccionWww RedireccionWww @default(ninguna)
+  // Proxied by Cloudflare: its cert resolver and real-IP strategy
+  cloudflare     Boolean        @default(false)
   // Validated with middlewaresSchema (src/lib/schemas/middlewares.ts)
   middlewares    Json           @default("{}")
   creadoEn       DateTime       @default(now())
@@ -281,5 +283,9 @@ model ConfiguracionProxy {
   estado        EstadoProxy @default(aplicada)
   mensaje       String?
   log           String?     @db.Text
+  // Cloudflare API token (DNS-01), AES-256-GCM like the other secrets
+  cfTokenCifrado String?
+  cfTokenIv      String?
+  cfTokenAuthTag String?
   actualizadoEn DateTime    @updatedAt
 }

@@ -552,6 +552,7 @@ export type DatosRuta = {
   servicio: string | null;
   puerto?: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  cloudflare?: boolean;
   middlewares?: MiddlewaresEntrada;
 };
 
@@ -605,10 +606,14 @@ export async function obtenerProxyAction() {
   }
 }
 
-export async function aplicarProxyAction(config: ConfiguracionProxy) {
+// tokenCloudflare: undefined keeps the stored one, null removes it.
+export async function aplicarProxyAction(
+  config: ConfiguracionProxy,
+  tokenCloudflare?: string | null,
+) {
   try {
     const api = await createServerCaller();
-    return await api.proxy.aplicar(config);
+    return await api.proxy.aplicar({ ...config, tokenCloudflare });
   } catch (err) {
     return {
       error: parseTRPCError(err, "Error al aplicar la configuración del Proxy"),
@@ -619,4 +624,15 @@ export async function aplicarProxyAction(config: ConfiguracionProxy) {
 export async function logProxyAction() {
   const api = await createServerCaller();
   return api.proxy.log();
+}
+
+export async function rangosCloudflareAction() {
+  try {
+    const api = await createServerCaller();
+    return { rangos: await api.proxy.rangosCloudflare() };
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "No se pudo descargar la lista de Cloudflare"),
+    };
+  }
 }

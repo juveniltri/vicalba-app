@@ -38,6 +38,12 @@ Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master.
    por sus dominios) y los `image` pasan a conectarse a la red del Cliente.
 5. Probar el acceso de emergencia: `ssh -L 3000:localhost:3000 <vps>` y abrir `http://localhost:3000`.
 6. El email de Let's Encrypt (`ACME_EMAIL`) ahora sí llega a Traefik (antes se ignoraba el flag).
+7. **Antes de producción, en la VPS de desarrollo** con un subdominio en la cuenta de Cloudflare:
+   - token con permiso Zone → DNS → Edit en Configuración → Proxy, ruta «Detrás de Cloudflare» con
+     nube naranja → el certificado sale por DNS-01 (Dominios: «SSL activo»; log de Traefik sin errores ACME);
+   - sin token → sale por HTTP-01 a través de Cloudflare (modo SSL «Full» mientras no hay certificado);
+   - con «Cloudflare delante» y una lista de IPs en la ruta, entrar desde una IP permitida y otra no;
+     la app ve la IP real en `X-Forwarded-For`/`X-Real-Ip`.
 
 ## Operación al desplegar la 2.2.0 (backups)
 

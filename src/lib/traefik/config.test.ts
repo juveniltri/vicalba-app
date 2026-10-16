@@ -40,16 +40,19 @@ vi.mock("@/env", () => ({
   env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic", NODE_ENV: "test" },
 }));
 
-const { mockClienteFindUnique, mockClienteFindMany } = vi.hoisted(() => ({
-  mockClienteFindUnique: vi.fn(),
-  mockClienteFindMany: vi.fn(),
-}));
+const { mockClienteFindUnique, mockClienteFindMany, mockProxyFindUnique } =
+  vi.hoisted(() => ({
+    mockClienteFindUnique: vi.fn(),
+    mockClienteFindMany: vi.fn(),
+    mockProxyFindUnique: vi.fn(),
+  }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     cliente: {
       findUnique: mockClienteFindUnique,
       findMany: mockClienteFindMany,
     },
+    configuracionProxy: { findUnique: mockProxyFindUnique },
   },
 }));
 
@@ -69,6 +72,7 @@ vi.mock("@/lib/docker/networks", () => ({
 
 import { parse } from "yaml";
 import { env } from "@/env";
+import { CONFIG_PROXY_POR_DEFECTO } from "@/lib/schemas/proxy";
 import {
   generarConfigProyecto,
   regenerarConfigTraefik,
@@ -103,16 +107,23 @@ const ruta = (
   servicio: null,
   puerto: 3000,
   redireccionWww: "ninguna" as const,
+  cloudflare: false,
   middlewares: {},
   ...extra,
 });
 
-function generar(rutas: ReturnType<typeof ruta>[]) {
+const CF = {
+  resolver: "letsencrypt-dns" as const,
+  rangos: ["173.245.48.0/20"],
+};
+
+function generar(rutas: ReturnType<typeof ruta>[], cloudflare = CF) {
   const yaml = generarConfigProyecto({
     proyectoId: "p1",
     clienteSlug: "acme",
     proyectoNombre: "web",
     rutas,
+    cloudflare,
   });
   return { yaml, config: parse(yaml ?? "") as ConfigTraefik };
 }
@@ -231,6 +242,47 @@ describe("generarConfigProyecto", () => {
     expect(conQuitar.middlewares).toBeUndefined();
     expect(sin.middlewares).toBeUndefined();
     expect(config.http.middlewares).toBeUndefined();
+  });
+
+  it("una ruta detrás de Cloudflare usa su resolver (también en la redirección www) y busca la IP real descartando sus rangos", () => {
+    const { config } = generar([
+      ruta({
+        cloudflare: true,
+        redireccionWww: "a_raiz",
+        middlewares: {
+          ipPermitidas: ["203.0.113.7"],
+          limitePeticiones: { media: 5, rafaga: 10 },
+        },
+      }),
+      ruta({ id: "r2", dominio: "b.com" }),
+    ]);
+
+    const [conCf, www, sinCf] = Object.values(config.http.routers);
+    expect(conCf.tls).toEqual({ certResolver: "letsencrypt-dns" });
+    expect(www.tls).toEqual({ certResolver: "letsencrypt-dns" });
+    expect(sinCf.tls).toEqual({ certResolver: "letsencrypt" });
+    const estrategia = { ipStrategy: { excludedIPs: ["173.245.48.0/20"] } };
+    expect(config.http.middlewares?.[conCf.middlewares![0]]).toEqual({
+      ipAllowList: { sourceRange: ["203.0.113.7"], ...estrategia },
+    });
+    expect(config.http.middlewares?.[conCf.middlewares![1]]).toEqual({
+      rateLimit: {
+        average: 5,
+        burst: 10,
+        period: "1s",
+        sourceCriterion: estrategia,
+      },
+    });
+  });
+
+  it("sin token de Cloudflare, las rutas detrás de Cloudflare piden el certificado por HTTP-01", () => {
+    const { config } = generar([ruta({ cloudflare: true })], {
+      resolver: "letsencrypt-http",
+      rangos: [],
+    });
+    expect(Object.values(config.http.routers)[0].tls).toEqual({
+      certResolver: "letsencrypt-http",
+    });
   });
 
   it("sin rutas no genera configuración", () => {
@@ -397,6 +449,62 @@ describe("sincronizarTraefikCliente", () => {
 
     expect(mockConectar).not.toHaveBeenCalled();
     expect(mockDesconectar).not.toHaveBeenCalled();
+  });
+});
+
+describe("sincronizarTraefikCliente — Cloudflare", () => {
+  beforeEach(() => {
+    ficheros.clear();
+    vi.clearAllMocks();
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [
+        { id: "p1", nombre: "web", rutas: [ruta({ cloudflare: true })] },
+      ]),
+    );
+  });
+
+  const routerDe = () =>
+    Object.values(
+      (parse(ficheros.get("acme_web.yml")!) as ConfigTraefik).http.routers,
+    )[0];
+
+  it("sin configuración del Proxy guardada usa HTTP-01 y los rangos por defecto", async () => {
+    mockProxyFindUnique.mockResolvedValue(null);
+    await sincronizarTraefikCliente("c-acme");
+    expect(routerDe().tls).toEqual({ certResolver: "letsencrypt-http" });
+  });
+
+  it("con token usa DNS-01 y descarta los rangos de la configuración aplicada", async () => {
+    mockProxyFindUnique.mockResolvedValue({
+      aplicada: {
+        ...CONFIG_PROXY_POR_DEFECTO,
+        cloudflare: { delante: true, rangos: ["198.41.128.0/17"] },
+      },
+      cfTokenCifrado: "x",
+    });
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [
+        {
+          id: "p1",
+          nombre: "web",
+          rutas: [
+            ruta({
+              cloudflare: true,
+              middlewares: { ipPermitidas: ["1.2.3.4"] },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    await sincronizarTraefikCliente("c-acme");
+
+    const config = parse(ficheros.get("acme_web.yml")!) as ConfigTraefik;
+    const router = Object.values(config.http.routers)[0];
+    expect(router.tls).toEqual({ certResolver: "letsencrypt-dns" });
+    expect(config.http.middlewares?.[router.middlewares![0]]).toMatchObject({
+      ipAllowList: { ipStrategy: { excludedIPs: ["198.41.128.0/17"] } },
+    });
   });
 });
 

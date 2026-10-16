@@ -29,6 +29,7 @@ export type RutaPanel = {
   servicio: string | null;
   puerto: number;
   redireccionWww: Redireccion;
+  cloudflare: boolean;
   middlewares: MiddlewaresVista;
   ssl: { activo: boolean; caducaEn: string | null };
 };
@@ -39,6 +40,7 @@ type Formulario = {
   servicio: string;
   puerto: string;
   redireccionWww: Redireccion;
+  cloudflare: boolean;
   mw: FormMiddlewares;
 };
 
@@ -48,6 +50,7 @@ const VACIO: Formulario = {
   servicio: "",
   puerto: "",
   redireccionWww: "ninguna",
+  cloudflare: false,
   mw: FORM_MIDDLEWARES_VACIO,
 };
 
@@ -104,6 +107,7 @@ export function DominiosPanel({
             servicio: ruta.servicio ?? "",
             puerto: String(ruta.puerto),
             redireccionWww: ruta.redireccionWww,
+            cloudflare: ruta.cloudflare,
             mw: aFormulario(ruta.middlewares),
           }
         : VACIO,
@@ -121,6 +125,7 @@ export function DominiosPanel({
       servicio,
       puerto: form.puerto.trim() ? Number(form.puerto) : undefined,
       redireccionWww: form.redireccionWww,
+      cloudflare: form.cloudflare,
       middlewares: aEntrada(form.mw),
     };
     const resultado =
@@ -171,7 +176,7 @@ export function DominiosPanel({
     router.refresh();
   }
 
-  const campo = (clave: Exclude<keyof Formulario, "mw">) => ({
+  const campo = (clave: Exclude<keyof Formulario, "mw" | "cloudflare">) => ({
     value: form[clave],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm({ ...form, [clave]: e.target.value }),
@@ -235,6 +240,11 @@ export function DominiosPanel({
                       {secundario && (
                         <p className="font-mono text-xs text-text-muted">
                           {secundario} → {r.dominio}
+                        </p>
+                      )}
+                      {r.cloudflare && (
+                        <p className="font-body text-[11px] text-text-secondary">
+                          ☁ Detrás de Cloudflare
                         </p>
                       )}
                       {resumenMiddlewares(r.middlewares).length > 0 && (
@@ -387,6 +397,17 @@ export function DominiosPanel({
                 ))}
             </select>
           </Campo>
+          <label className="inline-flex items-center gap-2 font-body text-xs text-text-secondary sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.cloudflare}
+              onChange={(e) =>
+                setForm({ ...form, cloudflare: e.target.checked })
+              }
+            />
+            Detrás del proxy de Cloudflare (nube naranja): certificado por
+            DNS/HTTP y la IP real del visitante para la protección
+          </label>
           <MiddlewaresCampos
             valor={form.mw}
             onChange={(mw) => setForm({ ...form, mw })}

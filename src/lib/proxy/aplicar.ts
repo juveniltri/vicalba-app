@@ -7,6 +7,8 @@ export type DepsAplicar = {
   leerEstatico(): Promise<string | null>;
   escribirEstatico(contenido: string): Promise<void>;
   guardarPrevio(contenido: string): Promise<void>;
+  // null removes it
+  escribirTokenCloudflare(token: string | null): Promise<void>;
   escribirTls(contenido: string): Promise<void>;
   reiniciarTraefik(): Promise<void>;
   traefikResponde(): Promise<boolean>;
@@ -22,7 +24,11 @@ export type ResultadoAplicar =
 // must never stay in place, so every failure goes back to the previous one.
 export async function aplicarConfiguracionProxy(
   config: ConfiguracionProxy,
-  opciones: { acmeStorage: string; acmeEmail?: string },
+  opciones: {
+    acmeStorage: string;
+    acmeEmail?: string;
+    tokenCloudflare: boolean;
+  },
   deps: DepsAplicar,
   espera: { intentos: number; intervaloMs?: number } = { intentos: 20 },
 ): Promise<ResultadoAplicar> {

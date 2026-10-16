@@ -11,6 +11,7 @@ import {
 } from "@/lib/schemas/middlewares";
 import { leerCertificados } from "@/lib/ssl/acme";
 import {
+  contextoCloudflare,
   generarConfigProyecto,
   hostRedireccionWww,
   type RutaTraefik,
@@ -46,6 +47,7 @@ const rutaInput = z.object({
     .nullish(),
   puerto: z.number().int().min(1).max(65535).optional(),
   redireccionWww: z.enum(["ninguna", "a_raiz", "a_www"]).default("ninguna"),
+  cloudflare: z.boolean().default(false),
   middlewares: middlewaresEntradaSchema.optional(),
 });
 
@@ -175,12 +177,13 @@ export const rutasRouter = router({
     .input(z.object({ proyectoId: z.string() }))
     .query(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.proyectoId);
-      const [filas, certificados] = await Promise.all([
+      const [filas, certificados, cloudflare] = await Promise.all([
         prisma.rutaProyecto.findMany({
           where: { proyectoId: proyecto.id },
           orderBy: { creadoEn: "asc" },
         }),
         leerCertificados(),
+        contextoCloudflare(),
       ]);
       const rutas = filas.map((r) => ({
         ...r,
@@ -191,6 +194,7 @@ export const rutasRouter = router({
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         rutas,
+        cloudflare,
       });
       return {
         rutas: rutas.map((r) => {
@@ -226,6 +230,7 @@ export const rutasRouter = router({
               : null,
           puerto: input.puerto ?? actual.puerto,
           redireccionWww: input.redireccionWww,
+          cloudflare: input.cloudflare,
           ...(middlewares && { middlewares }),
         },
       });
@@ -276,6 +281,7 @@ export const rutasRouter = router({
             proyecto.tipo === "compose" ? (input.servicio ?? null) : null,
           puerto: input.puerto ?? proyecto.puerto ?? 80,
           redireccionWww: input.redireccionWww,
+          cloudflare: input.cloudflare,
           middlewares,
         },
       });

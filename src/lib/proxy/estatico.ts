@@ -7,12 +7,29 @@ export const PUERTO_PING = 8082;
 
 export function generarTraefikEstatico(
   config: ConfiguracionProxy,
-  opciones: { acmeStorage: string; acmeEmail?: string },
+  opciones: {
+    acmeStorage: string;
+    acmeEmail?: string;
+    tokenCloudflare: boolean;
+  },
 ): string {
+  const confiables = [
+    ...new Set([
+      ...config.ipsConfianza,
+      ...(config.cloudflare.delante ? config.cloudflare.rangos : []),
+    ]),
+  ];
   const confianza =
-    config.ipsConfianza.length > 0
-      ? { forwardedHeaders: { trustedIPs: config.ipsConfianza } }
+    confiables.length > 0
+      ? { forwardedHeaders: { trustedIPs: confiables } }
       : {};
+  const acme = (desafio: object) => ({
+    acme: {
+      ...(opciones.acmeEmail && { email: opciones.acmeEmail }),
+      storage: opciones.acmeStorage,
+      ...desafio,
+    },
+  });
   const t = config.timeouts;
   return `# generado por vicalba-panel — se edita en Configuración → Proxy\n${stringify(
     {
@@ -47,14 +64,15 @@ export function generarTraefikEstatico(
         // Cliente Proyectos, written by the Panel
         file: { directory: "/etc/traefik/dynamic", watch: true },
       },
+      // TLS-ALPN for plain routes. Behind Cloudflare's proxy TLS-ALPN can't
+      // work: DNS-01 with the API token (CF_DNS_API_TOKEN_FILE in the compose)
+      // or, without a token, HTTP-01, which Cloudflare forwards.
       certificatesResolvers: {
-        letsencrypt: {
-          acme: {
-            ...(opciones.acmeEmail && { email: opciones.acmeEmail }),
-            storage: opciones.acmeStorage,
-            tlsChallenge: {},
-          },
-        },
+        letsencrypt: acme({ tlsChallenge: {} }),
+        "letsencrypt-http": acme({ httpChallenge: { entryPoint: "web" } }),
+        ...(opciones.tokenCloudflare && {
+          "letsencrypt-dns": acme({ dnsChallenge: { provider: "cloudflare" } }),
+        }),
       },
       log: { level: config.logNivel },
       ...(config.accessLog && { accessLog: { format: "json" } }),

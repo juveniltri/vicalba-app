@@ -31,6 +31,7 @@ const ruta = (extra: Partial<RutaPanel> = {}): RutaPanel => ({
   servicio: null,
   puerto: 3000,
   redireccionWww: "ninguna",
+  cloudflare: false,
   middlewares: {},
   ssl: { activo: true, caducaEn: null },
   ...extra,
@@ -139,6 +140,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: "web",
         puerto: 8080,
         redireccionWww: "a_raiz",
+        cloudflare: false,
         middlewares: {},
       }),
     );
@@ -177,6 +179,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: null,
         puerto: undefined,
         redireccionWww: "a_www",
+        cloudflare: false,
         middlewares: {},
       }),
     );
@@ -199,6 +202,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: "web",
         puerto: 3000,
         redireccionWww: "ninguna",
+        cloudflare: false,
         middlewares: {},
       }),
     );
@@ -268,6 +272,24 @@ describe("DominiosPanel — eliminar", () => {
       }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo");
+  });
+});
+
+describe("DominiosPanel — Cloudflare", () => {
+  it("marca la ruta como detrás de Cloudflare y lo muestra en la tabla", async () => {
+    const { unmount } = renderPanel({ rutas: [ruta({ cloudflare: true })] });
+    expect(screen.getByText(/Detrás de Cloudflare/)).toBeInTheDocument();
+    unmount();
+
+    renderPanel({ rutas: [] });
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
+    rellenar(/^Dominio$/, "a.com");
+    fireEvent.click(screen.getByLabelText(/proxy de Cloudflare/));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(crearRutaAction.mock.calls[0][1].cloudflare).toBe(true),
+    );
   });
 });
 

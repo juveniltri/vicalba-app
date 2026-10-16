@@ -8,6 +8,9 @@ type Fila = {
   estado: "aplicada" | "en_curso" | "revertida" | "error";
   mensaje: string | null;
   log: string | null;
+  cfTokenCifrado?: string | null;
+  cfTokenIv?: string | null;
+  cfTokenAuthTag?: string | null;
 };
 
 // One-row ConfiguracionProxy table and a fake Traefik behind the injected deps.
@@ -16,9 +19,10 @@ const { bd, traefik } = vi.hoisted(() => ({
   traefik: {
     estatico: null as string | null,
     tls: null as string | null,
-    arranca: (_estatico: string | null) => true,
+    arranca: (() => true) as (estatico: string | null) => boolean,
     enMarcha: true,
     reinicios: 0,
+    tokenFichero: undefined as string | null | undefined,
   },
 }));
 
@@ -83,6 +87,9 @@ vi.mock("@/lib/docker/traefik", () => ({
       traefik.estatico = c;
     },
     guardarPrevio: async () => {},
+    escribirTokenCloudflare: async (t: string | null) => {
+      traefik.tokenFichero = t;
+    },
     escribirTls: async (c: string) => {
       traefik.tls = c;
     },
@@ -103,6 +110,20 @@ vi.mock("@/env", () => ({
     ACME_JSON_PATH: "/letsencrypt/acme.json",
     ACME_EMAIL: "ops@vicalba.com",
   },
+}));
+
+vi.mock("@/lib/crypto", () => ({
+  cifrar: (v: string) => ({
+    valorCifrado: `cifrado(${v})`,
+    iv: "iv",
+    authTag: "tag",
+  }),
+  descifrar: (c: string) => c.slice("cifrado(".length, -1),
+}));
+
+const { mockRegenerar } = vi.hoisted(() => ({ mockRegenerar: vi.fn() }));
+vi.mock("@/lib/traefik/config", () => ({
+  regenerarConfigTraefik: mockRegenerar,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -130,6 +151,8 @@ beforeEach(() => {
   traefik.arranca = () => true;
   traefik.enMarcha = true;
   traefik.reinicios = 0;
+  traefik.tokenFichero = undefined;
+  mockRegenerar.mockReset();
 });
 
 describe("leerConfiguracionProxy", () => {
@@ -203,6 +226,77 @@ describe("lanzarAplicacionProxy", () => {
 
     expect(bd.fila?.estado).toBe("error");
     expect(bd.fila?.mensaje).toMatch(/BD caída/);
+  });
+});
+
+describe("token de Cloudflare", () => {
+  it("se guarda cifrado, se escribe para Traefik y activa el resolver DNS", async () => {
+    const { terminado } = await lanzarAplicacionProxy(NUEVA, "cf-secreto");
+    await terminado;
+
+    expect(bd.fila).toMatchObject({
+      cfTokenCifrado: "cifrado(cf-secreto)",
+      cfTokenIv: "iv",
+      cfTokenAuthTag: "tag",
+    });
+    expect(JSON.stringify(bd.fila)).not.toMatch(/"cf-secreto"/);
+    expect(traefik.tokenFichero).toBe("cf-secreto");
+    expect(traefik.estatico).toContain("letsencrypt-dns");
+    expect(await leerConfiguracionProxy()).toMatchObject({
+      hayTokenCloudflare: true,
+    });
+  });
+
+  it("sin indicarlo se mantiene; con null se borra y el resolver DNS desaparece", async () => {
+    await (
+      await lanzarAplicacionProxy(NUEVA, "cf-secreto")
+    ).terminado;
+    await (
+      await lanzarAplicacionProxy({ ...NUEVA, logNivel: "WARN" })
+    ).terminado;
+    expect(traefik.estatico).toContain("letsencrypt-dns");
+    expect(traefik.tokenFichero).toBe("cf-secreto");
+
+    await (
+      await lanzarAplicacionProxy(NUEVA, null)
+    ).terminado;
+    expect(bd.fila).toMatchObject({ cfTokenCifrado: null });
+    expect(traefik.tokenFichero).toBeNull();
+    expect(traefik.estatico).not.toContain("letsencrypt-dns");
+    expect((await leerConfiguracionProxy()).hayTokenCloudflare).toBe(false);
+  });
+
+  it("tras aplicar regenera la config de las rutas (su resolver depende del token y de los rangos); si se revierte, no", async () => {
+    await (
+      await lanzarAplicacionProxy(NUEVA)
+    ).terminado;
+    expect(mockRegenerar).toHaveBeenCalledOnce();
+
+    traefik.arranca = (e) => !e?.includes("level: WARN");
+    await (
+      await lanzarAplicacionProxy({ ...NUEVA, logNivel: "WARN" })
+    ).terminado;
+    expect(bd.fila?.estado).toBe("revertida");
+    expect(mockRegenerar).toHaveBeenCalledOnce();
+  });
+
+  it("al escribir el estático que faltaba también escribe el token guardado", async () => {
+    bd.fila = {
+      id: "default",
+      aplicada: NUEVA,
+      pendiente: null,
+      estado: "aplicada",
+      mensaje: null,
+      log: null,
+      cfTokenCifrado: "cifrado(cf-secreto)",
+      cfTokenIv: "iv",
+      cfTokenAuthTag: "tag",
+    };
+
+    await asegurarTraefikEstatico();
+
+    expect(traefik.tokenFichero).toBe("cf-secreto");
+    expect(traefik.estatico).toContain("letsencrypt-dns");
   });
 });
 

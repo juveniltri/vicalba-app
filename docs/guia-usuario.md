@@ -314,6 +314,9 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
 - **Logs**: logs del contenedor en vivo (tarea 6).
 - **Dominios**: los dominios del Proyecto. Cada uno puede llevar un path (`/api`), apuntar a
   un Servicio concreto del compose y a otro puerto, y redirigir `www` al dominio (o al revés).
+  Las rutas que pasan por Cloudflare llevan marcada **Detrás de Cloudflare**: piden el
+  certificado por DNS (o HTTP sin token) y la protección por IP y el límite de peticiones usan
+  la IP real del visitante, no la de Cloudflare.
   Muestra el estado del certificado, avisa si el Servicio no tiene contenedor y enseña el YAML
   que recibe Traefik. Los cambios se aplican al guardar; una ruta a un Servicio que no tenía
   ninguna funciona tras el siguiente deploy.
@@ -405,6 +408,12 @@ pestaña Dominios de cada Proyecto):
 - **Timeouts** de lectura, escritura e inactividad, en segundos (0 = sin límite).
 - **Nivel de log**, **TLS mínimo** (1.2 o 1.3) y **Access log** (una línea por petición; actívalo
   solo para depurar, con tráfico tapa los errores).
+- **Cloudflare**: marca la casilla si algún dominio pasa por el proxy de Cloudflare (nube
+  naranja): sus rangos (editables, con **Actualizar desde cloudflare.com**) pasan a ser de
+  confianza. El **token de la API** (permiso Zone → DNS → Edit sobre las zonas) permite pedir los
+  certificados por DNS; sin token se piden por HTTP. Se guarda cifrado y no se puede volver a
+  ver: escribe otro para cambiarlo o marca **Quitar el token**. En Cloudflare, el modo SSL debe
+  ser **Full (strict)**.
 
 **Aplicar** reinicia Traefik: se cortan las conexiones unos segundos y el Panel puede no
 responder mientras tanto; la página espera y muestra el resultado. Si Traefik no arranca con la
