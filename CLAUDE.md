@@ -224,21 +224,20 @@ contenedor Traefik vía el socket Docker que el panel ya tiene montado.
 `ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
 del contenedor Traefik; el `traefik.yml` estático lo genera el Panel con ese `storage`.
 
-### Primera vez
+### Primera vez y actualizaciones
+
+Guía paso a paso en `production.md`: instalación desde cero (§ A), actualizar a cada versión
+(§ B, con los pasos «Al actualizar» de cada una), Cloudflare (§ C), acceso de emergencia (§ D) y
+problemas frecuentes (§ E). Resumen:
 
 ```bash
-git clone <repo> vicalba-app && cd vicalba-app
-cp .env.production.example .env
-# Editar .env con los valores reales
-docker compose up -d --build
+git clone <repo> /opt/vicalba-app && cd /opt/vicalba-app
+cp .env.production.example .env   # rellenar
+docker compose up -d --build      # también al actualizar: el stack completo, tras git pull
 ```
 
-### Actualizaciones
-
-```bash
-git pull
-docker compose up -d --build panel
-```
+Al publicar una versión con pasos manuales, añadirlos en `production.md` § B además del
+`### Al actualizar` del CHANGELOG.
 
 ### Desarrollo local
 
