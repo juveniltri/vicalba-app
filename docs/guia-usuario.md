@@ -394,6 +394,26 @@ Cada canal se activa con su casilla y muestra el resultado de su último envío.
 - **Tiempo máximo de deploy**: un deploy que lo supera se cancela solo y se notifica. Entre 5 y
   180 minutos; 0 lo desactiva.
 
+## Configuración — Proxy
+
+Ajustes de Traefik que valen para todos los Proyectos (los dominios y su protección van en la
+pestaña Dominios de cada Proyecto):
+
+- **IPs de confianza**: los proxies que haya delante de Traefik (por ejemplo los rangos de
+  Cloudflare). Solo de ellos se aceptan las cabeceras `X-Forwarded-*`; vacío, Traefik es la
+  entrada y pone él la IP real del visitante.
+- **Timeouts** de lectura, escritura e inactividad, en segundos (0 = sin límite).
+- **Nivel de log**, **TLS mínimo** (1.2 o 1.3) y **Access log** (una línea por petición; actívalo
+  solo para depurar, con tráfico tapa los errores).
+
+**Aplicar** reinicia Traefik: se cortan las conexiones unos segundos y el Panel puede no
+responder mientras tanto; la página espera y muestra el resultado. Si Traefik no arranca con la
+nueva configuración, se vuelve sola a la anterior y se enseña el motivo con el log de Traefik.
+**Ver las últimas líneas del log de Traefik** ayuda a depurar.
+
+Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no pasa por Traefik:
+`ssh -L 3000:localhost:3000 usuario@vps` y abre `http://localhost:3000`.
+
 ## Configuración — Backups
 
 ![Sección Backups](../public/guia/backups-estado.png)
