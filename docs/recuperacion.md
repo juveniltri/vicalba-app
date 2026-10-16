@@ -44,6 +44,10 @@ docker compose exec traefik chmod 600 /letsencrypt/acme.json
 docker compose restart traefik
 ```
 
+El `traefik.yml` estático (`traefik/static/` en la copia) no hace falta copiarlo: hasta el paso 5
+Traefik solo escucha en el puerto 80, y al arrancar el Panel lo escribe a partir de la BD
+restaurada (Configuración → Proxy, token de Cloudflare incluido) y reinicia Traefik.
+
 ## 5. Arrancar el Panel
 
 ```bash

@@ -1,6 +1,6 @@
 # Diseño — Proxy y servicios (2.3.0)
 
-Estado: revisado con `/grill-me` (16/10/2026). Rama: `feature/2.3.0`.
+Estado: implementado en `feature/2.3.0` (16/10/2026). Cambios respecto al diseño al implementarlo: alias `<servicio>.<cliente>-<proyecto>`, ficheros `<cliente>_<proyecto>.yml`, entrypoint de ping propio (`:8082`), resolver `letsencrypt-http` siempre presente y el Panel reinicia Traefik si tuvo que escribir el `traefik.yml`. Rama: `feature/2.3.0`.
 
 ## Objetivo
 

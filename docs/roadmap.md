@@ -12,7 +12,10 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 
 `develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `docs/notas-pendientes.md`) y después la 2.3.0.
+Ahora: la 2.3.0 está completa en `feature/2.3.0` (PR a `develop`). Antes de publicarla: verificar en la VPS de desarrollo
+los certificados reales con Cloudflare (punto 7 de «Operación al desplegar la 2.3.0» en `docs/notas-pendientes.md`), y en la
+release el CHANGELOG con `### Al actualizar` (directorio `static/`, stack completo, puertos ya no publicados). Si la 2.2.0
+sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones seguidas.
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
