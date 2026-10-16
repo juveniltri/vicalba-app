@@ -97,7 +97,6 @@ export function ProyectoFormModal({
       ? await editarProyectoAction(
           proyecto!.id,
           nombre,
-          dominioFinal,
           repoFinal,
           rama,
           tipo,
@@ -290,29 +289,31 @@ export function ProyectoFormModal({
             </div>
           )}
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="dominio"
-              className="font-body text-xs text-text-muted"
-            >
-              Dominio (opcional)
-            </label>
-            <input
-              id="dominio"
-              type="text"
-              value={dominio}
-              onChange={(e) => setDominio(e.target.value)}
-              placeholder="ej: app.micliente.com"
-              className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
-            />
-          </div>
+          {!isEdit && (
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="dominio"
+                className="font-body text-xs text-text-muted"
+              >
+                Dominio (opcional; más dominios en la pestaña Dominios)
+              </label>
+              <input
+                id="dominio"
+                type="text"
+                value={dominio}
+                onChange={(e) => setDominio(e.target.value)}
+                placeholder="ej: app.micliente.com"
+                className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
+              />
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label
               htmlFor="puerto"
               className="font-body text-xs text-text-muted"
             >
-              Puerto expuesto (opcional, por defecto 80)
+              Puerto del contenedor (opcional, por defecto 80)
             </label>
             <input
               id="puerto"

@@ -30,6 +30,13 @@ const serverSchema = z.object({
 
   // Deploy — directorio donde Traefik lee su config dinámica
   TRAEFIK_DYNAMIC_DIR: z.string().default("/etc/traefik/dynamic"),
+  // Proxy — directorio del traefik.yml estático que genera el Panel
+  TRAEFIK_STATIC_DIR: z.string().default("/etc/traefik/static"),
+  // Proxy — email de la cuenta de Let's Encrypt (avisos de caducidad)
+  ACME_EMAIL: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.string().email().optional(),
+  ),
   // Deploy — directorio local donde se clonan los repos de los proyectos
   REPOS_DIR: z.string().default("/var/vicalba/repos"),
   TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
@@ -69,6 +76,7 @@ const buildTimeDummy = {
   ENCRYPTION_KEY: "0".repeat(64),
   DOCKER_SOCKET_PATH: "/var/run/docker.sock",
   TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
+  TRAEFIK_STATIC_DIR: "/etc/traefik/static",
   REPOS_DIR: "/var/vicalba/repos",
   TRAEFIK_CONTAINER_NAME: "traefik",
   ACME_JSON_PATH: "/letsencrypt/acme.json",

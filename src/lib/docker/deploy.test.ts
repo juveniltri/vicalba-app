@@ -162,6 +162,23 @@ describe("deployProyecto", () => {
     });
   });
 
+  it("un Proyecto de tipo image también se conecta a la red del Cliente", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/app"] }]);
+
+    await deployProyecto({
+      ...baseParams,
+      tipo: "image",
+      repoUrl: null,
+      imagenUrl: "ghost:5-alpine",
+      puerto: 2368,
+    });
+
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c1",
+      EndpointConfig: { Aliases: ["acme-web-app"] },
+    });
+  });
+
   it("anuncia en el log la fase de red y proxy antes de terminar", async () => {
     const onLog = vi.fn();
     await deployProyecto({ ...baseParams, onLog });
@@ -252,6 +269,56 @@ describe("deployProyecto", () => {
     await deployProyecto({ ...baseParams, puerto: 8000 });
 
     expect(mockConnect).toHaveBeenCalledTimes(2);
+  });
+
+  it("cada Servicio con ruta recibe su alias; el principal lleva los dos en una sola conexión", async () => {
+    mockListContainers.mockResolvedValue([
+      {
+        Id: "c-web",
+        Labels: { "com.docker.compose.service": "web" },
+        Ports: [{ PrivatePort: 8000 }],
+      },
+      {
+        Id: "c-api",
+        Labels: { "com.docker.compose.service": "api" },
+        Ports: [{ PrivatePort: 3000 }],
+      },
+      { Id: "c-db", Labels: { "com.docker.compose.service": "db" } },
+    ]);
+
+    await deployProyecto({
+      ...baseParams,
+      puerto: 8000,
+      serviciosConRuta: ["web", "api"],
+    });
+
+    expect(mockConnect).toHaveBeenCalledTimes(2);
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-web",
+      EndpointConfig: { Aliases: ["acme-web-app", "web.acme-web-app"] },
+    });
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-api",
+      EndpointConfig: { Aliases: ["api.acme-web-app"] },
+    });
+  });
+
+  it("avisa en el log si un Servicio con ruta no tiene contenedor, sin fallar el deploy", async () => {
+    const onLog = vi.fn();
+    mockListContainers.mockResolvedValue([
+      { Id: "c-web", Labels: { "com.docker.compose.service": "web" } },
+    ]);
+
+    await deployProyecto({
+      ...baseParams,
+      serviciosConRuta: ["backend"],
+      onLog,
+    });
+
+    expect(onLog).toHaveBeenCalledWith(
+      expect.stringMatching(/⚠.*«backend».*sin contenedor/),
+    );
+    expect(onLog).toHaveBeenCalledWith("✓ Deploy completado");
   });
 });
 
@@ -760,6 +827,24 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
           '        max-file: "3"',
         ].join("\n"),
       );
+    },
+  );
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el puerto solo se expone en la red; no se publica en el host, se llega por Traefik",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:alpine",
+        puerto: 3000,
+      });
+
+      const [compose] = writesTo(
+        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain('    expose:\n      - "3000"');
+      expect(compose?.[1]).not.toContain("ports:");
     },
   );
 

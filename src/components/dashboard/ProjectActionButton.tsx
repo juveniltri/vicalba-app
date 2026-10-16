@@ -8,6 +8,7 @@ type ActionResult = { error: string } | void | undefined;
 export function ProjectActionButton({
   action,
   label,
+  ariaLabel,
   pendingLabel,
   confirmLabel,
   successMessage,
@@ -17,6 +18,7 @@ export function ProjectActionButton({
 }: {
   action: () => Promise<ActionResult>;
   label: string;
+  ariaLabel?: string;
   pendingLabel: string;
   confirmLabel?: string;
   successMessage: string;
@@ -50,6 +52,7 @@ export function ProjectActionButton({
       onClick={handleClick}
       onBlur={() => setConfirmando(false)}
       disabled={disabled || isPending}
+      aria-label={ariaLabel}
       className={className}
     >
       {children}

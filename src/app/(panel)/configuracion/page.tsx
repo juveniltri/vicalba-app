@@ -6,12 +6,14 @@ import { createServerCaller } from "@/server/caller";
 import { ConfiguracionBackups } from "@/components/backups/ConfiguracionBackups";
 import { ConfiguracionDeploys } from "@/components/dashboard/ConfiguracionDeploys";
 import { ConfiguracionNotificaciones } from "@/components/dashboard/ConfiguracionNotificaciones";
+import { ConfiguracionProxy } from "@/components/dashboard/ConfiguracionProxy";
 import { GestionCredenciales } from "@/components/dashboard/GestionCredenciales";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 const SECCIONES = [
   { id: "notificaciones", etiqueta: "Notificaciones" },
   { id: "deploys", etiqueta: "Deploys" },
+  { id: "proxy", etiqueta: "Proxy" },
   { id: "backups", etiqueta: "Backups" },
   { id: "credenciales", etiqueta: "Credenciales SSH" },
   { id: "webhook", etiqueta: "Webhook de GitHub" },
@@ -49,6 +51,8 @@ export default async function ConfiguracionPage({
           })),
         ])
       : null;
+
+  const proxy = seccion === "proxy" ? await api.proxy.obtener() : null;
 
   const webhookUrl = `${env.NEXTAUTH_URL}/api/webhooks/github`;
 
@@ -106,6 +110,18 @@ export default async function ConfiguracionPage({
                 <ConfiguracionDeploys
                   timeoutMinutos={configDeploys.timeoutMinutos}
                 />
+              </Tarjeta>
+            </>
+          )}
+
+          {proxy && (
+            <>
+              <Encabezado
+                titulo="Proxy"
+                descripcion="Ajustes globales de Traefik para todos los Proyectos. Los dominios y su protección se configuran en cada Proyecto."
+              />
+              <Tarjeta>
+                <ConfiguracionProxy inicial={proxy} />
               </Tarjeta>
             </>
           )}

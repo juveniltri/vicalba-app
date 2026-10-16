@@ -12,14 +12,28 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 
 `develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `docs/notas-pendientes.md`) y después la 2.3.0.
+Ahora: la 2.3.0 está completa en `feature/2.3.0` (PR a `develop`). Antes de publicarla: verificar en la VPS de desarrollo
+los certificados reales con Cloudflare (punto 7 de «Operación al desplegar la 2.3.0» en `docs/notas-pendientes.md`), y en la
+release el CHANGELOG con `### Al actualizar` (directorio `static/`, stack completo, puertos ya no publicados). Si la 2.2.0
+sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones seguidas.
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
 - [x] **Backups — fase A** — BD del Panel y config de Traefik a S3/SFTP con restic, copia diaria, restauración desde el Panel y recuperación sin VPS (`docs/recuperacion.md`). Verificada en real: S3 (SeaweedFS), SFTP, destino caído, reinicio a mitad de copia, restauración y simulacro de recuperación.
 - [x] **Guía de usuario** — página «Guía» y PDF con capturas regenerables (`npm run guia`); de paso, arreglados los filtros por nivel de los logs y el estado de certificados en instalaciones nuevas.
 
-### 2.3.0
+### 2.3.0 — Proxy y servicios (`feature/2.3.0`, diseño en `docs/diseno-proxy.md`)
+
+- [x] **Acciones por Servicio** — iniciar, detener y reiniciar un Servicio del compose; tarjeta «Servicios» con su estado. Verificado contra Docker real.
+- [x] **Rutas múltiples** — varios dominios/paths por Proyecto, cada uno a un Servicio y puerto; pestaña Dominios con el YAML generado; corrige la colisión de `dynamic/<nombre>.yml` entre Clientes. Verificado el 16/10/2026: migración en Postgres 16 (sin desfase con el schema), rutas/PathPrefix/alias/redirección www con Traefik v3 real y flujo crear/duplicado/borrar en el Panel.
+- [x] **Arreglos previos detectados** — los Proyectos `image` ya se conectan a la red del Cliente; los composes generados ya no publican `puerto:puerto` en el host (solo `expose`). Para el `### Al actualizar` del CHANGELOG: tras redesplegar, los Proyectos dockerfile/nodejs/image dejan de responder en `IP:puerto`; solo por sus dominios.
+- [x] **Middlewares por ruta** — auth básica (bcrypt $2y$ coste 5, hashes nunca salen del servidor), IPs permitidas, límite de peticiones, body máximo, cabeceras, compresión, quitar prefijo y copiar de otra ruta. Verificado con Traefik v3.
+- [x] **Proxy editable** — Configuración → Proxy: IPs de confianza, timeouts, TLS mínimo, log y access log; aplicar en segundo plano con vuelta atrás automática; acceso de emergencia por `127.0.0.1:3000`; Traefik fijado a v3.7.15. Verificado con el stack de producción (`npm run guia`): arranque desde cero, aplicar, TLS 1.2 rechazado con mínimo 1.3 y recuperación de un `traefik.yml` roto entrando por el acceso de emergencia. De paso: `ACME_EMAIL` nunca llegaba a Traefik (ignoraba los flags de CLI) y sin su fichero arranca en silencio con la config por defecto.
+- [ ] **Cloudflare: Authenticated Origin Pulls** — confiar en los rangos de Cloudflare no distingue nuestro tráfico del de otras cuentas de Cloudflare (Workers incluidos). Exigir el certificado de cliente de Cloudflare en las rutas «Detrás de Cloudflare» (`tls.options` con `clientAuth`) cierra el origen. Señalado en el `/security-review` de la 2.3.0 (confianza baja).
+- [ ] **Visor de logs de Traefik en vivo** (SSE) en Configuración → Proxy; hoy solo las últimas 30 líneas.
+- [x] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs` (editables y actualizables), token cifrado y resolver DNS-01 (`CF_DNS_API_TOKEN_FILE`), HTTP-01 sin token, casilla por ruta e IP real en los middlewares (`ipStrategy.excludedIPs`). Verificado con Traefik v3 y un Cloudflare simulado (incluida la falsificación de `X-Forwarded-For`). **Falta en la VPS de desarrollo**: certificado real por DNS-01 con el token y por HTTP-01 a través del proxy naranja.
+
+### 2.4.0
 
 - [ ] **Backups — fase B (volúmenes)** de los Proyectos.
 - [ ] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración.
