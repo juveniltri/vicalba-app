@@ -70,7 +70,9 @@ async function conectarContenedoresARedCliente(
   projectSlug: string,
   clienteSlug: string,
   puerto: number,
-  servicio?: string,
+  servicio: string | undefined,
+  serviciosConRuta: string[],
+  onLog?: (line: string) => void,
 ): Promise<void> {
   try {
     const redNombre = `cliente-${clienteSlug}-network`;
@@ -102,12 +104,33 @@ async function conectarContenedoresARedCliente(
         : conPuertoExpuesto.length > 0
           ? conPuertoExpuesto
           : containers;
+
+    // A container joins the network once, so every alias it needs (the
+    // Proyecto's and its Servicio's own route alias) goes in the same connect.
+    const aliases = new Map<string, string[]>(
+      destino.map((c) => [c.Id, [projectSlug]]),
+    );
+    for (const nombre of serviciosConRuta) {
+      const delServicio = containers.filter(
+        (c) => c.Labels?.["com.docker.compose.service"] === nombre,
+      );
+      if (delServicio.length === 0)
+        onLog?.(
+          `⚠ Hay rutas al Servicio «${nombre}», que está sin contenedor: Traefik responderá 502`,
+        );
+      for (const c of delServicio)
+        aliases.set(c.Id, [
+          ...(aliases.get(c.Id) ?? []),
+          `${nombre}.${projectSlug}`,
+        ]);
+    }
+
     await Promise.all(
-      destino.map(async (c) => {
+      [...aliases].map(async ([id, nombres]) => {
         try {
           await docker.getNetwork(redNombre).connect({
-            Container: c.Id,
-            EndpointConfig: { Aliases: [projectSlug] },
+            Container: id,
+            EndpointConfig: { Aliases: nombres },
           });
         } catch (err) {
           const msg = (err as { message?: string }).message ?? "";
@@ -249,8 +272,9 @@ function generarDockerComposeConBuild(params: {
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
     ...serializarMapaYaml("      args:", "        ", params.buildArgs ?? []),
-    "    ports:",
-    `      - "${params.puerto}:${params.puerto}"`,
+    // Not published on the host: reached only through Traefik.
+    "    expose:",
+    `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
     ...LOGGING_YAML,
@@ -267,8 +291,9 @@ function generarDockerComposeConImage(params: {
     "services:",
     "  app:",
     `    image: "${params.imagenUrl}"`,
-    "    ports:",
-    `      - "${params.puerto}:${params.puerto}"`,
+    // Not published on the host: reached only through Traefik.
+    "    expose:",
+    `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
     ...LOGGING_YAML,
@@ -354,6 +379,8 @@ export async function deployProyecto(params: {
   startCommand?: string | null;
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  // Compose Servicios that routes point at; each gets "<servicio>.<proyecto>".
+  serviciosConRuta?: string[];
   onLog?: (line: string) => void;
   signal?: AbortSignal;
 }): Promise<{ output: string; sha: string }> {
@@ -620,17 +647,17 @@ export async function deployProyecto(params: {
       }
     }
 
-    if (tipo !== "image") {
-      onLog?.("→ Conectando red y proxy...");
-      await asegurarRedCliente(clienteSlug);
-      await conectarTraefikARed(clienteSlug);
-      await conectarContenedoresARedCliente(
-        projectSlug,
-        clienteSlug,
-        puerto,
-        servicioObjetivo,
-      );
-    }
+    onLog?.("→ Conectando red y proxy...");
+    await asegurarRedCliente(clienteSlug);
+    await conectarTraefikARed(clienteSlug);
+    await conectarContenedoresARedCliente(
+      projectSlug,
+      clienteSlug,
+      puerto,
+      servicioObjetivo,
+      params.serviciosConRuta ?? [],
+      onLog,
+    );
 
     await limpiarDisco(onLog);
 

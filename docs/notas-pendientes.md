@@ -2,8 +2,9 @@
 
 ## Estado actual (octubre 2026)
 
-Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master y en producción.
-Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
+Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master. La 2.2.0
+(publicada el 14/10/2026) está pendiente de desplegar en la VPS: ver «Operación al desplegar la
+2.2.0». Este fichero recoge también la deuda técnica conocida y las decisiones pendientes.
 
 ---
 
@@ -22,6 +23,27 @@ Este fichero recoge únicamente deuda técnica conocida y decisiones pendientes.
 - **Entorno dev sin Docker daemon**: las llamadas a dockerode se silencian en desarrollo con un `console.warn`. Valorar un mock de dockerode para tests de integración más realistas.
 
 ---
+
+## Operación al desplegar la 2.3.0 (Proxy y servicios)
+
+1. **Antes** de actualizar: `mkdir -p /var/vicalba/traefik/static && chown 1001:1001 /var/vicalba/traefik/static`
+   (si lo crea Docker al arrancar, queda de root y el Panel no puede escribir el `traefik.yml`).
+2. `git pull && docker compose up -d --build` — el stack completo: cambian la imagen de Traefik
+   (fijada a v3.7.15), su `command`, sus volúmenes y el puerto local del Panel. Traefik se reinicia
+   hasta que el Panel escribe `static/traefik.yml` al arrancar (unos segundos). Las migraciones
+   (rutas, middlewares, Configuración → Proxy) se aplican solas: cada dominio pasa a ser la primera
+   ruta de su Proyecto y los ficheros de `dynamic/` se renombran a `<cliente>_<proyecto>.yml`.
+3. Comprobar que el Panel y los dominios responden; `ls /var/vicalba/traefik/dynamic` sin `<proyecto>.yml` antiguos.
+4. Redesplegar los Proyectos dockerfile/nodejs/image: dejan de publicar su puerto en la VPS (solo
+   por sus dominios) y los `image` pasan a conectarse a la red del Cliente.
+5. Probar el acceso de emergencia: `ssh -L 3000:localhost:3000 <vps>` y abrir `http://localhost:3000`.
+6. El email de Let's Encrypt (`ACME_EMAIL`) ahora sí llega a Traefik (antes se ignoraba el flag).
+7. **Antes de producción, en la VPS de desarrollo** con un subdominio en la cuenta de Cloudflare:
+   - token con permiso Zone → DNS → Edit en Configuración → Proxy, ruta «Detrás de Cloudflare» con
+     nube naranja → el certificado sale por DNS-01 (Dominios: «SSL activo»; log de Traefik sin errores ACME);
+   - sin token → sale por HTTP-01 a través de Cloudflare (modo SSL «Full» mientras no hay certificado);
+   - con «Cloudflare delante» y una lista de IPs en la ruta, entrar desde una IP permitida y otra no;
+     la app ve la IP real en `X-Forwarded-For`/`X-Real-Ip`.
 
 ## Operación al desplegar la 2.2.0 (backups)
 

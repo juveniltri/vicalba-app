@@ -1,4 +1,5 @@
 import { PassThrough } from "stream";
+import type { EstadoServicio } from "@/lib/mock-data";
 import { docker } from "./client";
 
 export class DockerError extends Error {
@@ -20,18 +21,67 @@ function handleDockerError(err: unknown): never {
 const projectSlug = (clienteSlug: string, nombre: string) =>
   `${clienteSlug}-${nombre}`;
 
+type ContenedorProyecto = {
+  Id: string;
+  Names: string[];
+  Labels: Record<string, string>;
+  State: string;
+  Status: string;
+};
+
 async function listProjectContainers(
   slug: string,
   all = false,
-): Promise<
-  Array<{ Id: string; Names: string[]; Labels: Record<string, string> }>
-> {
-  return docker.listContainers({
-    all,
-    filters: { label: [`com.docker.compose.project=${slug}`] },
-  }) as Promise<
-    Array<{ Id: string; Names: string[]; Labels: Record<string, string> }>
+  servicio?: string,
+): Promise<ContenedorProyecto[]> {
+  const label = [`com.docker.compose.project=${slug}`];
+  if (servicio) label.push(`com.docker.compose.service=${servicio}`);
+  return docker.listContainers({ all, filters: { label } }) as Promise<
+    ContenedorProyecto[]
   >;
+}
+
+export type ServicioProyecto = {
+  servicio: string;
+  estado: EstadoServicio;
+  detalle: string;
+};
+
+const GRAVEDAD: Record<EstadoServicio, number> = {
+  running: 0,
+  stopped: 1,
+  deploying: 2,
+  error: 3,
+};
+
+function estadoDeContenedor(c: ContenedorProyecto): EstadoServicio {
+  if (c.State === "dead" || c.Status.includes("(unhealthy)")) return "error";
+  if (c.State === "restarting") return "deploying";
+  return c.State === "running" ? "running" : "stopped";
+}
+
+export async function listarServicios(
+  clienteSlug: string,
+  proyectoNombre: string,
+): Promise<ServicioProyecto[]> {
+  const contenedores = await listProjectContainers(
+    projectSlug(clienteSlug, proyectoNombre),
+    true,
+  );
+  const porServicio = new Map<string, ServicioProyecto>();
+  for (const c of contenedores) {
+    const servicio =
+      c.Labels["com.docker.compose.service"] ??
+      c.Names[0]?.replace(/^\//, "") ??
+      c.Id;
+    const estado = estadoDeContenedor(c);
+    const previo = porServicio.get(servicio);
+    if (!previo || GRAVEDAD[estado] > GRAVEDAD[previo.estado])
+      porServicio.set(servicio, { servicio, estado, detalle: c.Status });
+  }
+  return [...porServicio.values()].sort((a, b) =>
+    a.servicio.localeCompare(b.servicio),
+  );
 }
 
 export async function estadoContenedores(
@@ -47,9 +97,10 @@ export async function estadoContenedores(
 export async function iniciarProyecto(
   clienteSlug: string,
   proyectoNombre: string,
+  servicio?: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, true);
+  const containers = await listProjectContainers(slug, true, servicio);
   for (const c of containers) {
     try {
       await docker.getContainer(c.Id).start();
@@ -63,9 +114,10 @@ export async function iniciarProyecto(
 export async function detenerProyecto(
   clienteSlug: string,
   proyectoNombre: string,
+  servicio?: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, false);
+  const containers = await listProjectContainers(slug, false, servicio);
   for (const c of containers) {
     try {
       await docker.getContainer(c.Id).stop();
@@ -79,9 +131,10 @@ export async function detenerProyecto(
 export async function restartProyecto(
   clienteSlug: string,
   proyectoNombre: string,
+  servicio?: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, false);
+  const containers = await listProjectContainers(slug, false, servicio);
   for (const c of containers) {
     try {
       await docker.getContainer(c.Id).restart();

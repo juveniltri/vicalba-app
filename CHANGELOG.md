@@ -5,6 +5,61 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [2.3.0] - 2026-10-16
+
+Varios dominios por Proyecto con su protección, la configuración de Traefik editable desde el Panel y acciones sobre cada Servicio.
+
+### Novedades
+
+- **Pestaña Dominios** en cada Proyecto: varios dominios, cada uno con un path opcional (`/api`),
+  dirigido a un Servicio concreto del compose y a su puerto, y con redirección de `www` al dominio
+  (o al revés). Muestra el certificado de cada dominio, avisa si su Servicio no está en marcha y
+  enseña la configuración exacta que recibe Traefik.
+- **Protección por dominio**: usuario y contraseña, IPs permitidas, límite de peticiones por
+  segundo, tamaño máximo de petición, cabeceras de seguridad (HSTS, iframes, nosniff,
+  Referrer-Policy) o propias, compresión y quitar el path antes de pasar al Servicio. Se puede
+  copiar de otro dominio del Proyecto.
+- **Configuración → Proxy**: IPs de confianza, timeouts, nivel de log, access log y TLS mínimo de
+  Traefik. Al aplicar, Traefik se reinicia y, si no arranca, vuelve solo a la configuración
+  anterior y explica por qué. Botón para ver las últimas líneas de su log.
+- **Modo Cloudflare** (en pruebas: falta comprobarlo con certificados reales): para dominios que
+  pasan por el proxy de Cloudflare, sus rangos de confianza, certificado por DNS con el token de
+  la API (o por HTTP sin él) y la IP real del visitante en la protección por IP y el límite de
+  peticiones. Viene desactivado.
+- **Iniciar, detener y reiniciar un Servicio** del compose sin tocar los demás, desde la nueva
+  tarjeta «Servicios» del Resumen.
+- **Acceso de emergencia** al Panel sin pasar por Traefik: `ssh -L 3000:localhost:3000` a la VPS y
+  abrir `http://localhost:3000`.
+- «Requiere atención» del Dashboard avisa de los dominios cuyo Servicio no está en marcha.
+
+### Correcciones
+
+- Los Proyectos de tipo imagen no se conectaban a la red del Cliente, así que su dominio no
+  llegaba al contenedor.
+- Dos Clientes con un Proyecto del mismo nombre se pisaban la configuración de Traefik.
+- El email de Let's Encrypt (`ACME_EMAIL`) nunca llegaba a Traefik, así que no había avisos de
+  certificados a punto de caducar.
+- Dos Proyectos Dockerfile, Node.js o imagen con el mismo puerto no podían desplegarse a la vez.
+
+### Seguridad
+
+- Los Proyectos Dockerfile, Node.js e imagen ya no publican su puerto en la VPS: solo se llega a
+  ellos por sus dominios, con HTTPS y su protección.
+- Las contraseñas de la protección por dominio se guardan cifradas con bcrypt y el Panel no las
+  vuelve a mostrar; el token de Cloudflare se guarda cifrado.
+
+### Al actualizar
+
+- **Antes** de actualizar, en la VPS:
+  `mkdir -p /var/vicalba/traefik/static && chown 1001:1001 /var/vicalba/traefik/static`.
+- Levanta el stack completo, no solo el Panel: `git pull && docker compose up -d --build`. Traefik
+  pasa a la versión 3.7.15 y recibe su configuración del Panel (se reinicia una vez al arrancar).
+- Las migraciones se aplican solas: el dominio de cada Proyecto pasa a ser su primer dominio en
+  la pestaña Dominios.
+- Redespliega los Proyectos Dockerfile, Node.js e imagen: dejan de responder en `IP:puerto` y los
+  de tipo imagen pasan a conectarse a la red del Cliente.
+- Detalle paso a paso en `docs/notas-pendientes.md`, «Operación al desplegar la 2.3.0».
+
 ## [2.2.0] - 2026-10-14
 
 Copias de seguridad automáticas del Panel y guía de uso con capturas.

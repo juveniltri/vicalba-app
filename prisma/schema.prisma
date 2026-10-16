@@ -62,7 +62,6 @@ model Proyecto {
   cliente              Cliente           @relation(fields: [clienteId], references: [id])
   clienteId            String
   estado               EstadoServicio    @default(stopped)
-  dominio              String?
   repositorioUrl       String?
   rama                 String            @default("main")
   autoDeployHabilitado Boolean           @default(false)
@@ -80,10 +79,38 @@ model Proyecto {
   variables            VariableEntorno[]
   deploys              Deploy[]
   volumenes            Volumen[]
+  rutas                RutaProyecto[]
   creadoEn             DateTime          @default(now())
   actualizadoEn        DateTime          @updatedAt
 
   @@unique([clienteId, nombre])
+}
+
+enum RedireccionWww {
+  ninguna
+  a_raiz
+  a_www
+}
+
+model RutaProyecto {
+  id             String         @id @default(cuid())
+  proyectoId     String
+  proyecto       Proyecto       @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  dominio        String
+  // "" = whole domain; not nullable so the unique index also covers it
+  path           String         @default("")
+  servicio       String?
+  puerto         Int
+  redireccionWww RedireccionWww @default(ninguna)
+  // Proxied by Cloudflare: its cert resolver and real-IP strategy
+  cloudflare     Boolean        @default(false)
+  // Validated with middlewaresSchema (src/lib/schemas/middlewares.ts)
+  middlewares    Json           @default("{}")
+  creadoEn       DateTime       @default(now())
+  actualizadoEn  DateTime       @updatedAt
+
+  @@unique([dominio, path])
+  @@index([proyectoId])
 }
 
 model VariableEntorno {
@@ -238,4 +265,27 @@ model Backup {
   error         String?         @db.Text
 
   @@index([iniciadoEn])
+}
+
+enum EstadoProxy {
+  aplicada
+  en_curso
+  revertida
+  error
+}
+
+// Configuración → Proxy. "aplicada" is what Traefik is running; "pendiente" the
+// last request, kept when it was reverted or failed so the UI can show it.
+model ConfiguracionProxy {
+  id            String      @id @default("default")
+  aplicada      Json
+  pendiente     Json?
+  estado        EstadoProxy @default(aplicada)
+  mensaje       String?
+  log           String?     @db.Text
+  // Cloudflare API token (DNS-01), AES-256-GCM like the other secrets
+  cfTokenCifrado String?
+  cfTokenIv      String?
+  cfTokenAuthTag String?
+  actualizadoEn DateTime    @updatedAt
 }

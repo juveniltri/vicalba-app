@@ -38,6 +38,7 @@ import {
   detenerProyecto,
   estadoContenedores,
   iniciarProyecto,
+  listarServicios,
   restartProyecto,
   streamProyectoLogs,
 } from "./proyectos";
@@ -256,6 +257,143 @@ describe("restartProyecto", () => {
 
     expect(err).toBeInstanceOf(DockerError);
     expect(err.code).toBe("UNKNOWN");
+  });
+});
+
+describe("acciones sobre un servicio", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetContainer.mockReturnValue({
+      stop: mockStop,
+      start: mockStart,
+      restart: mockRestart,
+    });
+    mockListContainers.mockResolvedValue([makeContainer("c1", "worker")]);
+  });
+
+  const filtroServicio = {
+    label: [
+      "com.docker.compose.project=cliente-uno-web-app",
+      "com.docker.compose.service=worker",
+    ],
+  };
+
+  it("iniciarProyecto filtra también por la etiqueta del servicio", async () => {
+    await iniciarProyecto("cliente-uno", "web-app", "worker");
+
+    expect(mockListContainers).toHaveBeenCalledWith({
+      all: true,
+      filters: filtroServicio,
+    });
+    expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("detenerProyecto filtra también por la etiqueta del servicio", async () => {
+    await detenerProyecto("cliente-uno", "web-app", "worker");
+
+    expect(mockListContainers).toHaveBeenCalledWith({
+      all: false,
+      filters: filtroServicio,
+    });
+    expect(mockStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("restartProyecto filtra también por la etiqueta del servicio", async () => {
+    await restartProyecto("cliente-uno", "web-app", "worker");
+
+    expect(mockListContainers).toHaveBeenCalledWith({
+      all: false,
+      filters: filtroServicio,
+    });
+    expect(mockRestart).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("listarServicios", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const contenedor = (
+    id: string,
+    servicio: string | undefined,
+    State: string,
+    Status: string,
+  ) => ({
+    Id: id,
+    Names: [`/${id}`],
+    State,
+    Status,
+    Labels: servicio ? { "com.docker.compose.service": servicio } : {},
+  });
+
+  it("consulta todos los contenedores del proyecto, también los parados", async () => {
+    mockListContainers.mockResolvedValue([]);
+
+    await expect(listarServicios("cliente-uno", "web-app")).resolves.toEqual(
+      [],
+    );
+    expect(mockListContainers).toHaveBeenCalledWith({
+      all: true,
+      filters: { label: ["com.docker.compose.project=cliente-uno-web-app"] },
+    });
+  });
+
+  it("devuelve un servicio por etiqueta, ordenado, con su estado y el detalle de Docker", async () => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", "web", "running", "Up 2 hours"),
+      contenedor("c2", "db", "running", "Up 2 hours (healthy)"),
+      contenedor("c3", "worker", "exited", "Exited (0) 5 minutes ago"),
+    ]);
+
+    await expect(listarServicios("cliente-uno", "web-app")).resolves.toEqual([
+      { servicio: "db", estado: "running", detalle: "Up 2 hours (healthy)" },
+      { servicio: "web", estado: "running", detalle: "Up 2 hours" },
+      {
+        servicio: "worker",
+        estado: "stopped",
+        detalle: "Exited (0) 5 minutes ago",
+      },
+    ]);
+  });
+
+  it("marca como error un contenedor unhealthy o muerto, y como deploying uno reiniciándose", async () => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", "api", "running", "Up 1 minute (unhealthy)"),
+      contenedor("c2", "cola", "dead", "Dead"),
+      contenedor("c3", "web", "restarting", "Restarting (1) 3 seconds ago"),
+    ]);
+
+    const servicios = await listarServicios("cliente-uno", "web-app");
+
+    expect(servicios.map((s) => [s.servicio, s.estado])).toEqual([
+      ["api", "error"],
+      ["cola", "error"],
+      ["web", "deploying"],
+    ]);
+  });
+
+  it("con varias réplicas de un servicio prima el peor estado", async () => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", "web", "running", "Up 2 hours"),
+      contenedor("c2", "web", "exited", "Exited (137) 1 minute ago"),
+    ]);
+
+    await expect(listarServicios("cliente-uno", "web-app")).resolves.toEqual([
+      {
+        servicio: "web",
+        estado: "stopped",
+        detalle: "Exited (137) 1 minute ago",
+      },
+    ]);
+  });
+
+  it("usa el nombre del contenedor si no tiene etiqueta de servicio", async () => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", undefined, "running", "Up 1 second"),
+    ]);
+
+    const [servicio] = await listarServicios("cliente-uno", "web-app");
+
+    expect(servicio?.servicio).toBe("c1");
   });
 });
 

@@ -8,12 +8,22 @@ import type { ProyectoAtencion } from "@/lib/schemas/dashboard";
 import { shaCorto } from "@/lib/formatHace";
 import { StatusBadge } from "./StatusBadge";
 
+export type RutaSinServicio = {
+  proyectoId: string;
+  proyecto: string;
+  cliente: string;
+  servicio: string;
+  dominios: string[];
+};
+
 export function AtencionPanel({
   proyectos,
   avisoBackups = null,
+  rutasSinServicio = [],
 }: {
   proyectos: ProyectoAtencion[];
   avisoBackups?: string | null;
+  rutasSinServicio?: RutaSinServicio[];
 }) {
   return (
     <section aria-labelledby="atencion-titulo" className="flex flex-col gap-3">
@@ -43,8 +53,32 @@ export function AtencionPanel({
           </Link>
         </article>
       )}
+      {rutasSinServicio.map((r) => (
+        <article
+          key={`${r.proyectoId}-${r.servicio}`}
+          className="flex flex-wrap items-center gap-3 px-5 py-[18px] rounded-[var(--radius-lg)] border bg-error-bg border-error-border"
+        >
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="font-display text-[15px] font-semibold">
+              {r.cliente} / {r.proyecto}: el Servicio «{r.servicio}» no está en
+              marcha
+            </span>
+            <span className="font-body text-xs text-error-text break-all">
+              {r.dominios.join(", ")} responde
+              {r.dominios.length === 1 ? "" : "n"} 502
+            </span>
+          </div>
+          <Link
+            href={`/proyectos/${r.proyectoId}?tab=dominios`}
+            className="ml-auto inline-flex items-center min-h-9 px-3.5 rounded-[var(--radius-md)] border border-error-border font-body text-[12.5px] text-error-text transition-colors hover:bg-error-border/30"
+          >
+            Ver dominios
+          </Link>
+        </article>
+      ))}
       {proyectos.length === 0 ? (
-        !avisoBackups && (
+        !avisoBackups &&
+        rutasSinServicio.length === 0 && (
           <p className="px-5 py-4 rounded-[var(--radius-lg)] bg-surface border border-border font-body text-[12.5px] text-text-secondary">
             Todo en orden: ningún proyecto en error ni desplegando.
           </p>

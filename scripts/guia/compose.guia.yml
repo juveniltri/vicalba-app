@@ -6,11 +6,13 @@ networks:
 volumes:
   guia-repos:
   guia-dynamic:
+  guia-static:
 
 services:
   traefik:
     volumes:
       - guia-dynamic:/etc/traefik/dynamic
+      - guia-static:/etc/traefik/static:ro
   db:
     ports:
       - "127.0.0.1:5434:5432"
@@ -20,6 +22,7 @@ services:
       - vicalba-guia-demo
     volumes:
       - guia-dynamic:/etc/traefik/dynamic
+      - guia-static:/etc/traefik/static
       - guia-repos:/var/vicalba/repos
       # Docker Desktop cannot mount / with rslave.
       - /tmp:/hostroot:ro

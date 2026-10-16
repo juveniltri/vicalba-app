@@ -28,6 +28,29 @@ export async function register() {
     log.error({ err }, "No se pudieron cerrar los deploys interrumpidos");
   }
 
+  const { asegurarTraefikEstatico, limpiarOperacionProxyHuerfana } =
+    await import("@/lib/proxy/operacion");
+  try {
+    if ((await limpiarOperacionProxyHuerfana()) > 0)
+      log.warn("Aplicación del Proxy interrumpida por el reinicio, cerrada");
+    if (await asegurarTraefikEstatico())
+      log.warn(
+        "Faltaba el traefik.yml estático: escrito con la configuración guardada",
+      );
+  } catch (err) {
+    log.error(
+      { err },
+      "No se pudo preparar la configuración estática de Traefik",
+    );
+  }
+
+  const { regenerarConfigTraefik } = await import("@/lib/traefik/config");
+  try {
+    await regenerarConfigTraefik();
+  } catch (err) {
+    log.error({ err }, "No se pudo regenerar la config de Traefik");
+  }
+
   const { limpiarBackupsHuerfanos } = await import("@/lib/backups/operacion");
   const { iniciarProgramador } = await import("@/lib/backups/programador");
   try {

@@ -22,6 +22,7 @@ vi.mock("@/env", () => ({
   env: {
     DATABASE_URL: "postgresql://u:p@db/bd",
     TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
+    TRAEFIK_STATIC_DIR: "/etc/traefik/static",
     ACME_JSON_PATH: "/letsencrypt/acme.json",
     REPOS_DIR: "/r",
   },
@@ -63,6 +64,7 @@ beforeEach(() => {
   m.update.mockResolvedValue({});
   m.cargar.mockResolvedValue({ clave: "c", destino: { tipo: "s3" } });
   m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
+  m.fs.cp.mockReset().mockResolvedValue(undefined);
   m.pgDump.mockResolvedValue(undefined);
   m.comprobar.mockResolvedValue(undefined);
   m.leerTraefik.mockResolvedValue('{"letsencrypt":{}}');
@@ -88,6 +90,11 @@ describe("iniciarCopia", () => {
     expect(m.fs.cp).toHaveBeenCalledWith(
       "/etc/traefik/dynamic",
       "/tmp/vicalba-backup-x/traefik/dynamic",
+      { recursive: true },
+    );
+    expect(m.fs.cp).toHaveBeenCalledWith(
+      "/etc/traefik/static",
+      "/tmp/vicalba-backup-x/traefik/static",
       { recursive: true },
     );
     expect(m.fs.writeFile).toHaveBeenCalledWith(
@@ -122,6 +129,20 @@ describe("iniciarCopia", () => {
 
   it("sin acme.json legible la copia sigue (los certificados se regeneran)", async () => {
     m.leerTraefik.mockRejectedValue(new Error("no such container"));
+    await iniciarCopia("programado");
+    await esperar();
+    expect(m.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ resultado: "exito" }),
+      }),
+    );
+  });
+
+  it("sin config estática de Traefik (instalación anterior a 2.3.0) la copia sigue", async () => {
+    m.fs.cp.mockImplementation(async (origen: string) => {
+      if (origen === "/etc/traefik/static")
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
     await iniciarCopia("programado");
     await esperar();
     expect(m.update).toHaveBeenCalledWith(
