@@ -162,6 +162,23 @@ describe("deployProyecto", () => {
     });
   });
 
+  it("un Proyecto de tipo image también se conecta a la red del Cliente", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "c1", Names: ["/app"] }]);
+
+    await deployProyecto({
+      ...baseParams,
+      tipo: "image",
+      repoUrl: null,
+      imagenUrl: "ghost:5-alpine",
+      puerto: 2368,
+    });
+
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c1",
+      EndpointConfig: { Aliases: ["acme-web-app"] },
+    });
+  });
+
   it("anuncia en el log la fase de red y proxy antes de terminar", async () => {
     const onLog = vi.fn();
     await deployProyecto({ ...baseParams, onLog });

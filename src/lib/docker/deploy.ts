@@ -645,19 +645,17 @@ export async function deployProyecto(params: {
       }
     }
 
-    if (tipo !== "image") {
-      onLog?.("→ Conectando red y proxy...");
-      await asegurarRedCliente(clienteSlug);
-      await conectarTraefikARed(clienteSlug);
-      await conectarContenedoresARedCliente(
-        projectSlug,
-        clienteSlug,
-        puerto,
-        servicioObjetivo,
-        params.serviciosConRuta ?? [],
-        onLog,
-      );
-    }
+    onLog?.("→ Conectando red y proxy...");
+    await asegurarRedCliente(clienteSlug);
+    await conectarTraefikARed(clienteSlug);
+    await conectarContenedoresARedCliente(
+      projectSlug,
+      clienteSlug,
+      puerto,
+      servicioObjetivo,
+      params.serviciosConRuta ?? [],
+      onLog,
+    );
 
     await limpiarDisco(onLog);
 
