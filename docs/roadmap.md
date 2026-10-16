@@ -19,7 +19,15 @@ Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `do
 - [x] **Backups — fase A** — BD del Panel y config de Traefik a S3/SFTP con restic, copia diaria, restauración desde el Panel y recuperación sin VPS (`docs/recuperacion.md`). Verificada en real: S3 (SeaweedFS), SFTP, destino caído, reinicio a mitad de copia, restauración y simulacro de recuperación.
 - [x] **Guía de usuario** — página «Guía» y PDF con capturas regenerables (`npm run guia`); de paso, arreglados los filtros por nivel de los logs y el estado de certificados en instalaciones nuevas.
 
-### 2.3.0
+### 2.3.0 — Proxy y servicios (`feature/2.3.0`, diseño en `docs/diseno-proxy.md`)
+
+- [x] **Acciones por Servicio** — iniciar, detener y reiniciar un Servicio del compose; tarjeta «Servicios» con su estado. Falta probarlo en navegador.
+- [ ] **Rutas múltiples** — varios dominios/paths por Proyecto, cada uno a un Servicio y puerto; YAML generado visible; corrige la colisión de `dynamic/<nombre>.yml` entre Clientes.
+- [ ] **Middlewares por ruta** — www, auth básica, IPs permitidas, cabeceras, límite de peticiones, body máximo, compresión.
+- [ ] **Proxy editable** — Configuración → Proxy: cabeceras reenviadas, timeouts, TLS, log; aplicar con vuelta atrás automática y acceso de emergencia al Panel por `127.0.0.1:3000`.
+- [ ] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs`, certificados por DNS challenge, IP real en los middlewares.
+
+### 2.4.0
 
 - [ ] **Backups — fase B (volúmenes)** de los Proyectos.
 - [ ] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración.
