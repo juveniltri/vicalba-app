@@ -317,6 +317,12 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
   Muestra el estado del certificado, avisa si el Servicio no tiene contenedor y enseña el YAML
   que recibe Traefik. Los cambios se aplican al guardar; una ruta a un Servicio que no tenía
   ninguna funciona tras el siguiente deploy.
+  En **Protección y cabeceras** cada ruta puede pedir usuario y contraseña, admitir solo
+  ciertas IPs, limitar las peticiones por segundo de cada IP y el tamaño de las peticiones,
+  añadir cabeceras de seguridad (HSTS, nosniff, iframes, Referrer-Policy) o propias, comprimir
+  las respuestas y quitar el path antes de pasar la petición al Servicio. **Copiar protección
+  de** trae la de otra ruta del Proyecto. Las contraseñas no se pueden consultar después: para
+  cambiar una, escribe la nueva; si la dejas vacía, se mantiene.
 - **Variables**: variables de entorno (tarea 5).
 - **Volúmenes**: carpetas persistentes y su explorador.
 - **Compose**: el `docker-compose.yml` del Proyecto (solo en Proyectos Docker Compose).
