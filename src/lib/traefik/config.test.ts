@@ -1,33 +1,73 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockWriteFile, mockUnlink, mockMkdir } = vi.hoisted(() => ({
-  mockWriteFile: vi.fn(),
-  mockUnlink: vi.fn(),
-  mockMkdir: vi.fn(),
-}));
+const DIR = "/etc/traefik/dynamic";
 
-vi.mock("node:fs/promises", () => ({
-  writeFile: mockWriteFile,
-  unlink: mockUnlink,
-  mkdir: mockMkdir,
-}));
+// In-memory dynamic directory: tests assert which files end up there.
+const { ficheros, fs } = vi.hoisted(() => {
+  const ficheros = new Map<string, string>();
+  const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  const nombre = (ruta: string) => ruta.split("/").pop() as string;
+  return {
+    ficheros,
+    fs: {
+      mkdir: vi.fn(async () => undefined),
+      readdir: vi.fn(async () => [...ficheros.keys()]),
+      readFile: vi.fn(async (ruta: string) => {
+        const contenido = ficheros.get(nombre(ruta));
+        if (contenido === undefined) throw enoent();
+        return contenido;
+      }),
+      writeFile: vi.fn(async (ruta: string, contenido: string) => {
+        ficheros.set(nombre(ruta), contenido);
+      }),
+      rm: vi.fn(async (ruta: string, opciones: { force?: boolean }) => {
+        if (!ficheros.delete(nombre(ruta)) && !opciones.force) throw enoent();
+      }),
+    },
+  };
+});
+vi.mock("node:fs/promises", () => fs);
 
-const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
+const { mockWarn, mockError } = vi.hoisted(() => ({
+  mockWarn: vi.fn(),
+  mockError: vi.fn(),
+}));
 vi.mock("@/lib/logger", () => ({
-  logger: { child: () => ({ warn: mockWarn }) },
+  logger: { child: () => ({ warn: mockWarn, error: mockError }) },
 }));
 
 vi.mock("@/env", () => ({
   env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic", NODE_ENV: "test" },
 }));
 
+const { mockClienteFindUnique, mockClienteFindMany } = vi.hoisted(() => ({
+  mockClienteFindUnique: vi.fn(),
+  mockClienteFindMany: vi.fn(),
+}));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    cliente: {
+      findUnique: mockClienteFindUnique,
+      findMany: mockClienteFindMany,
+    },
+  },
+}));
+
+const { mockConectar, mockDesconectar } = vi.hoisted(() => ({
+  mockConectar: vi.fn(),
+  mockDesconectar: vi.fn(),
+}));
+vi.mock("@/lib/docker/traefik", () => ({
+  conectarTraefikARed: mockConectar,
+  desconectarTraefikDeRed: mockDesconectar,
+}));
+
 import { parse } from "yaml";
 import { env } from "@/env";
 import {
   generarConfigProyecto,
-  generarConfigTraefik,
-  escribirConfigTraefik,
-  eliminarConfigTraefik,
+  regenerarConfigTraefik,
+  sincronizarTraefikCliente,
 } from "./config";
 
 type ConfigTraefik = {
@@ -54,7 +94,7 @@ const ruta = (
 ) => ({
   id: "r1",
   dominio: "app.example.com",
-  path: null,
+  path: "",
   servicio: null,
   puerto: 3000,
   redireccionWww: "ninguna" as const,
@@ -63,6 +103,7 @@ const ruta = (
 
 function generar(rutas: ReturnType<typeof ruta>[]) {
   const yaml = generarConfigProyecto({
+    proyectoId: "p1",
     clienteSlug: "acme",
     proyectoNombre: "web",
     rutas,
@@ -74,7 +115,9 @@ describe("generarConfigProyecto", () => {
   it("una ruta sin servicio enruta su dominio por HTTPS al alias del Proyecto", () => {
     const { yaml, config } = generar([ruta()]);
 
-    expect(yaml?.startsWith("# generado por vicalba-panel\n")).toBe(true);
+    expect(yaml?.startsWith("# generado por vicalba-panel proyecto=p1\n")).toBe(
+      true,
+    );
     const routers = Object.values(config.http.routers);
     expect(routers).toHaveLength(1);
     const [router] = routers;
@@ -142,156 +185,219 @@ describe("generarConfigProyecto", () => {
   );
 });
 
-describe("generarConfigTraefik", () => {
-  it("genera un router con la regla Host correcta", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
+type ProyectoBD = {
+  id: string;
+  nombre: string;
+  rutas: ReturnType<typeof ruta>[];
+};
 
-    expect(yaml).toContain("Host(`app.example.com`)");
+function clienteEnBD(slug: string, proyectos: ProyectoBD[]) {
+  return { id: `c-${slug}`, slug, proyectos };
+}
+
+describe("sincronizarTraefikCliente", () => {
+  beforeEach(() => {
+    ficheros.clear();
+    vi.clearAllMocks();
   });
 
-  it("activa TLS con certResolver letsencrypt", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
+  it("escribe <cliente>_<proyecto>.yml para cada Proyecto con rutas y conecta Traefik a la red", async () => {
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [ruta()] }]),
+    );
 
-    expect(yaml).toContain("certResolver");
-    expect(yaml).toContain("letsencrypt");
+    await sincronizarTraefikCliente("c-acme");
+
+    expect([...ficheros.keys()]).toEqual(["acme_web.yml"]);
+    const config = parse(ficheros.get("acme_web.yml")!) as ConfigTraefik;
+    expect(Object.values(config.http.routers)[0].rule).toBe(
+      "Host(`app.example.com`)",
+    );
+    expect(mockConectar).toHaveBeenCalledWith("acme");
+    expect(fs.mkdir).toHaveBeenCalledWith(DIR, { recursive: true });
   });
 
-  it("el nombre del servicio sigue la convención clienteSlug-proyectoSlug", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
+  it("un Proyecto sin rutas pierde su fichero y, si era el último del Cliente, Traefik sale de la red", async () => {
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [ruta()] }]),
+    );
+    await sincronizarTraefikCliente("c-acme");
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [] }]),
+    );
 
-    expect(yaml).toContain("cliente-uno-web-app");
+    await sincronizarTraefikCliente("c-acme");
+
+    expect(ficheros.size).toBe(0);
+    expect(mockDesconectar).toHaveBeenCalledWith("acme");
   });
 
-  it("usa puerto 80 por defecto en la URL del servidor", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
+  it("sincronizar dos veces deja el mismo fichero", async () => {
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [ruta()] }]),
+    );
 
-    expect(yaml).toContain(":80");
+    await sincronizarTraefikCliente("c-acme");
+    await sincronizarTraefikCliente("c-acme");
+
+    expect([...ficheros.keys()]).toEqual(["acme_web.yml"]);
   });
 
-  it("usa el puerto especificado en la URL del servidor", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-      puerto: 3000,
-    });
+  it("un Cliente que ya no existe no hace nada", async () => {
+    mockClienteFindUnique.mockResolvedValue(null);
 
-    expect(yaml).toContain(":3000");
-    expect(yaml).not.toContain(":80");
+    await sincronizarTraefikCliente("c-borrado");
+
+    expect(fs.mkdir).not.toHaveBeenCalled();
   });
 
-  it("elimina backticks y saltos de línea del dominio antes de generar el YAML", () => {
-    const yaml = generarConfigTraefik({
-      dominio: "app.example.com`\nmalicioso",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
+  it("al renombrar un Proyecto su fichero cambia de nombre", async () => {
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [ruta()] }]),
+    );
+    await sincronizarTraefikCliente("c-acme");
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "tienda", rutas: [ruta()] }]),
+    );
 
-    // El dominio inyectado queda limpio; la regla Traefik sí usa backticks como delimitadores
-    expect(yaml).toContain("app.example.commalicioso");
-    expect(yaml).not.toContain("app.example.com`");
-    expect(yaml).not.toContain("\nmalicioso");
+    await sincronizarTraefikCliente("c-acme");
+
+    expect([...ficheros.keys()]).toEqual(["acme_tienda.yml"]);
+  });
+
+  it("no toca ficheros manuales, de otros Clientes ni la config global del Proxy", async () => {
+    ficheros.set("manual.yml", "http: {}\n");
+    ficheros.set("LEEME.txt", "notas");
+    ficheros.set("_proxy.yml", "tls: {}\n");
+    ficheros.set("acme_viejo.yml", "http: {}\n");
+    ficheros.set(
+      "otro_api.yml",
+      "# generado por vicalba-panel proyecto=p9\nhttp: {}\n",
+    );
+    mockClienteFindUnique.mockResolvedValue(clienteEnBD("acme", []));
+
+    await sincronizarTraefikCliente("c-acme");
+
+    expect([...ficheros.keys()].sort()).toEqual([
+      "LEEME.txt",
+      "_proxy.yml",
+      "acme_viejo.yml",
+      "manual.yml",
+      "otro_api.yml",
+    ]);
+  });
+
+  it("borra el fichero <proyecto>.yml del generador anterior, pero no uno manual con el mismo nombre", async () => {
+    ficheros.set(
+      "web.yml",
+      'http:\n  services:\n    acme-web:\n      loadBalancer:\n        servers:\n          - url: "http://acme-web:80"\n',
+    );
+    ficheros.set("api.yml", "http: {}\n");
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [
+        { id: "p1", nombre: "web", rutas: [ruta()] },
+        { id: "p2", nombre: "api", rutas: [] },
+      ]),
+    );
+
+    await sincronizarTraefikCliente("c-acme");
+
+    expect([...ficheros.keys()].sort()).toEqual(["acme_web.yml", "api.yml"]);
+  });
+
+  it("un Cliente que nunca tuvo rutas no toca la red de Traefik", async () => {
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [] }]),
+    );
+
+    await sincronizarTraefikCliente("c-acme");
+
+    expect(mockConectar).not.toHaveBeenCalled();
+    expect(mockDesconectar).not.toHaveBeenCalled();
   });
 });
 
-describe("escribirConfigTraefik", () => {
+describe("regenerarConfigTraefik", () => {
   beforeEach(() => {
-    mockWriteFile.mockResolvedValue(undefined);
-    mockMkdir.mockResolvedValue(undefined);
+    ficheros.clear();
+    vi.clearAllMocks();
   });
 
-  it("escribe el fichero en TRAEFIK_DYNAMIC_DIR con nombre proyectoSlug.yml", async () => {
-    await escribirConfigTraefik("web-app", "yaml content");
+  it("regenera los ficheros de todos los Clientes y borra los generados de Clientes que ya no existen", async () => {
+    ficheros.set(
+      "borrado_web.yml",
+      "# generado por vicalba-panel proyecto=p9\nhttp: {}\n",
+    );
+    const acme = clienteEnBD("acme", [
+      { id: "p1", nombre: "web", rutas: [ruta()] },
+    ]);
+    const beta = clienteEnBD("beta", [
+      { id: "p2", nombre: "api", rutas: [ruta({ dominio: "api.beta.com" })] },
+    ]);
+    mockClienteFindMany.mockResolvedValue([acme, beta]);
+    mockClienteFindUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) =>
+        [acme, beta].find((c) => c.id === where.id) ?? null,
+    );
 
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      "/etc/traefik/dynamic/web-app.yml",
-      "yaml content",
-      "utf-8",
+    await regenerarConfigTraefik();
+
+    expect([...ficheros.keys()].sort()).toEqual([
+      "acme_web.yml",
+      "beta_api.yml",
+    ]);
+  });
+
+  it("si un Cliente falla, lo registra y sigue con los demás", async () => {
+    const beta = clienteEnBD("beta", [
+      { id: "p2", nombre: "api", rutas: [ruta()] },
+    ]);
+    mockClienteFindMany.mockResolvedValue([
+      { id: "c-acme", slug: "acme" },
+      beta,
+    ]);
+    mockClienteFindUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => {
+        if (where.id === "c-acme") throw new Error("boom");
+        return beta;
+      },
+    );
+
+    await regenerarConfigTraefik();
+
+    expect([...ficheros.keys()]).toEqual(["beta_api.yml"]);
+    expect(mockError).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: "c-acme" }),
+      expect.any(String),
+    );
+  });
+});
+
+describe("sincronizarTraefikCliente sin directorio escribible", () => {
+  beforeEach(() => {
+    ficheros.clear();
+    vi.clearAllMocks();
+    mockClienteFindUnique.mockResolvedValue(
+      clienteEnBD("acme", [{ id: "p1", nombre: "web", rutas: [ruta()] }]),
+    );
+    fs.mkdir.mockRejectedValueOnce(
+      Object.assign(new Error("EACCES"), { code: "EACCES" }),
     );
   });
 
-  it("crea el directorio si no existe antes de escribir", async () => {
-    await escribirConfigTraefik("web-app", "yaml content");
-
-    expect(mockMkdir).toHaveBeenCalledWith("/etc/traefik/dynamic", {
-      recursive: true,
-    });
+  it("en desarrollo avisa y no falla", async () => {
+    await expect(sincronizarTraefikCliente("c-acme")).resolves.toBeUndefined();
+    expect(mockWarn).toHaveBeenCalled();
   });
 
-  it("avisa por el logger en dev cuando writeFile falla y no relanza el error", async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockRejectedValue(
-      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
-    );
-
-    await expect(
-      escribirConfigTraefik("web-app", "yaml"),
-    ).resolves.toBeUndefined();
-    expect(mockWarn).toHaveBeenCalledWith(
-      { code: "ENOENT", dir: "/etc/traefik/dynamic" },
-      expect.stringContaining("config de Traefik"),
-    );
-  });
-
-  it("relanza el error en producción cuando writeFile falla", async () => {
-    (env as Record<string, unknown>).NODE_ENV = "production";
-    const err = Object.assign(new Error("Permission denied"), {
-      code: "EACCES",
-    });
-    mockWriteFile.mockRejectedValue(err);
-
+  it("en producción relanza el error", async () => {
+    vi.mocked(env).NODE_ENV = "production";
     try {
-      await expect(escribirConfigTraefik("web-app", "yaml")).rejects.toThrow(
-        "Permission denied",
+      await expect(sincronizarTraefikCliente("c-acme")).rejects.toThrow(
+        "EACCES",
       );
     } finally {
-      (env as Record<string, unknown>).NODE_ENV = "test";
+      vi.mocked(env).NODE_ENV = "test";
     }
-  });
-});
-
-describe("eliminarConfigTraefik", () => {
-  beforeEach(() => {
-    mockUnlink.mockResolvedValue(undefined);
-  });
-
-  it("elimina el fichero proyectoSlug.yml de TRAEFIK_DYNAMIC_DIR", async () => {
-    await eliminarConfigTraefik("web-app");
-
-    expect(mockUnlink).toHaveBeenCalledWith("/etc/traefik/dynamic/web-app.yml");
-  });
-
-  it("no lanza error si el fichero no existe (ENOENT)", async () => {
-    const err = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    mockUnlink.mockRejectedValue(err);
-
-    await expect(eliminarConfigTraefik("web-app")).resolves.toBeUndefined();
-  });
-
-  it("relanza errores que no sean ENOENT", async () => {
-    const err = Object.assign(new Error("Permission denied"), {
-      code: "EACCES",
-    });
-    mockUnlink.mockRejectedValue(err);
-
-    await expect(eliminarConfigTraefik("web-app")).rejects.toThrow(
-      "Permission denied",
-    );
   });
 });

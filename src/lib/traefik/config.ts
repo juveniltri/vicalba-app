@@ -1,16 +1,22 @@
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { stringify } from "yaml";
 import { env } from "@/env";
+import {
+  conectarTraefikARed,
+  desconectarTraefikDeRed,
+} from "@/lib/docker/traefik";
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
 
 const log = logger.child({ module: "traefik" });
 
-export const CABECERA_GENERADO = "# generado por vicalba-panel";
+const CABECERA_GENERADO = "# generado por vicalba-panel";
 
 export type RutaTraefik = {
   id: string;
   dominio: string;
-  path: string | null;
+  // "" = whole domain
+  path: string;
   servicio: string | null;
   puerto: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
@@ -31,6 +37,7 @@ export function hostRedireccionWww(
 const limpiar = (valor: string) => valor.replace(/[`\n\r]/g, "");
 
 export function generarConfigProyecto(params: {
+  proyectoId: string;
   clienteSlug: string;
   proyectoNombre: string;
   rutas: RutaTraefik[];
@@ -85,64 +92,111 @@ export function generarConfigProyecto(params: {
     Object.keys(middlewares).length > 0
       ? { routers, services, middlewares }
       : { routers, services };
-  return `${CABECERA_GENERADO}\n${stringify({ http })}`;
+  return `${CABECERA_GENERADO} proyecto=${params.proyectoId}\n${stringify({ http })}`;
 }
 
-export function generarConfigTraefik(params: {
-  dominio: string;
-  proyectoSlug: string;
-  clienteSlug: string;
-  puerto?: number;
-}): string {
-  const { proyectoSlug, clienteSlug, puerto = 80 } = params;
-  const dominio = params.dominio.replace(/[`\n\r]/g, "");
-  const nombre = `${clienteSlug}-${proyectoSlug}`;
-
-  return [
-    "http:",
-    "  routers:",
-    `    ${nombre}:`,
-    `      rule: "Host(\`${dominio}\`)"`,
-    `      service: ${nombre}`,
-    "      tls:",
-    "        certResolver: letsencrypt",
-    "  services:",
-    `    ${nombre}:`,
-    "      loadBalancer:",
-    "        servers:",
-    `          - url: "http://${nombre}:${puerto}"`,
-  ].join("\n");
-}
-
-export async function escribirConfigTraefik(
-  proyectoSlug: string,
-  yaml: string,
+export async function sincronizarTraefikCliente(
+  clienteId: string,
 ): Promise<void> {
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+    include: {
+      proyectos: { include: { rutas: { orderBy: { creadoEn: "asc" } } } },
+    },
+  });
+  if (!cliente) return;
+
+  let ficheros: { anteriores: number; escritos: number };
   try {
-    await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
-    await writeFile(
-      `${env.TRAEFIK_DYNAMIC_DIR}/${proyectoSlug}.yml`,
-      yaml,
-      "utf-8",
-    );
+    ficheros = await escribirFicherosCliente(cliente);
   } catch (err) {
     if (env.NODE_ENV === "production") throw err;
     log.warn(
-      {
-        code: (err as NodeJS.ErrnoException).code,
-        dir: env.TRAEFIK_DYNAMIC_DIR,
-      },
+      { err, dir: env.TRAEFIK_DYNAMIC_DIR },
       "No se pudo escribir la config de Traefik (se omite en desarrollo)",
     );
+    return;
   }
+
+  if (ficheros.escritos > 0) await conectarTraefikARed(cliente.slug);
+  else if (ficheros.anteriores > 0) await desconectarTraefikDeRed(cliente.slug);
 }
 
-export async function eliminarConfigTraefik(
-  proyectoSlug: string,
-): Promise<void> {
-  try {
-    await unlink(`${env.TRAEFIK_DYNAMIC_DIR}/${proyectoSlug}.yml`);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+async function escribirFicherosCliente(cliente: {
+  slug: string;
+  proyectos: { id: string; nombre: string; rutas: RutaTraefik[] }[];
+}): Promise<{ anteriores: number; escritos: number }> {
+  await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
+  const nombres = await readdir(env.TRAEFIK_DYNAMIC_DIR);
+  // "_" isn't allowed in slugs or Proyecto names, so the prefix is unambiguous.
+  const anteriores = (await leerGenerados(nombres)).filter((f) =>
+    f.startsWith(`${cliente.slug}_`),
+  );
+  const escritos = new Set<string>();
+  for (const proyecto of cliente.proyectos) {
+    await borrarLegado(nombres, cliente.slug, proyecto.nombre);
+    const yaml = generarConfigProyecto({
+      proyectoId: proyecto.id,
+      clienteSlug: cliente.slug,
+      proyectoNombre: proyecto.nombre,
+      rutas: proyecto.rutas,
+    });
+    if (!yaml) continue;
+    const fichero = `${cliente.slug}_${proyecto.nombre}.yml`;
+    await writeFile(ruta(fichero), yaml, "utf-8");
+    escritos.add(fichero);
   }
+  for (const fichero of anteriores)
+    if (!escritos.has(fichero)) await borrar(fichero);
+  return { anteriores: anteriores.length, escritos: escritos.size };
+}
+
+// Runs at startup: the disk always ends up matching the DB (migration from the
+// old file names, restored backups, hand edits).
+export async function regenerarConfigTraefik(): Promise<void> {
+  const clientes = await prisma.cliente.findMany({
+    select: { id: true, slug: true },
+  });
+  for (const cliente of clientes) {
+    try {
+      await sincronizarTraefikCliente(cliente.id);
+    } catch (err) {
+      log.error(
+        { err, clienteId: cliente.id },
+        "No se pudo regenerar la config de Traefik del Cliente",
+      );
+    }
+  }
+  const slugs = new Set(clientes.map((c) => c.slug));
+  const nombres = await readdir(env.TRAEFIK_DYNAMIC_DIR);
+  for (const fichero of await leerGenerados(nombres))
+    if (!slugs.has(fichero.split("_")[0])) await borrar(fichero);
+}
+
+const ruta = (fichero: string) => `${env.TRAEFIK_DYNAMIC_DIR}/${fichero}`;
+
+const borrar = (fichero: string) => rm(ruta(fichero), { force: true });
+
+// Before 2.3.0 files were "<proyecto>.yml" with no header; delete one only if it
+// points at this Proyecto's alias, so a hand-written file with that name survives.
+async function borrarLegado(
+  nombres: string[],
+  clienteSlug: string,
+  proyectoNombre: string,
+): Promise<void> {
+  const fichero = `${proyectoNombre}.yml`;
+  if (!nombres.includes(fichero)) return;
+  const contenido = await readFile(ruta(fichero), "utf-8");
+  if (contenido.includes(`"http://${clienteSlug}-${proyectoNombre}:`))
+    await borrar(fichero);
+}
+
+async function leerGenerados(nombres: string[]): Promise<string[]> {
+  const generados: string[] = [];
+  for (const nombre of nombres) {
+    if (!nombre.endsWith(".yml")) continue;
+    const contenido = await readFile(ruta(nombre), "utf-8");
+    if (contenido.startsWith(`${CABECERA_GENERADO} `)) generados.push(nombre);
+  }
+  return generados;
 }

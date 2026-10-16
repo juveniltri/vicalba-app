@@ -1,0 +1,420 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type Ruta = {
+  id: string;
+  proyectoId: string;
+  dominio: string;
+  path: string;
+  servicio: string | null;
+  puerto: number;
+  redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  creadoEn: Date;
+};
+
+// In-memory RutaProyecto table: tests assert on the routes that end up stored.
+const { rutas, proyectos, mockSincronizar } = vi.hoisted(() => ({
+  rutas: [] as Ruta[],
+  proyectos: new Map<
+    string,
+    {
+      id: string;
+      nombre: string;
+      clienteId: string;
+      cliente: { slug: string };
+      tipo: string;
+      puerto: number | null;
+    }
+  >(),
+  mockSincronizar: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    proyecto: {
+      findUnique: vi.fn(
+        async ({ where }: { where: { id: string } }) =>
+          proyectos.get(where.id) ?? null,
+      ),
+    },
+    rutaProyecto: {
+      findMany: vi.fn(
+        async ({ where }: { where?: { proyectoId?: string } } = {}) =>
+          rutas.filter(
+            (r) => !where?.proyectoId || r.proyectoId === where.proyectoId,
+          ),
+      ),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const ruta = rutas.find((r) => r.id === where.id);
+        return ruta
+          ? { ...ruta, proyecto: proyectos.get(ruta.proyectoId) }
+          : null;
+      }),
+      count: vi.fn(
+        async ({ where }: { where: { proyectoId: string } }) =>
+          rutas.filter((r) => r.proyectoId === where.proyectoId).length,
+      ),
+      create: vi.fn(
+        async ({ data }: { data: Omit<Ruta, "id" | "creadoEn"> }) => {
+          const ruta = {
+            ...data,
+            id: `r${rutas.length + 1}`,
+            creadoEn: new Date(),
+          };
+          rutas.push(ruta);
+          return ruta;
+        },
+      ),
+      update: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: Partial<Ruta>;
+        }) => {
+          const ruta = rutas.find((r) => r.id === where.id)!;
+          Object.assign(ruta, data);
+          return ruta;
+        },
+      ),
+      delete: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const i = rutas.findIndex((r) => r.id === where.id);
+        return rutas.splice(i, 1)[0];
+      }),
+    },
+  },
+}));
+
+vi.mock("@/lib/traefik/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/traefik/config")>()),
+  sincronizarTraefikCliente: mockSincronizar,
+}));
+
+vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
+
+vi.mock("@/env", () => ({
+  env: { PANEL_DOMAIN: "panel.vicalba.com", NODE_ENV: "test" },
+}));
+
+import { auth } from "@/lib/auth";
+import { createCallerFactory, createContext } from "@/server/trpc";
+import { rutasRouter } from "./rutas";
+
+const createCaller = createCallerFactory(rutasRouter);
+
+async function caller() {
+  return createCaller(await createContext());
+}
+
+function proyecto(
+  id: string,
+  extra: Partial<{
+    tipo: string;
+    puerto: number | null;
+    clienteId: string;
+  }> = {},
+) {
+  const p = { id, clienteId: "c1", tipo: "compose", puerto: 3000, ...extra };
+  proyectos.set(id, { ...p, nombre: id, cliente: { slug: p.clienteId } });
+}
+
+beforeEach(() => {
+  rutas.length = 0;
+  proyectos.clear();
+  vi.clearAllMocks();
+  vi.mocked(auth).mockResolvedValue({
+    user: { id: "u1", email: "admin@vicalba.local" },
+    expires: "2099-01-01",
+  } as never);
+  proyecto("p1");
+});
+
+describe("rutas.crear", () => {
+  it("guarda la ruta con el puerto del Proyecto por defecto y sincroniza Traefik del Cliente", async () => {
+    await (
+      await caller()
+    ).crear({ proyectoId: "p1", dominio: "App.Example.com" });
+
+    expect(rutas).toEqual([
+      expect.objectContaining({
+        proyectoId: "p1",
+        dominio: "app.example.com",
+        path: "",
+        servicio: null,
+        puerto: 3000,
+        redireccionWww: "ninguna",
+      }),
+    ]);
+    expect(mockSincronizar).toHaveBeenCalledWith("c1");
+  });
+
+  it("guarda path, Servicio, puerto y redirección www", async () => {
+    await (
+      await caller()
+    ).crear({
+      proyectoId: "p1",
+      dominio: "example.com",
+      path: "/api",
+      servicio: "backend",
+      puerto: 8080,
+      redireccionWww: "a_raiz",
+    });
+
+    expect(rutas[0]).toMatchObject({
+      dominio: "example.com",
+      path: "/api",
+      servicio: "backend",
+      puerto: 8080,
+      redireccionWww: "a_raiz",
+    });
+  });
+
+  it("en un Proyecto que no es compose ignora el Servicio y usa 80 si el Proyecto no tiene puerto", async () => {
+    proyecto("p2", { tipo: "image", puerto: null });
+
+    await (
+      await caller()
+    ).crear({
+      proyectoId: "p2",
+      dominio: "img.example.com",
+      servicio: "web",
+    });
+
+    expect(rutas[0]).toMatchObject({ servicio: null, puerto: 80 });
+  });
+});
+
+describe("rutas.crear — dominios ocupados", () => {
+  beforeEach(() => proyecto("p2"));
+
+  it("rechaza un dominio y path que ya usa otro Proyecto, pero admite otro path", async () => {
+    const api = await caller();
+    await api.crear({ proyectoId: "p1", dominio: "example.com" });
+
+    await expect(
+      api.crear({ proyectoId: "p2", dominio: "example.com" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await api.crear({ proyectoId: "p2", dominio: "example.com", path: "/api" });
+
+    expect(rutas.map((r) => [r.proyectoId, r.path])).toEqual([
+      ["p1", ""],
+      ["p2", "/api"],
+    ]);
+  });
+
+  it("normaliza la barra final del path: «/» es el dominio entero", async () => {
+    const api = await caller();
+    await api.crear({
+      proyectoId: "p1",
+      dominio: "example.com",
+      path: "/api/",
+    });
+
+    await expect(
+      api.crear({ proyectoId: "p2", dominio: "example.com", path: "/api" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await api.crear({ proyectoId: "p2", dominio: "otro.com", path: "/" });
+
+    expect(rutas.map((r) => r.path)).toEqual(["/api", ""]);
+  });
+
+  it("el host de la redirección www cuenta como ocupado, en los dos sentidos", async () => {
+    const api = await caller();
+    await api.crear({
+      proyectoId: "p1",
+      dominio: "example.com",
+      redireccionWww: "a_raiz",
+    });
+
+    await expect(
+      api.crear({ proyectoId: "p2", dominio: "www.example.com", path: "/x" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await api.crear({ proyectoId: "p2", dominio: "app.com" });
+    await expect(
+      api.crear({
+        proyectoId: "p1",
+        dominio: "www.app.com",
+        redireccionWww: "a_www",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(rutas).toHaveLength(2);
+  });
+
+  it("rechaza el dominio del Panel, también como host de redirección", async () => {
+    const api = await caller();
+
+    await expect(
+      api.crear({ proyectoId: "p1", dominio: "panel.vicalba.com" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      api.crear({
+        proyectoId: "p1",
+        dominio: "www.panel.vicalba.com",
+        redireccionWww: "a_www",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(rutas).toHaveLength(0);
+  });
+});
+
+describe("rutas.crear — validación", () => {
+  it("no admite más de 20 rutas por Proyecto", async () => {
+    const api = await caller();
+    for (let i = 0; i < 20; i++)
+      await api.crear({ proyectoId: "p1", dominio: `s${i}.example.com` });
+
+    await expect(
+      api.crear({ proyectoId: "p1", dominio: "s20.example.com" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(rutas).toHaveLength(20);
+  });
+
+  it.each([
+    ["a_www", "example.com"],
+    ["a_raiz", "www.example.com"],
+  ] as const)(
+    "la redirección %s no tiene sentido con %s",
+    async (redireccionWww, dominio) => {
+      await expect(
+        (await caller()).crear({ proyectoId: "p1", dominio, redireccionWww }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    },
+  );
+
+  it("rechaza dominios, paths y Servicios mal formados", async () => {
+    const api = await caller();
+    for (const entrada of [
+      { dominio: "no es un dominio" },
+      { dominio: "a.com", path: "api" },
+      { dominio: "a.com", path: "/a b" },
+      { dominio: "a.com", servicio: "-x" },
+      { dominio: "a.com", puerto: 70000 },
+    ])
+      await expect(
+        api.crear({ proyectoId: "p1", ...entrada }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(rutas).toHaveLength(0);
+  });
+
+  it("falla si el Proyecto no existe", async () => {
+    await expect(
+      (await caller()).crear({ proyectoId: "nada", dominio: "a.com" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("rutas.editar / eliminar / listar", () => {
+  beforeEach(() => proyecto("p2", { clienteId: "c2" }));
+
+  it("editar cambia la ruta sin chocar consigo misma y sincroniza Traefik", async () => {
+    const api = await caller();
+    const ruta = await api.crear({ proyectoId: "p1", dominio: "example.com" });
+    mockSincronizar.mockClear();
+
+    await api.editar({
+      id: ruta.id,
+      dominio: "example.com",
+      path: "/v2",
+      servicio: "web",
+      puerto: 81,
+    });
+
+    expect(rutas).toEqual([
+      expect.objectContaining({
+        dominio: "example.com",
+        path: "/v2",
+        servicio: "web",
+        puerto: 81,
+      }),
+    ]);
+    expect(mockSincronizar).toHaveBeenCalledWith("c1");
+  });
+
+  it("editar no puede quitarle el dominio a otra ruta", async () => {
+    const api = await caller();
+    await api.crear({ proyectoId: "p2", dominio: "otro.com" });
+    const ruta = await api.crear({ proyectoId: "p1", dominio: "example.com" });
+
+    await expect(
+      api.editar({ id: ruta.id, dominio: "otro.com" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(rutas.map((r) => r.dominio)).toEqual(["otro.com", "example.com"]);
+  });
+
+  it("eliminar borra la ruta y sincroniza el Cliente de su Proyecto", async () => {
+    const api = await caller();
+    const ruta = await api.crear({ proyectoId: "p2", dominio: "otro.com" });
+    mockSincronizar.mockClear();
+
+    await api.eliminar({ id: ruta.id });
+
+    expect(rutas).toHaveLength(0);
+    expect(mockSincronizar).toHaveBeenCalledWith("c2");
+  });
+
+  it("editar o eliminar una ruta que no existe da NOT_FOUND", async () => {
+    const api = await caller();
+    await expect(
+      api.editar({ id: "nada", dominio: "a.com" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(api.eliminar({ id: "nada" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("listar devuelve las rutas del Proyecto y el YAML que recibe Traefik", async () => {
+    const api = await caller();
+    await api.crear({ proyectoId: "p1", dominio: "example.com" });
+    await api.crear({ proyectoId: "p2", dominio: "otro.com" });
+
+    const { rutas: delProyecto, yaml } = await api.listar({ proyectoId: "p1" });
+
+    expect(delProyecto.map((r) => r.dominio)).toEqual(["example.com"]);
+    expect(yaml).toContain("Host(`example.com`)");
+    expect(yaml).not.toContain("otro.com");
+  });
+});
+
+describe("rutas — casos de borde", () => {
+  it("editar en un Proyecto que no es compose ignora el Servicio y conserva el puerto si no se envía", async () => {
+    proyecto("p3", { tipo: "nodejs", puerto: 4000 });
+    const api = await caller();
+    const ruta = await api.crear({
+      proyectoId: "p3",
+      dominio: "node.com",
+      puerto: 9000,
+    });
+
+    await api.editar({ id: ruta.id, dominio: "node.com", servicio: "web" });
+
+    expect(rutas[0]).toMatchObject({ servicio: null, puerto: 9000 });
+  });
+
+  it("sin PANEL_DOMAIN configurado no hay dominio reservado", async () => {
+    const { env } = await import("@/env");
+    const anterior = env.PANEL_DOMAIN;
+    vi.mocked(env).PANEL_DOMAIN = undefined;
+    try {
+      await (
+        await caller()
+      ).crear({ proyectoId: "p1", dominio: "panel.vicalba.com" });
+    } finally {
+      vi.mocked(env).PANEL_DOMAIN = anterior;
+    }
+    expect(rutas).toHaveLength(1);
+  });
+});
+
+it("editar sin Servicio en un compose deja la ruta apuntando al alias del Proyecto", async () => {
+  const api = await caller();
+  const ruta = await api.crear({
+    proyectoId: "p1",
+    dominio: "a.com",
+    servicio: "web",
+  });
+
+  await api.editar({ id: ruta.id, dominio: "a.com" });
+
+  expect(rutas[0].servicio).toBeNull();
+});

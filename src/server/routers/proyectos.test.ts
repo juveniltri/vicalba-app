@@ -30,6 +30,10 @@ vi.mock("@/lib/prisma", () => ({
     },
     deploy: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     credencial: { findUnique: vi.fn() },
+    rutaProyecto: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn(),
+    },
     configuracionDeploy: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }));
@@ -55,10 +59,9 @@ vi.mock("@/lib/docker/proyectos", () => ({
   },
 }));
 
-vi.mock("@/lib/traefik/config", () => ({
-  generarConfigTraefik: vi.fn().mockReturnValue("yaml-content"),
-  escribirConfigTraefik: vi.fn().mockResolvedValue(undefined),
-  eliminarConfigTraefik: vi.fn().mockResolvedValue(undefined),
+vi.mock("@/lib/traefik/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/traefik/config")>()),
+  sincronizarTraefikCliente: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/docker/deploys", () => ({
@@ -116,11 +119,7 @@ import {
   estadoContenedores,
   DockerError,
 } from "@/lib/docker/proyectos";
-import {
-  generarConfigTraefik,
-  escribirConfigTraefik,
-  eliminarConfigTraefik,
-} from "@/lib/traefik/config";
+import { sincronizarTraefikCliente } from "@/lib/traefik/config";
 import {
   cancelarDeploy,
   ejecutarDeploy,
@@ -130,10 +129,6 @@ import { prepararRepo } from "@/lib/docker/deploy";
 import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
-import {
-  conectarTraefikARed,
-  desconectarTraefikDeRed,
-} from "@/lib/docker/traefik";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { captureException } from "@sentry/nextjs";
@@ -163,7 +158,7 @@ const mockDbData = [
         nombre: "web-app",
         clienteId: "c1",
         estado: "running" as const,
-        dominio: "app.cliente-uno.com",
+        rutas: [{ dominio: "app.cliente-uno.com" }],
         repositorioUrl: "https://github.com/org/web-app",
         rama: "main",
         autoDeployHabilitado: false,
@@ -256,7 +251,10 @@ describe("proyectos.listar", () => {
     const proyectosInclude = (
       callArg?.include as { proyectos?: { include?: object } }
     )?.proyectos;
-    expect(Object.keys(proyectosInclude?.include ?? {})).toEqual(["deploys"]);
+    expect(Object.keys(proyectosInclude?.include ?? {})).toEqual([
+      "rutas",
+      "deploys",
+    ]);
   });
 
   it("lee los certificados una sola vez y devuelve estado y caducidad por proyecto", async () => {
@@ -266,8 +264,12 @@ describe("proyectos.listar", () => {
         ...mockDbData[0],
         proyectos: [
           mockDbData[0].proyectos[0],
-          { ...mockDbData[0].proyectos[0], id: "p2", dominio: "sin-cert.com" },
-          { ...mockDbData[0].proyectos[0], id: "p3", dominio: null },
+          {
+            ...mockDbData[0].proyectos[0],
+            id: "p2",
+            rutas: [{ dominio: "sin-cert.com" }],
+          },
+          { ...mockDbData[0].proyectos[0], id: "p3", rutas: [] },
         ],
       },
     ] as never);
@@ -336,7 +338,7 @@ const mockProyecto = {
   nombre: "web-app",
   clienteId: "c1",
   estado: "stopped" as const,
-  dominio: "app.cliente-uno.com",
+  rutas: [{ dominio: "app.cliente-uno.com" }],
   repositorioUrl: "https://github.com/org/web-app",
   rama: "main",
   autoDeployHabilitado: false,
@@ -729,7 +731,6 @@ describe("proyectos.crear", () => {
     const created = {
       ...mockProyecto,
       nombre: "nuevo-proyecto",
-      dominio: "nuevo.example.com",
       cliente: mockClienteRow,
     };
     vi.mocked(prisma.proyecto.create).mockResolvedValue(created as never);
@@ -793,7 +794,6 @@ describe("proyectos.crear", () => {
     );
     vi.mocked(prisma.proyecto.create).mockResolvedValue({
       ...mockProyecto,
-      dominio: null,
       cliente: mockClienteRow,
     } as never);
 
@@ -820,7 +820,6 @@ describe("proyectos.editar", () => {
     vi.mocked(prisma.proyecto.update).mockResolvedValue({
       ...mockProyecto,
       nombre: "web-app-v2",
-      dominio: "v2.example.com",
       cliente: mockClienteRow,
     } as never);
 
@@ -828,7 +827,6 @@ describe("proyectos.editar", () => {
     const result = await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app-v2",
-      dominio: "v2.example.com",
     });
 
     expect(result.nombre).toBe("web-app-v2");
@@ -877,7 +875,7 @@ describe("proyectos.editar", () => {
     vi.mocked(prisma.proyecto.update).mockResolvedValue({
       ...mockProyecto,
       nombre: "web-app",
-      dominio: "new.example.com",
+      repositorioUrl: "https://github.com/org/otro",
       cliente: mockClienteRow,
     } as never);
 
@@ -885,10 +883,10 @@ describe("proyectos.editar", () => {
     const result = await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app",
-      dominio: "new.example.com",
+      repositorioUrl: "https://github.com/org/otro",
     });
 
-    expect(result.dominio).toBe("new.example.com");
+    expect(result.repositorioUrl).toBe("https://github.com/org/otro");
   });
 
   it("throws CONFLICT when nombre changes AND proyecto is deploying", async () => {
@@ -986,16 +984,10 @@ describe("proyectos.eliminar", () => {
   });
 });
 
-describe("proyectos — integración Traefik", () => {
+describe("proyectos — dominios y Traefik", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(generarConfigTraefik).mockReturnValue("yaml-content");
-    vi.mocked(escribirConfigTraefik).mockResolvedValue(undefined);
-    vi.mocked(eliminarConfigTraefik).mockResolvedValue(undefined);
-  });
-
-  it("crear: escribe config Traefik cuando el proyecto tiene dominio", async () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
       mockClienteRow as never,
     );
@@ -1003,7 +995,31 @@ describe("proyectos — integración Traefik", () => {
       ...mockProyecto,
       cliente: mockClienteRow,
     } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...mockProyecto,
+      cliente: mockClienteRow,
+    } as never);
+    vi.mocked(prisma.rutaProyecto.findMany).mockResolvedValue([]);
+  });
 
+  it("crear con dominio lo guarda como primera ruta con el puerto del Proyecto y sincroniza Traefik", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "web-app",
+      dominio: "App.Cliente-uno.com",
+      puerto: 3000,
+    });
+
+    expect(
+      vi.mocked(prisma.proyecto.create).mock.calls[0][0].data,
+    ).toMatchObject({
+      rutas: { create: { dominio: "app.cliente-uno.com", puerto: 3000 } },
+    });
+    expect(sincronizarTraefikCliente).toHaveBeenCalledWith("c1");
+  });
+
+  it("crear con dominio y sin puerto usa el 80", async () => {
     const ctx = await createContext();
     await createCaller(ctx).proyectos.crear({
       clienteId: "c1",
@@ -1011,151 +1027,110 @@ describe("proyectos — integración Traefik", () => {
       dominio: "app.cliente-uno.com",
     });
 
-    expect(generarConfigTraefik).toHaveBeenCalledWith({
-      dominio: "app.cliente-uno.com",
-      proyectoSlug: "web-app",
-      clienteSlug: "cliente-uno",
-    });
-    expect(escribirConfigTraefik).toHaveBeenCalledWith(
-      "web-app",
-      "yaml-content",
-    );
+    expect(
+      vi.mocked(prisma.proyecto.create).mock.calls[0][0].data,
+    ).toMatchObject({ rutas: { create: { puerto: 80 } } });
   });
 
-  it("crear: no escribe config Traefik cuando no hay dominio", async () => {
-    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
-      mockClienteRow as never,
-    );
-    vi.mocked(prisma.proyecto.create).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-      cliente: mockClienteRow,
-    } as never);
+  it("crear sin dominio no crea rutas ni toca Traefik", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({ clienteId: "c1", nombre: "web" });
+
+    expect(
+      vi.mocked(prisma.proyecto.create).mock.calls[0][0].data,
+    ).not.toHaveProperty("rutas");
+    expect(sincronizarTraefikCliente).not.toHaveBeenCalled();
+  });
+
+  it("crear con un dominio que ya usa otra ruta da CONFLICT y no crea el Proyecto", async () => {
+    vi.mocked(prisma.rutaProyecto.findMany).mockResolvedValue([
+      {
+        id: "r9",
+        dominio: "app.cliente-uno.com",
+        path: "",
+        redireccionWww: "ninguna",
+      },
+    ] as never);
 
     const ctx = await createContext();
-    await createCaller(ctx).proyectos.crear({
-      clienteId: "c1",
-      nombre: "web-app",
-    });
-
-    expect(escribirConfigTraefik).not.toHaveBeenCalled();
+    await expect(
+      createCaller(ctx).proyectos.crear({
+        clienteId: "c1",
+        nombre: "web-app",
+        dominio: "app.cliente-uno.com",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(prisma.proyecto.create).not.toHaveBeenCalled();
   });
 
-  it("editar: reescribe config Traefik cuando el proyecto tiene dominio", async () => {
+  it("editar sincroniza Traefik del Cliente (un renombrado cambia fichero y alias)", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
       mockProyecto as never,
     );
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "nuevo.example.com",
-      cliente: mockClienteRow,
-    } as never);
 
     const ctx = await createContext();
-    await createCaller(ctx).proyectos.editar({
-      id: "p1",
-      nombre: "web-app",
-      dominio: "nuevo.example.com",
-    });
+    await createCaller(ctx).proyectos.editar({ id: "p1", nombre: "tienda" });
 
-    expect(escribirConfigTraefik).toHaveBeenCalledWith(
-      "web-app",
-      "yaml-content",
-    );
+    expect(sincronizarTraefikCliente).toHaveBeenCalledWith("c1");
   });
 
-  it("editar: elimina config Traefik cuando se quita el dominio", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
-      mockProyecto as never,
-    );
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-      cliente: mockClienteRow,
-    } as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.editar({
-      id: "p1",
-      nombre: "web-app",
-    });
-
-    expect(eliminarConfigTraefik).toHaveBeenCalledWith("web-app");
-    expect(escribirConfigTraefik).not.toHaveBeenCalled();
-  });
-
-  it("eliminar: elimina config Traefik si el proyecto tenía dominio", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
-      mockProyecto as never,
-    );
-    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
-
-    expect(eliminarConfigTraefik).toHaveBeenCalledWith("web-app");
-  });
-
-  it("eliminar: no llama a Traefik si el proyecto no tenía dominio", async () => {
+  it("editar el puerto arrastra las rutas que tenían el puerto anterior", async () => {
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
-      dominio: null,
-    } as never);
-    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
-
-    expect(eliminarConfigTraefik).not.toHaveBeenCalled();
-  });
-
-  it("crear: pasa puerto a generarConfigTraefik cuando el proyecto tiene puerto configurado", async () => {
-    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
-      mockClienteRow as never,
-    );
-    vi.mocked(prisma.proyecto.create).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.cliente-uno.com",
       puerto: 3000,
-      cliente: mockClienteRow,
-    } as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.crear({
-      clienteId: "c1",
-      nombre: "web-app",
-      dominio: "app.cliente-uno.com",
-      puerto: 3000,
-    });
-
-    expect(generarConfigTraefik).toHaveBeenCalledWith(
-      expect.objectContaining({ puerto: 3000 }),
-    );
-  });
-
-  it("editar: pasa puerto a generarConfigTraefik cuando el proyecto editado tiene puerto", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.ejemplo.com",
-      puerto: 3000,
-      cliente: mockClienteRow,
     } as never);
 
     const ctx = await createContext();
     await createCaller(ctx).proyectos.editar({
       id: "p1",
       nombre: "web-app",
-      dominio: "app.ejemplo.com",
-      puerto: 3000,
+      puerto: 4000,
     });
 
-    expect(generarConfigTraefik).toHaveBeenCalledWith(
-      expect.objectContaining({ puerto: 3000 }),
+    expect(prisma.rutaProyecto.updateMany).toHaveBeenCalledWith({
+      where: { proyectoId: "p1", puerto: 3000 },
+      data: { puerto: 4000 },
+    });
+  });
+
+  it.each([
+    ["no tenía puerto", null, 4000],
+    ["el puerto no cambia", 3000, 3000],
+    ["no se envía puerto", 3000, undefined],
+  ])("editar no toca las rutas si %s", async (_caso, anterior, nuevo) => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      puerto: anterior,
+    } as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: "web-app",
+      puerto: nuevo,
+    });
+
+    expect(prisma.rutaProyecto.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("eliminar un Proyecto con rutas sincroniza Traefik; sin rutas no", async () => {
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
+    const ctx = await createContext();
+
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
     );
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+    expect(sincronizarTraefikCliente).toHaveBeenCalledWith("c1");
+
+    vi.mocked(sincronizarTraefikCliente).mockClear();
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      rutas: [],
+    } as never);
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+    expect(sincronizarTraefikCliente).not.toHaveBeenCalled();
   });
 });
 
@@ -1167,6 +1142,26 @@ describe("proyectos.deploy", () => {
       resultado: "exito",
       output: "",
     });
+  });
+
+  it("pasa al deploy los Servicios a los que apuntan las rutas, sin repetir", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      rutas: [
+        { dominio: "a.com", servicio: "web" },
+        { dominio: "b.com", servicio: null },
+        { dominio: "c.com", servicio: "api" },
+        { dominio: "d.com", servicio: "web" },
+      ],
+    } as never);
+    vi.mocked(prisma.proyecto.update).mockResolvedValue(mockProyecto as never);
+
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ serviciosConRuta: ["web", "api"] }),
+    );
   });
 
   it("llama a ejecutarDeploy sin servicios y retorna estado deploying inmediatamente", async () => {
@@ -1427,7 +1422,7 @@ describe("proyectos.obtener", () => {
     nombre: "web-app",
     clienteId: "c1",
     estado: "running" as const,
-    dominio: "app.cliente-uno.com",
+    rutas: [{ dominio: "app.cliente-uno.com" }],
     repositorioUrl: "https://github.com/org/web-app",
     rama: "main",
     autoDeployHabilitado: false,
@@ -1489,7 +1484,7 @@ describe("proyectos.obtener", () => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
       ...mockProyecto,
-      dominio: null,
+      rutas: [],
       cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
     } as never);
 
@@ -1551,7 +1546,7 @@ describe("proyectos.deploy — con variables de entorno", () => {
     nombre: "web-app",
     clienteId: "c1",
     estado: "stopped" as const,
-    dominio: null,
+    rutas: [],
     repositorioUrl: "https://github.com/org/web-app",
     rama: "main",
     autoDeployHabilitado: false,
@@ -2102,157 +2097,13 @@ describe("proyectos.asignarCredencial", () => {
   });
 });
 
-describe("proyectos — integración Traefik redes", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(conectarTraefikARed).mockResolvedValue(undefined);
-    vi.mocked(desconectarTraefikDeRed).mockResolvedValue(undefined);
-    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
-  });
-
-  it("crear con dominio llama conectarTraefikARed", async () => {
-    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
-      mockClienteRow as never,
-    );
-    vi.mocked(prisma.proyecto.create).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.ejemplo.com",
-      cliente: mockClienteRow,
-    } as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.crear({
-      clienteId: "c1",
-      nombre: "web-app",
-      dominio: "app.ejemplo.com",
-    });
-
-    expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
-  });
-
-  it("crear sin dominio no llama conectarTraefikARed", async () => {
-    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
-      mockClienteRow as never,
-    );
-    vi.mocked(prisma.proyecto.create).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-      cliente: mockClienteRow,
-    } as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.crear({
-      clienteId: "c1",
-      nombre: "web-app",
-    });
-
-    expect(conectarTraefikARed).not.toHaveBeenCalled();
-  });
-
-  it("editar añadiendo dominio llama conectarTraefikARed", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-    } as never);
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "nuevo.ejemplo.com",
-      cliente: mockClienteRow,
-    } as never);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.editar({
-      id: "p1",
-      nombre: "web-app",
-      dominio: "nuevo.ejemplo.com",
-    });
-
-    expect(conectarTraefikARed).toHaveBeenCalledWith("cliente-uno");
-  });
-
-  it("editar quitando dominio (sin otros con dominio) llama desconectarTraefikDeRed", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "viejo.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-      cliente: mockClienteRow,
-    } as never);
-    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.editar({
-      id: "p1",
-      nombre: "web-app",
-    });
-
-    expect(desconectarTraefikDeRed).toHaveBeenCalledWith("cliente-uno");
-  });
-
-  it("editar quitando dominio (hay otros con dominio) no llama desconectarTraefikDeRed", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "viejo.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.proyecto.update).mockResolvedValue({
-      ...mockProyecto,
-      dominio: null,
-      cliente: mockClienteRow,
-    } as never);
-    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.editar({
-      id: "p1",
-      nombre: "web-app",
-    });
-
-    expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
-  });
-
-  it("eliminar con dominio (último del cliente) llama desconectarTraefikDeRed", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
-    vi.mocked(prisma.proyecto.count)
-      .mockResolvedValueOnce(0) // otrosConDominio
-      .mockResolvedValueOnce(0); // restantes (para eliminarRedCliente)
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
-
-    expect(desconectarTraefikDeRed).toHaveBeenCalledWith("cliente-uno");
-  });
-
-  it("eliminar con dominio (quedan otros con dominio) no llama desconectarTraefikDeRed", async () => {
-    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
-      ...mockProyecto,
-      dominio: "app.ejemplo.com",
-    } as never);
-    vi.mocked(prisma.proyecto.delete).mockResolvedValue(mockProyecto as never);
-    vi.mocked(prisma.proyecto.count)
-      .mockResolvedValueOnce(1) // otrosConDominio
-      .mockResolvedValueOnce(1); // restantes
-
-    const ctx = await createContext();
-    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
-
-    expect(desconectarTraefikDeRed).not.toHaveBeenCalled();
-  });
-});
-
 describe("proyectos.deploy — notificaciones", () => {
   const mockProyectoParaDeploy = {
     id: "p1",
     nombre: "web-app",
     clienteId: "c1",
     estado: "stopped" as const,
-    dominio: null,
+    rutas: [],
     repositorioUrl: "https://github.com/org/repo",
     rama: "main",
     autoDeployHabilitado: false,
@@ -2346,7 +2197,7 @@ describe("proyectos.rollback — notificaciones", () => {
     nombre: "web-app",
     clienteId: "c1",
     estado: "running" as const,
-    dominio: null,
+    rutas: [],
     repositorioUrl: "https://github.com/org/repo",
     rama: "main",
     autoDeployHabilitado: false,
@@ -2898,7 +2749,7 @@ describe("proyectos.indice", () => {
         id: "p1",
         nombre: "crm",
         estado: "deploying",
-        dominio: "crm.ejemplo.com",
+        rutas: [{ dominio: "crm.ejemplo.com" }],
         cliente: { nombre: "microcapilar", slug: "microcapilar" },
       },
     ] as never);
@@ -2926,7 +2777,7 @@ describe("proyectos.deploy — cancelación y timeout", () => {
     nombre: "web-app",
     clienteId: "c1",
     estado: "running" as const,
-    dominio: null,
+    rutas: [],
     repositorioUrl: "https://github.com/org/repo",
     rama: "main",
     tipo: "compose" as const,

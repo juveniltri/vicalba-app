@@ -215,7 +215,8 @@ describe("ProyectoFormModal — editar proyecto", () => {
       />,
     );
     expect(screen.getByDisplayValue("web-app")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("app.example.com")).toBeInTheDocument();
+    // Domains are edited in the Dominios tab, not here.
+    expect(screen.queryByLabelText(/dominio/i)).not.toBeInTheDocument();
     expect(
       screen.getByDisplayValue("https://github.com/org/web-app"),
     ).toBeInTheDocument();
@@ -240,7 +241,6 @@ describe("ProyectoFormModal — editar proyecto", () => {
       expect(editarProyectoAction).toHaveBeenCalledWith(
         "p1",
         "web-app-v2",
-        "app.example.com",
         "https://github.com/org/web-app",
         "develop",
         "compose",

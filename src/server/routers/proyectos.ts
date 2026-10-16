@@ -25,16 +25,9 @@ import {
 import { formatHace } from "@/lib/formatHace";
 import { prisma } from "@/lib/prisma";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
-import {
-  eliminarConfigTraefik,
-  escribirConfigTraefik,
-  generarConfigTraefik,
-} from "@/lib/traefik/config";
+import { sincronizarTraefikCliente } from "@/lib/traefik/config";
 import { protectedProcedure, router } from "@/server/trpc";
-import {
-  conectarTraefikARed,
-  desconectarTraefikDeRed,
-} from "@/lib/docker/traefik";
+import { comprobarRutaDisponible, dominioSchema } from "./rutas";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { ultimasLineas } from "@/lib/deploy-stream";
@@ -47,12 +40,6 @@ const proyectoInput = z.object({
       message:
         "El nombre solo puede contener letras minúsculas, números y guiones",
     }),
-  dominio: z
-    .string()
-    .regex(/^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/, {
-      message: "El dominio debe ser un hostname válido (ej: panel.ejemplo.com)",
-    })
-    .optional(),
   repositorioUrl: z.string().url().optional(),
   rama: z.string().optional(),
   tipo: z.enum(["compose", "dockerfile", "image", "nodejs"]).optional(),
@@ -79,7 +66,11 @@ const accionInput = idInput.extend({
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
-    include: { cliente: true, credencial: true },
+    include: {
+      cliente: true,
+      credencial: true,
+      rutas: { orderBy: { creadoEn: "asc" } },
+    },
   });
   if (!proyecto)
     throw new TRPCError({
@@ -88,6 +79,11 @@ async function findProyectoOrThrow(id: string) {
     });
   return proyecto;
 }
+
+// The oldest route is the Proyecto's main domain (Abrir URL, SSL, ⌘K).
+const rutaPrincipal = { orderBy: { creadoEn: "asc" as const }, take: 1 };
+const dominioPrincipal = (p: { rutas?: { dominio: string }[] }) =>
+  p.rutas?.[0]?.dominio ?? null;
 
 type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
 
@@ -160,6 +156,11 @@ export async function lanzarDeploy(
     startCommand: proyecto.startCommand,
     puerto: proyecto.puerto,
     volumenes,
+    serviciosConRuta: [
+      ...new Set(
+        proyecto.rutas.flatMap((r) => (r.servicio ? [r.servicio] : [])),
+      ),
+    ],
     timeoutMinutos: configDeploy?.timeoutMinutos ?? TIMEOUT_DEPLOY_POR_DEFECTO,
   })
     .then(async ({ resultado, output, porTimeout }) => {
@@ -210,11 +211,10 @@ export async function lanzarDeploy(
 export const proyectosRouter = router({
   obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
-    const cert = proyecto.dominio
-      ? (await leerCertificados())[proyecto.dominio]
-      : undefined;
+    const dominio = dominioPrincipal(proyecto);
+    const cert = dominio ? (await leerCertificados())[dominio] : undefined;
     return {
-      ssl: proyecto.dominio
+      ssl: dominio
         ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
         : null,
       id: proyecto.id,
@@ -222,7 +222,7 @@ export const proyectosRouter = router({
       clienteSlug: proyecto.cliente.slug,
       clienteNombre: proyecto.cliente.nombre,
       estado: proyecto.estado,
-      dominio: proyecto.dominio,
+      dominio,
       repositorioUrl: proyecto.repositorioUrl,
       rama: proyecto.rama,
       autoDeployHabilitado: proyecto.autoDeployHabilitado,
@@ -320,7 +320,13 @@ export const proyectosRouter = router({
   }),
 
   crear: protectedProcedure
-    .input(proyectoInput.extend({ clienteId: z.string() }))
+    .input(
+      proyectoInput.extend({
+        clienteId: z.string(),
+        // Shortcut for the first route; the rest live in the Dominios tab.
+        dominio: dominioSchema.optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const cliente = await prisma.cliente.findUnique({
         where: { id: input.clienteId },
@@ -330,11 +336,21 @@ export const proyectosRouter = router({
           code: "NOT_FOUND",
           message: "Cliente no encontrado",
         });
+      if (input.dominio)
+        await comprobarRutaDisponible({
+          dominio: input.dominio,
+          path: "",
+          redireccionWww: "ninguna",
+        });
       const creado = await prisma.proyecto.create({
         data: {
           nombre: input.nombre,
           clienteId: input.clienteId,
-          dominio: input.dominio,
+          ...(input.dominio && {
+            rutas: {
+              create: { dominio: input.dominio, puerto: input.puerto ?? 80 },
+            },
+          }),
           repositorioUrl: input.repositorioUrl,
           rama: input.rama ?? "main",
           tipo: input.tipo ?? "compose",
@@ -348,17 +364,7 @@ export const proyectosRouter = router({
       });
 
       await asegurarRedCliente(creado.cliente.slug);
-
-      if (creado.dominio) {
-        const yaml = generarConfigTraefik({
-          dominio: creado.dominio,
-          proyectoSlug: creado.nombre,
-          clienteSlug: creado.cliente.slug,
-          ...(creado.puerto != null && { puerto: creado.puerto }),
-        });
-        await escribirConfigTraefik(creado.nombre, yaml);
-        await conectarTraefikARed(creado.cliente.slug);
-      }
+      if (input.dominio) await sincronizarTraefikCliente(creado.clienteId);
 
       return creado;
     }),
@@ -380,7 +386,6 @@ export const proyectosRouter = router({
         where: { id: input.id },
         data: {
           nombre: input.nombre,
-          dominio: input.dominio,
           repositorioUrl: input.repositorioUrl,
           rama: input.rama,
           tipo: input.tipo,
@@ -393,31 +398,19 @@ export const proyectosRouter = router({
         include: { cliente: true },
       });
 
-      if (actualizado.dominio) {
-        const yaml = generarConfigTraefik({
-          dominio: actualizado.dominio,
-          proyectoSlug: actualizado.nombre,
-          clienteSlug: actualizado.cliente.slug,
-          ...(actualizado.puerto != null && { puerto: actualizado.puerto }),
+      // Routes that followed the Proyecto's port keep following it; the ones
+      // pointed at another port on purpose stay as they are.
+      if (
+        proyecto.puerto != null &&
+        input.puerto != null &&
+        input.puerto !== proyecto.puerto
+      )
+        await prisma.rutaProyecto.updateMany({
+          where: { proyectoId: proyecto.id, puerto: proyecto.puerto },
+          data: { puerto: input.puerto },
         });
-        await escribirConfigTraefik(actualizado.nombre, yaml);
-      } else {
-        await eliminarConfigTraefik(proyecto.nombre);
-      }
-
-      if (!proyecto.dominio && actualizado.dominio) {
-        await conectarTraefikARed(actualizado.cliente.slug);
-      } else if (proyecto.dominio && !actualizado.dominio) {
-        const otrosConDominio = await prisma.proyecto.count({
-          where: {
-            clienteId: proyecto.clienteId,
-            dominio: { not: null },
-            id: { not: input.id },
-          },
-        });
-        if (otrosConDominio === 0)
-          await desconectarTraefikDeRed(actualizado.cliente.slug);
-      }
+      // A rename changes the file name and the network aliases.
+      await sincronizarTraefikCliente(proyecto.clienteId);
 
       return actualizado;
     }),
@@ -430,18 +423,8 @@ export const proyectosRouter = router({
         message: "No se puede eliminar un proyecto en ejecución",
       });
     await prisma.proyecto.delete({ where: { id: input.id } });
-    if (proyecto.dominio) {
-      await eliminarConfigTraefik(proyecto.nombre);
-      const otrosConDominio = await prisma.proyecto.count({
-        where: {
-          clienteId: proyecto.clienteId,
-          dominio: { not: null },
-          id: { not: input.id },
-        },
-      });
-      if (otrosConDominio === 0)
-        await desconectarTraefikDeRed(proyecto.cliente.slug);
-    }
+    if (proyecto.rutas.length > 0)
+      await sincronizarTraefikCliente(proyecto.clienteId);
     const restantes = await prisma.proyecto.count({
       where: { clienteId: proyecto.clienteId },
     });
@@ -569,7 +552,7 @@ export const proyectosRouter = router({
         id: true,
         nombre: true,
         estado: true,
-        dominio: true,
+        rutas: { ...rutaPrincipal, select: { dominio: true } },
         cliente: { select: { nombre: true, slug: true } },
       },
     });
@@ -577,7 +560,7 @@ export const proyectosRouter = router({
       id: p.id,
       nombre: p.nombre,
       estado: p.estado,
-      dominio: p.dominio,
+      dominio: dominioPrincipal(p),
       cliente: p.cliente.nombre,
       clienteSlug: p.cliente.slug,
     }));
@@ -687,6 +670,7 @@ export const proyectosRouter = router({
           proyectos: {
             orderBy: { nombre: "asc" },
             include: {
+              rutas: { ...rutaPrincipal, select: { dominio: true } },
               deploys: {
                 orderBy: { iniciadoEn: "desc" },
                 take: 1,
@@ -712,8 +696,9 @@ export const proyectosRouter = router({
         nombre: cliente.nombre,
         proyectos: await Promise.all(
           cliente.proyectos.map(async (p) => {
-            const cert = p.dominio ? certificados[p.dominio] : undefined;
-            const ssl = p.dominio
+            const dominio = dominioPrincipal(p);
+            const cert = dominio ? certificados[dominio] : undefined;
+            const ssl = dominio
               ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
               : null;
             const ultimo = p.deploys?.[0];
@@ -722,7 +707,7 @@ export const proyectosRouter = router({
               nombre: p.nombre,
               clienteSlug: cliente.slug,
               estado: p.estado,
-              dominio: p.dominio,
+              dominio,
               repositorioUrl: p.repositorioUrl,
               rama: p.rama,
               autoDeployHabilitado: p.autoDeployHabilitado,

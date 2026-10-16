@@ -115,7 +115,6 @@ export async function crearProyectoAction(
 export async function editarProyectoAction(
   id: string,
   nombre: string,
-  dominio: string | undefined,
   repositorioUrl?: string,
   rama?: string,
   tipo?: string,
@@ -130,7 +129,6 @@ export async function editarProyectoAction(
     await api.proyectos.editar({
       id,
       nombre,
-      dominio,
       repositorioUrl,
       rama,
       tipo: tipo as "compose" | "dockerfile" | "image" | "nodejs" | undefined,

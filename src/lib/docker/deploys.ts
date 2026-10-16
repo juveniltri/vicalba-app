@@ -72,6 +72,7 @@ export async function ejecutarDeploy(params: {
   startCommand?: string | null;
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  serviciosConRuta?: string[];
   timeoutMinutos?: number;
 }): Promise<{
   resultado: ResultadoDeploy;

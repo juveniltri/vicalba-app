@@ -253,6 +253,56 @@ describe("deployProyecto", () => {
 
     expect(mockConnect).toHaveBeenCalledTimes(2);
   });
+
+  it("cada Servicio con ruta recibe su alias; el principal lleva los dos en una sola conexión", async () => {
+    mockListContainers.mockResolvedValue([
+      {
+        Id: "c-web",
+        Labels: { "com.docker.compose.service": "web" },
+        Ports: [{ PrivatePort: 8000 }],
+      },
+      {
+        Id: "c-api",
+        Labels: { "com.docker.compose.service": "api" },
+        Ports: [{ PrivatePort: 3000 }],
+      },
+      { Id: "c-db", Labels: { "com.docker.compose.service": "db" } },
+    ]);
+
+    await deployProyecto({
+      ...baseParams,
+      puerto: 8000,
+      serviciosConRuta: ["web", "api"],
+    });
+
+    expect(mockConnect).toHaveBeenCalledTimes(2);
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-web",
+      EndpointConfig: { Aliases: ["acme-web-app", "web.acme-web-app"] },
+    });
+    expect(mockConnect).toHaveBeenCalledWith({
+      Container: "c-api",
+      EndpointConfig: { Aliases: ["api.acme-web-app"] },
+    });
+  });
+
+  it("avisa en el log si un Servicio con ruta no tiene contenedor, sin fallar el deploy", async () => {
+    const onLog = vi.fn();
+    mockListContainers.mockResolvedValue([
+      { Id: "c-web", Labels: { "com.docker.compose.service": "web" } },
+    ]);
+
+    await deployProyecto({
+      ...baseParams,
+      serviciosConRuta: ["backend"],
+      onLog,
+    });
+
+    expect(onLog).toHaveBeenCalledWith(
+      expect.stringMatching(/⚠.*«backend».*sin contenedor/),
+    );
+    expect(onLog).toHaveBeenCalledWith("✓ Deploy completado");
+  });
 });
 
 describe("deployProyecto con variables de entorno", () => {

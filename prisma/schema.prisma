@@ -62,7 +62,6 @@ model Proyecto {
   cliente              Cliente           @relation(fields: [clienteId], references: [id])
   clienteId            String
   estado               EstadoServicio    @default(stopped)
-  dominio              String?
   repositorioUrl       String?
   rama                 String            @default("main")
   autoDeployHabilitado Boolean           @default(false)
@@ -80,10 +79,34 @@ model Proyecto {
   variables            VariableEntorno[]
   deploys              Deploy[]
   volumenes            Volumen[]
+  rutas                RutaProyecto[]
   creadoEn             DateTime          @default(now())
   actualizadoEn        DateTime          @updatedAt
 
   @@unique([clienteId, nombre])
+}
+
+enum RedireccionWww {
+  ninguna
+  a_raiz
+  a_www
+}
+
+model RutaProyecto {
+  id             String         @id @default(cuid())
+  proyectoId     String
+  proyecto       Proyecto       @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  dominio        String
+  // "" = whole domain; not nullable so the unique index also covers it
+  path           String         @default("")
+  servicio       String?
+  puerto         Int
+  redireccionWww RedireccionWww @default(ninguna)
+  creadoEn       DateTime       @default(now())
+  actualizadoEn  DateTime       @updatedAt
+
+  @@unique([dominio, path])
+  @@index([proyectoId])
 }
 
 model VariableEntorno {
