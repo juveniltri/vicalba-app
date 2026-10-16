@@ -18,8 +18,8 @@ master        → producción (tags: vX.X.X)
 develop       → integración continua
 feature/XXX   → funcionalidad nueva (desde develop)
 hotfix/XXX    → fix urgente (desde master, PR directo a master + merge a develop)
-release/X.X.X → preparación de release (desde develop; en una versión de parche, desde
-                master para agrupar hotfix y mantenimiento en un solo PR a master)
+release/X.X.X → preparación de release: siempre desde master, mergeando develop en ella
+                (así entra todo lo que haya en master aunque no haya llegado a develop)
 ```
 
 **Regla:** nunca se hace commit directo a `master` ni a `develop`. Todo entra por PR.
