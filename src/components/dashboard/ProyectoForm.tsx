@@ -313,7 +313,7 @@ export function ProyectoFormModal({
               htmlFor="puerto"
               className="font-body text-xs text-text-muted"
             >
-              Puerto expuesto (opcional, por defecto 80)
+              Puerto del contenedor (opcional, por defecto 80)
             </label>
             <input
               id="puerto"

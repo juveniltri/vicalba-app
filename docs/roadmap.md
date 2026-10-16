@@ -23,7 +23,7 @@ Ahora: desplegar la 2.2.0 en la VPS («Operación al desplegar la 2.2.0» en `do
 
 - [x] **Acciones por Servicio** — iniciar, detener y reiniciar un Servicio del compose; tarjeta «Servicios» con su estado. Verificado contra Docker real.
 - [x] **Rutas múltiples** — varios dominios/paths por Proyecto, cada uno a un Servicio y puerto; pestaña Dominios con el YAML generado; corrige la colisión de `dynamic/<nombre>.yml` entre Clientes. Verificado el 16/10/2026: migración en Postgres 16 (sin desfase con el schema), rutas/PathPrefix/alias/redirección www con Traefik v3 real y flujo crear/duplicado/borrar en el Panel.
-- [ ] **Arreglos previos detectados** — los Proyectos `image` no se conectan a la red del Cliente; los composes generados publican `puerto:puerto` en el host (accesible sin pasar por Traefik).
+- [x] **Arreglos previos detectados** — los Proyectos `image` ya se conectan a la red del Cliente; los composes generados ya no publican `puerto:puerto` en el host (solo `expose`). Para el `### Al actualizar` del CHANGELOG: tras redesplegar, los Proyectos dockerfile/nodejs/image dejan de responder en `IP:puerto`; solo por sus dominios.
 - [ ] **Middlewares por ruta** — www, auth básica, IPs permitidas, cabeceras, límite de peticiones, body máximo, compresión.
 - [ ] **Proxy editable** — Configuración → Proxy: cabeceras reenviadas, timeouts, TLS, log; aplicar con vuelta atrás automática y acceso de emergencia al Panel por `127.0.0.1:3000`.
 - [ ] **Modo Cloudflare** — rangos de Cloudflare en `trustedIPs`, certificados por DNS challenge, IP real en los middlewares.

@@ -272,8 +272,9 @@ function generarDockerComposeConBuild(params: {
     `      context: "${params.context}"`,
     `      dockerfile: "${params.dockerfile}"`,
     ...serializarMapaYaml("      args:", "        ", params.buildArgs ?? []),
-    "    ports:",
-    `      - "${params.puerto}:${params.puerto}"`,
+    // Not published on the host: reached only through Traefik.
+    "    expose:",
+    `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
     ...LOGGING_YAML,
@@ -290,8 +291,9 @@ function generarDockerComposeConImage(params: {
     "services:",
     "  app:",
     `    image: "${params.imagenUrl}"`,
-    "    ports:",
-    `      - "${params.puerto}:${params.puerto}"`,
+    // Not published on the host: reached only through Traefik.
+    "    expose:",
+    `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
     ...LOGGING_YAML,

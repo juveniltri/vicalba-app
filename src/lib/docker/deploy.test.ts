@@ -830,6 +830,24 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     },
   );
 
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el puerto solo se expone en la red; no se publica en el host, se llega por Traefik",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:alpine",
+        puerto: 3000,
+      });
+
+      const [compose] = writesTo(
+        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain('    expose:\n      - "3000"');
+      expect(compose?.[1]).not.toContain("ports:");
+    },
+  );
+
   const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
   const nodejs = {
     ...baseParams,
