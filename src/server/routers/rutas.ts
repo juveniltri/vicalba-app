@@ -1,7 +1,14 @@
 import { TRPCError } from "@trpc/server";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
+import {
+  type Middlewares,
+  type MiddlewaresEntrada,
+  middlewaresEntradaSchema,
+  middlewaresSchema,
+} from "@/lib/schemas/middlewares";
 import { leerCertificados } from "@/lib/ssl/acme";
 import {
   generarConfigProyecto,
@@ -39,7 +46,55 @@ const rutaInput = z.object({
     .nullish(),
   puerto: z.number().int().min(1).max(65535).optional(),
   redireccionWww: z.enum(["ninguna", "a_raiz", "a_www"]).default("ninguna"),
+  middlewares: middlewaresEntradaSchema.optional(),
 });
+
+// Traefik checks the password on every request, so a low cost keeps it cheap;
+// "$2y$" is the Apache htpasswd spelling of the same algorithm.
+const COSTE_BCRYPT = 5;
+const hashear = (contrasena: string) =>
+  "$2y$" + bcrypt.hashSync(contrasena, COSTE_BCRYPT).slice(4);
+
+function conHashes(
+  entrada: MiddlewaresEntrada,
+  actual: Middlewares,
+): Middlewares {
+  const { basicAuth, ...resto } = entrada;
+  if (!basicAuth) return resto;
+  const hashes = new Map(
+    actual.basicAuth?.usuarios.map((u) => [u.usuario, u.hash]),
+  );
+  return {
+    ...resto,
+    basicAuth: {
+      usuarios: basicAuth.usuarios.map(({ usuario, contrasena }) => {
+        const hash = contrasena ? hashear(contrasena) : hashes.get(usuario);
+        if (!hash)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Falta la contraseña de «${usuario}»`,
+          });
+        return { usuario, hash };
+      }),
+    },
+  };
+}
+
+// Hashes stay on the server: the Panel only shows who can log in.
+function sinHashes<T extends { middlewares: unknown }>(ruta: T) {
+  const { basicAuth, ...resto } = middlewaresSchema.parse(ruta.middlewares);
+  return {
+    ...ruta,
+    middlewares: {
+      ...resto,
+      ...(basicAuth && {
+        basicAuth: {
+          usuarios: basicAuth.usuarios.map(({ usuario }) => ({ usuario })),
+        },
+      }),
+    },
+  };
+}
 
 const conWwwCoherente = <T extends z.ZodType<RutaCandidata>>(schema: T) =>
   schema.refine(
@@ -120,13 +175,17 @@ export const rutasRouter = router({
     .input(z.object({ proyectoId: z.string() }))
     .query(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.proyectoId);
-      const [rutas, certificados] = await Promise.all([
+      const [filas, certificados] = await Promise.all([
         prisma.rutaProyecto.findMany({
           where: { proyectoId: proyecto.id },
           orderBy: { creadoEn: "asc" },
         }),
         leerCertificados(),
       ]);
+      const rutas = filas.map((r) => ({
+        ...r,
+        middlewares: middlewaresSchema.parse(r.middlewares),
+      }));
       const yaml = generarConfigProyecto({
         proyectoId: proyecto.id,
         clienteSlug: proyecto.cliente.slug,
@@ -137,7 +196,7 @@ export const rutasRouter = router({
         rutas: rutas.map((r) => {
           const cert = certificados[r.dominio];
           return {
-            ...r,
+            ...sinHashes(r),
             ssl: { activo: !!cert, caducaEn: cert?.caducaEn ?? null },
           };
         }),
@@ -150,6 +209,12 @@ export const rutasRouter = router({
     .mutation(async ({ input }) => {
       const actual = await findRutaOrThrow(input.id);
       await comprobarRutaDisponible(input, actual.id);
+      const middlewares = input.middlewares
+        ? conHashes(
+            input.middlewares,
+            middlewaresSchema.parse(actual.middlewares),
+          )
+        : undefined;
       const ruta = await prisma.rutaProyecto.update({
         where: { id: actual.id },
         data: {
@@ -161,10 +226,23 @@ export const rutasRouter = router({
               : null,
           puerto: input.puerto ?? actual.puerto,
           redireccionWww: input.redireccionWww,
+          ...(middlewares && { middlewares }),
         },
       });
       await sincronizarTraefikCliente(actual.proyecto.clienteId);
-      return ruta;
+      return sinHashes(ruta);
+    }),
+
+  copiarMiddlewares: protectedProcedure
+    .input(z.object({ desdeId: z.string(), haciaId: z.string() }))
+    .mutation(async ({ input }) => {
+      const desde = await findRutaOrThrow(input.desdeId);
+      const hacia = await findRutaOrThrow(input.haciaId);
+      await prisma.rutaProyecto.update({
+        where: { id: hacia.id },
+        data: { middlewares: middlewaresSchema.parse(desde.middlewares) },
+      });
+      await sincronizarTraefikCliente(hacia.proyecto.clienteId);
     }),
 
   eliminar: protectedProcedure
@@ -188,6 +266,7 @@ export const rutasRouter = router({
           message: `Un Proyecto admite como mucho ${MAX_RUTAS_POR_PROYECTO} rutas`,
         });
       await comprobarRutaDisponible(input);
+      const middlewares = conHashes(input.middlewares ?? {}, {});
       const ruta = await prisma.rutaProyecto.create({
         data: {
           proyectoId: proyecto.id,
@@ -197,9 +276,10 @@ export const rutasRouter = router({
             proyecto.tipo === "compose" ? (input.servicio ?? null) : null,
           puerto: input.puerto ?? proyecto.puerto ?? 80,
           redireccionWww: input.redireccionWww,
+          middlewares,
         },
       });
       await sincronizarTraefikCliente(proyecto.clienteId);
-      return ruta;
+      return sinHashes(ruta);
     }),
 });

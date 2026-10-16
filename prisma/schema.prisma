@@ -102,6 +102,8 @@ model RutaProyecto {
   servicio       String?
   puerto         Int
   redireccionWww RedireccionWww @default(ninguna)
+  // Validated with middlewaresSchema (src/lib/schemas/middlewares.ts)
+  middlewares    Json           @default("{}")
   creadoEn       DateTime       @default(now())
   actualizadoEn  DateTime       @updatedAt
 

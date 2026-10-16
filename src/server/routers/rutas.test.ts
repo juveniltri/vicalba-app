@@ -56,6 +56,7 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(
         async ({ data }: { data: Omit<Ruta, "id" | "creadoEn"> }) => {
           const ruta = {
+            middlewares: {},
             ...data,
             id: `r${rutas.length + 1}`,
             creadoEn: new Date(),
@@ -101,6 +102,7 @@ vi.mock("@/env", () => ({
   env: { PANEL_DOMAIN: "panel.vicalba.com", NODE_ENV: "test" },
 }));
 
+import bcrypt from "bcryptjs";
 import { auth } from "@/lib/auth";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { rutasRouter } from "./rutas";
@@ -439,4 +441,133 @@ it("editar sin Servicio en un compose deja la ruta apuntando al alias del Proyec
   await api.editar({ id: ruta.id, dominio: "a.com" });
 
   expect(rutas[0].servicio).toBeNull();
+});
+
+describe("rutas — middlewares", () => {
+  it("guarda los middlewares y de la autenticación solo el hash bcrypt ($2y$, coste 5)", async () => {
+    const api = await caller();
+    await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      middlewares: {
+        ipPermitidas: ["10.0.0.0/8"],
+        basicAuth: {
+          usuarios: [{ usuario: "ana", contrasena: "secreto-largo" }],
+        },
+      },
+    });
+
+    const guardado = rutas[0].middlewares as {
+      ipPermitidas: string[];
+      basicAuth: { usuarios: { usuario: string; hash: string }[] };
+    };
+    expect(guardado.ipPermitidas).toEqual(["10.0.0.0/8"]);
+    const [ana] = guardado.basicAuth.usuarios;
+    expect(ana.usuario).toBe("ana");
+    expect(ana.hash).toMatch(/^\$2y\$05\$/);
+    expect(bcrypt.compareSync("secreto-largo", ana.hash)).toBe(true);
+    expect(JSON.stringify(guardado)).not.toContain("secreto-largo");
+  });
+
+  it("listar no devuelve los hashes, solo los usuarios", async () => {
+    const api = await caller();
+    await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      middlewares: {
+        basicAuth: {
+          usuarios: [{ usuario: "ana", contrasena: "secreto-largo" }],
+        },
+      },
+    });
+
+    const { rutas: lista, yaml } = await api.listar({ proyectoId: "p1" });
+
+    expect(lista[0].middlewares.basicAuth).toEqual({
+      usuarios: [{ usuario: "ana" }],
+    });
+    expect(yaml).toContain("ana:$2y$05$");
+  });
+
+  it("al editar, un usuario sin contraseña nueva conserva la suya; uno nuevo sin contraseña es un error", async () => {
+    const api = await caller();
+    const ruta = await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      middlewares: {
+        basicAuth: {
+          usuarios: [{ usuario: "ana", contrasena: "secreto-largo" }],
+        },
+      },
+    });
+    const hashAna = (
+      rutas[0].middlewares as {
+        basicAuth: { usuarios: { hash: string }[] };
+      }
+    ).basicAuth.usuarios[0].hash;
+
+    await api.editar({
+      id: ruta.id,
+      dominio: "a.com",
+      middlewares: {
+        basicAuth: {
+          usuarios: [
+            { usuario: "ana" },
+            { usuario: "luis", contrasena: "otra-clave-1" },
+          ],
+        },
+      },
+    });
+    const usuarios = (
+      rutas[0].middlewares as {
+        basicAuth: { usuarios: { usuario: string; hash: string }[] };
+      }
+    ).basicAuth.usuarios;
+    expect(usuarios[0]).toEqual({ usuario: "ana", hash: hashAna });
+    expect(bcrypt.compareSync("otra-clave-1", usuarios[1].hash)).toBe(true);
+
+    await expect(
+      api.editar({
+        id: ruta.id,
+        dominio: "a.com",
+        middlewares: { basicAuth: { usuarios: [{ usuario: "eva" }] } },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rechaza middlewares mal formados", async () => {
+    await expect(
+      (await caller()).crear({
+        proyectoId: "p1",
+        dominio: "a.com",
+        middlewares: { ipPermitidas: ["no-es-ip"] },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(rutas).toHaveLength(0);
+  });
+
+  it("copiar middlewares lleva los de una ruta a otra, hashes incluidos, y sincroniza Traefik", async () => {
+    proyecto("p2", { clienteId: "c2" });
+    const api = await caller();
+    const origen = await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      middlewares: {
+        compresion: true,
+        basicAuth: {
+          usuarios: [{ usuario: "ana", contrasena: "secreto-largo" }],
+        },
+      },
+    });
+    const destino = await api.crear({ proyectoId: "p2", dominio: "b.com" });
+    mockSincronizar.mockClear();
+
+    await api.copiarMiddlewares({ desdeId: origen.id, haciaId: destino.id });
+
+    expect(rutas[1].middlewares).toEqual(rutas[0].middlewares);
+    expect(mockSincronizar).toHaveBeenCalledWith("c2");
+    await expect(
+      api.copiarMiddlewares({ desdeId: "nada", haciaId: destino.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
 });

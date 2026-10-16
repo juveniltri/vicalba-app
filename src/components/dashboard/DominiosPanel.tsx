@@ -3,12 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  copiarMiddlewaresAction,
   crearRutaAction,
   editarRutaAction,
   eliminarRutaAction,
   type DatosRuta,
 } from "@/app/(panel)/actions";
 import { SSLBadge } from "./SSLBadge";
+import {
+  aEntrada,
+  aFormulario,
+  FORM_MIDDLEWARES_VACIO,
+  type FormMiddlewares,
+  MiddlewaresCampos,
+  type MiddlewaresVista,
+  resumenMiddlewares,
+} from "./MiddlewaresCampos";
 
 type Redireccion = DatosRuta["redireccionWww"];
 
@@ -19,6 +29,7 @@ export type RutaPanel = {
   servicio: string | null;
   puerto: number;
   redireccionWww: Redireccion;
+  middlewares: MiddlewaresVista;
   ssl: { activo: boolean; caducaEn: string | null };
 };
 
@@ -28,6 +39,7 @@ type Formulario = {
   servicio: string;
   puerto: string;
   redireccionWww: Redireccion;
+  mw: FormMiddlewares;
 };
 
 const VACIO: Formulario = {
@@ -36,6 +48,7 @@ const VACIO: Formulario = {
   servicio: "",
   puerto: "",
   redireccionWww: "ninguna",
+  mw: FORM_MIDDLEWARES_VACIO,
 };
 
 const raiz = (dominio: string) => dominio.replace(/^www\./, "");
@@ -91,6 +104,7 @@ export function DominiosPanel({
             servicio: ruta.servicio ?? "",
             puerto: String(ruta.puerto),
             redireccionWww: ruta.redireccionWww,
+            mw: aFormulario(ruta.middlewares),
           }
         : VACIO,
     );
@@ -107,6 +121,7 @@ export function DominiosPanel({
       servicio,
       puerto: form.puerto.trim() ? Number(form.puerto) : undefined,
       redireccionWww: form.redireccionWww,
+      middlewares: aEntrada(form.mw),
     };
     const resultado =
       editando === "nueva"
@@ -126,6 +141,23 @@ export function DominiosPanel({
     router.refresh();
   }
 
+  async function copiarDe(desdeId: string) {
+    setCargando(true);
+    setError(null);
+    const resultado = await copiarMiddlewaresAction(
+      desdeId,
+      editando as string,
+    );
+    setCargando(false);
+    if (resultado?.error) {
+      setError(resultado.error);
+      return;
+    }
+    const origen = rutas.find((r) => r.id === desdeId);
+    if (origen) setForm({ ...form, mw: aFormulario(origen.middlewares) });
+    router.refresh();
+  }
+
   async function eliminar(id: string) {
     setCargando(true);
     setError(null);
@@ -139,7 +171,7 @@ export function DominiosPanel({
     router.refresh();
   }
 
-  const campo = (clave: keyof Formulario) => ({
+  const campo = (clave: Exclude<keyof Formulario, "mw">) => ({
     value: form[clave],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm({ ...form, [clave]: e.target.value }),
@@ -204,6 +236,21 @@ export function DominiosPanel({
                         <p className="font-mono text-xs text-text-muted">
                           {secundario} → {r.dominio}
                         </p>
+                      )}
+                      {resumenMiddlewares(r.middlewares).length > 0 && (
+                        <ul
+                          aria-label={`Protección de ${r.dominio}${r.path}`}
+                          className="flex flex-wrap gap-1 mt-1"
+                        >
+                          {resumenMiddlewares(r.middlewares).map((t) => (
+                            <li
+                              key={t}
+                              className="font-body text-[11px] px-1.5 rounded-[var(--radius-sm)] border border-border text-text-secondary"
+                            >
+                              {t}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </td>
                     <td className="px-4 py-3 align-top font-mono text-xs text-text-secondary">
@@ -340,6 +387,38 @@ export function DominiosPanel({
                 ))}
             </select>
           </Campo>
+          <MiddlewaresCampos
+            valor={form.mw}
+            onChange={(mw) => setForm({ ...form, mw })}
+            conPath={!!form.path.trim()}
+          />
+          {editando !== "nueva" && rutas.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <label
+                htmlFor="ruta-copiar"
+                className="font-body text-xs text-text-muted"
+              >
+                Copiar protección de
+              </label>
+              <select
+                id="ruta-copiar"
+                defaultValue=""
+                disabled={cargando}
+                onChange={(e) => e.target.value && copiarDe(e.target.value)}
+                className={`${claseInput} sm:w-auto`}
+              >
+                <option value="">—</option>
+                {rutas
+                  .filter((r) => r.id !== editando)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.dominio}
+                      {r.path}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <div className="flex gap-2 sm:col-span-2">
             <Btn primary disabled={cargando}>
               {cargando ? "Guardando…" : "Guardar"}

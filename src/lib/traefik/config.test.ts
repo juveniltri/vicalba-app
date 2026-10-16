@@ -98,6 +98,7 @@ const ruta = (
   servicio: null,
   puerto: 3000,
   redireccionWww: "ninguna" as const,
+  middlewares: {},
   ...extra,
 });
 
@@ -153,6 +154,78 @@ describe("generarConfigProyecto", () => {
     expect(router.rule).toBe(
       "Host(`a.com) || Host(b.com`) && PathPrefix(`/x) || PathPrefix(/`)",
     );
+  });
+
+  it("encadena los middlewares de la ruta: primero IP y límite, luego auth, body, prefijo, cabeceras y compresión", () => {
+    const { config } = generar([
+      ruta({
+        path: "/api",
+        middlewares: {
+          compresion: true,
+          cabeceras: {
+            hsts: true,
+            nosniff: true,
+            frameDeny: true,
+            referrerPolicy: "no-referrer",
+            propias: { "X-Robots-Tag": "noindex" },
+          },
+          quitarPrefijo: true,
+          bodyMaximoMB: 2,
+          basicAuth: {
+            usuarios: [
+              { usuario: "ana", hash: "$2y$05$a" },
+              { usuario: "luis", hash: "$2y$05$b" },
+            ],
+          },
+          limitePeticiones: { media: 10, rafaga: 20 },
+          ipPermitidas: ["10.0.0.0/8"],
+        },
+      }),
+    ]);
+
+    const [router] = Object.values(config.http.routers);
+    const definicion = (i: number) =>
+      config.http.middlewares?.[router.middlewares![i]];
+    expect(router.middlewares).toHaveLength(7);
+    expect(definicion(0)).toEqual({
+      ipAllowList: { sourceRange: ["10.0.0.0/8"] },
+    });
+    expect(definicion(1)).toEqual({
+      rateLimit: { average: 10, burst: 20, period: "1s" },
+    });
+    expect(definicion(2)).toEqual({
+      basicAuth: {
+        users: ["ana:$2y$05$a", "luis:$2y$05$b"],
+        removeHeader: true,
+      },
+    });
+    expect(definicion(3)).toEqual({
+      buffering: { maxRequestBodyBytes: 2 * 1024 * 1024 },
+    });
+    expect(definicion(4)).toEqual({ stripPrefix: { prefixes: ["/api"] } });
+    expect(definicion(5)).toEqual({
+      headers: {
+        stsSeconds: 31536000,
+        stsIncludeSubdomains: true,
+        contentTypeNosniff: true,
+        frameDeny: true,
+        referrerPolicy: "no-referrer",
+        customResponseHeaders: { "X-Robots-Tag": "noindex" },
+      },
+    });
+    expect(definicion(6)).toEqual({ compress: {} });
+  });
+
+  it("sin path no quita prefijo, y una ruta sin middlewares no lleva la clave", () => {
+    const { config } = generar([
+      ruta({ middlewares: { quitarPrefijo: true } }),
+      ruta({ id: "r2", dominio: "b.com" }),
+    ]);
+
+    const [conQuitar, sin] = Object.values(config.http.routers);
+    expect(conQuitar.middlewares).toBeUndefined();
+    expect(sin.middlewares).toBeUndefined();
+    expect(config.http.middlewares).toBeUndefined();
   });
 
   it("sin rutas no genera configuración", () => {

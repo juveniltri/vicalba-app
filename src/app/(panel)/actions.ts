@@ -3,6 +3,7 @@
 import { signOut } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { DestinoInput } from "@/server/routers/backups";
+import type { MiddlewaresEntrada } from "@/lib/schemas/middlewares";
 
 function parseTRPCError(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) return fallback;
@@ -550,6 +551,7 @@ export type DatosRuta = {
   servicio: string | null;
   puerto?: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  middlewares?: MiddlewaresEntrada;
 };
 
 export async function crearRutaAction(proyectoId: string, datos: DatosRuta) {
@@ -576,5 +578,17 @@ export async function eliminarRutaAction(id: string) {
     await api.rutas.eliminar({ id });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al eliminar el dominio") };
+  }
+}
+
+export async function copiarMiddlewaresAction(
+  desdeId: string,
+  haciaId: string,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.copiarMiddlewares({ desdeId, haciaId });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al copiar los middlewares") };
   }
 }

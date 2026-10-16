@@ -6,17 +6,22 @@ import { DominiosPanel, type RutaPanel } from "./DominiosPanel";
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
-const { crearRutaAction, editarRutaAction, eliminarRutaAction } = vi.hoisted(
-  () => ({
-    crearRutaAction: vi.fn(),
-    editarRutaAction: vi.fn(),
-    eliminarRutaAction: vi.fn(),
-  }),
-);
+const {
+  crearRutaAction,
+  editarRutaAction,
+  eliminarRutaAction,
+  copiarMiddlewaresAction,
+} = vi.hoisted(() => ({
+  crearRutaAction: vi.fn(),
+  editarRutaAction: vi.fn(),
+  eliminarRutaAction: vi.fn(),
+  copiarMiddlewaresAction: vi.fn(),
+}));
 vi.mock("@/app/(panel)/actions", () => ({
   crearRutaAction,
   editarRutaAction,
   eliminarRutaAction,
+  copiarMiddlewaresAction,
 }));
 
 const ruta = (extra: Partial<RutaPanel> = {}): RutaPanel => ({
@@ -26,6 +31,7 @@ const ruta = (extra: Partial<RutaPanel> = {}): RutaPanel => ({
   servicio: null,
   puerto: 3000,
   redireccionWww: "ninguna",
+  middlewares: {},
   ssl: { activo: true, caducaEn: null },
   ...extra,
 });
@@ -56,6 +62,7 @@ beforeEach(() => {
   crearRutaAction.mockResolvedValue(undefined);
   editarRutaAction.mockResolvedValue(undefined);
   eliminarRutaAction.mockResolvedValue(undefined);
+  copiarMiddlewaresAction.mockResolvedValue(undefined);
 });
 
 describe("DominiosPanel — lista", () => {
@@ -120,7 +127,7 @@ describe("DominiosPanel — alta y edición", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
     rellenar(/^Dominio$/, " shop.acme.com ");
     rellenar(/Path/, "/tienda");
-    rellenar(/Servicio/, "web");
+    rellenar(/^Servicio/, "web");
     rellenar(/Puerto/, "8080");
     rellenar(/Redirección www/, "a_raiz");
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
@@ -132,6 +139,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: "web",
         puerto: 8080,
         redireccionWww: "a_raiz",
+        middlewares: {},
       }),
     );
     expect(refresh).toHaveBeenCalled();
@@ -142,7 +150,7 @@ describe("DominiosPanel — alta y edición", () => {
     renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
     rellenar(/^Dominio$/, "api.acme.com");
-    rellenar(/Servicio/, "api");
+    rellenar(/^Servicio/, "api");
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -153,7 +161,7 @@ describe("DominiosPanel — alta y edición", () => {
   it("en un Proyecto que no es compose no pide Servicio y deja el puerto por defecto", async () => {
     renderPanel({ esCompose: false, rutas: [], puertoProyecto: null });
     fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
-    expect(screen.queryByLabelText(/Servicio/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Servicio/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Puerto/)).toHaveAttribute(
       "placeholder",
       "80",
@@ -169,6 +177,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: null,
         puerto: undefined,
         redireccionWww: "a_www",
+        middlewares: {},
       }),
     );
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -190,6 +199,7 @@ describe("DominiosPanel — alta y edición", () => {
         servicio: "web",
         puerto: 3000,
         redireccionWww: "ninguna",
+        middlewares: {},
       }),
     );
   });
@@ -258,5 +268,137 @@ describe("DominiosPanel — eliminar", () => {
       }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo");
+  });
+});
+
+describe("DominiosPanel — protección y cabeceras", () => {
+  it("resume en la tabla la protección de cada ruta", () => {
+    renderPanel({
+      rutas: [
+        ruta({
+          middlewares: {
+            basicAuth: { usuarios: [{ usuario: "ana" }, { usuario: "luis" }] },
+            ipPermitidas: ["10.0.0.0/8"],
+            limitePeticiones: { media: 10, rafaga: 20 },
+            bodyMaximoMB: 5,
+            cabeceras: { hsts: true },
+            compresion: true,
+            quitarPrefijo: true,
+          },
+        }),
+      ],
+    });
+
+    const resumen = screen.getByRole("list", {
+      name: /Protección de app.acme.com/,
+    });
+    expect(resumen).toHaveTextContent(
+      /Contraseña \(2\).*IPs \(1\).*10 pet\.\/s.*Body ≤ 5 MB.*Cabeceras.*Compresión.*Sin prefijo/,
+    );
+  });
+
+  it("crea una ruta con autenticación, IPs, límite, body, cabeceras y compresión", async () => {
+    renderPanel({ rutas: [] });
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
+    rellenar(/^Dominio$/, "a.com");
+    rellenar(/^Path/, "/api");
+    fireEvent.click(screen.getByRole("button", { name: "+ Añadir usuario" }));
+    rellenar(/^Usuario 1$/, "ana");
+    rellenar(/Contraseña de ana/, "secreto-largo");
+    rellenar(/IPs o rangos/, "10.0.0.0/8, 203.0.113.7");
+    rellenar(/Peticiones\/s/, "10");
+    rellenar(/Tamaño máximo/, "5");
+    rellenar(/Referrer-Policy/, "no-referrer");
+    rellenar(/Cabeceras propias/, "X-Robots-Tag: noindex\nX-Vacia");
+    fireEvent.click(screen.getByLabelText(/HSTS/));
+    fireEvent.click(screen.getByLabelText(/nosniff/));
+    fireEvent.click(screen.getByLabelText(/iframes/));
+    fireEvent.click(screen.getByLabelText(/Compresión/));
+    fireEvent.click(screen.getByLabelText(/Quitar el path/));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(crearRutaAction).toHaveBeenCalled());
+    expect(crearRutaAction.mock.calls[0][1].middlewares).toEqual({
+      basicAuth: {
+        usuarios: [{ usuario: "ana", contrasena: "secreto-largo" }],
+      },
+      ipPermitidas: ["10.0.0.0/8", "203.0.113.7"],
+      limitePeticiones: { media: 10, rafaga: 10 },
+      bodyMaximoMB: 5,
+      cabeceras: {
+        hsts: true,
+        nosniff: true,
+        frameDeny: true,
+        referrerPolicy: "no-referrer",
+        propias: { "X-Robots-Tag": "noindex", "X-Vacia": "" },
+      },
+      compresion: true,
+      quitarPrefijo: true,
+    });
+  });
+
+  it("al editar, los usuarios existentes no cambian de contraseña si se deja vacía y se pueden quitar", async () => {
+    renderPanel({
+      rutas: [
+        ruta({
+          middlewares: {
+            basicAuth: { usuarios: [{ usuario: "ana" }, { usuario: "luis" }] },
+            limitePeticiones: { media: 10, rafaga: 30 },
+            bodyMaximoMB: 5,
+            cabeceras: { propias: { "X-A": "1" } },
+          },
+        }),
+      ],
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar app.acme.com" }),
+    );
+    expect(screen.getByLabelText(/^Usuario 1$/)).toHaveAttribute("readonly");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar luis" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(editarRutaAction).toHaveBeenCalled());
+    expect(editarRutaAction.mock.calls[0][1].middlewares).toEqual({
+      basicAuth: { usuarios: [{ usuario: "ana" }] },
+      limitePeticiones: { media: 10, rafaga: 30 },
+      bodyMaximoMB: 5,
+      cabeceras: { propias: { "X-A": "1" } },
+    });
+  });
+
+  it("copia la protección de otra ruta del Proyecto", async () => {
+    renderPanel({
+      rutas: [
+        ruta(),
+        ruta({
+          id: "r2",
+          dominio: "b.com",
+          middlewares: { compresion: true },
+        }),
+      ],
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar app.acme.com" }),
+    );
+    rellenar(/Copiar protección de/, "r2");
+
+    await waitFor(() =>
+      expect(copiarMiddlewaresAction).toHaveBeenCalledWith("r2", "r1"),
+    );
+    expect(refresh).toHaveBeenCalled();
+    expect(screen.getByLabelText(/Compresión/)).toBeChecked();
+  });
+
+  it("muestra el error si no se puede copiar", async () => {
+    copiarMiddlewaresAction.mockResolvedValue({ error: "No se pudo copiar" });
+    renderPanel({ rutas: [ruta(), ruta({ id: "r2", dominio: "b.com" })] });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar app.acme.com" }),
+    );
+    rellenar(/Copiar protección de/, "r2");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo copiar",
+    );
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "@/lib/docker/traefik";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { type Middlewares, middlewaresSchema } from "@/lib/schemas/middlewares";
 
 const log = logger.child({ module: "traefik" });
 
@@ -20,7 +21,63 @@ export type RutaTraefik = {
   servicio: string | null;
   puerto: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  middlewares: Middlewares;
 };
+
+// Cheap rejections first (IP, rate) so bcrypt only runs for traffic that can pass.
+function cadenaMiddlewares(ruta: RutaTraefik): [string, unknown][] {
+  const m = ruta.middlewares;
+  const c = m.cabeceras;
+  const cadena: [string, unknown][] = [];
+  if (m.ipPermitidas)
+    cadena.push(["ip", { ipAllowList: { sourceRange: m.ipPermitidas } }]);
+  if (m.limitePeticiones)
+    cadena.push([
+      "limite",
+      {
+        rateLimit: {
+          average: m.limitePeticiones.media,
+          burst: m.limitePeticiones.rafaga,
+          period: "1s",
+        },
+      },
+    ]);
+  if (m.basicAuth)
+    cadena.push([
+      "auth",
+      {
+        basicAuth: {
+          users: m.basicAuth.usuarios.map((u) => `${u.usuario}:${u.hash}`),
+          removeHeader: true,
+        },
+      },
+    ]);
+  if (m.bodyMaximoMB)
+    cadena.push([
+      "body",
+      { buffering: { maxRequestBodyBytes: m.bodyMaximoMB * 1024 * 1024 } },
+    ]);
+  if (m.quitarPrefijo && ruta.path)
+    cadena.push([
+      "prefijo",
+      { stripPrefix: { prefixes: [limpiar(ruta.path)] } },
+    ]);
+  if (c)
+    cadena.push([
+      "cabeceras",
+      {
+        headers: {
+          ...(c.hsts && { stsSeconds: 31536000, stsIncludeSubdomains: true }),
+          ...(c.nosniff && { contentTypeNosniff: true }),
+          ...(c.frameDeny && { frameDeny: true }),
+          ...(c.referrerPolicy && { referrerPolicy: c.referrerPolicy }),
+          ...(c.propias && { customResponseHeaders: c.propias }),
+        },
+      },
+    ]);
+  if (m.compresion) cadena.push(["compresion", { compress: {} }]);
+  return cadena;
+}
 
 // The route's dominio is always the destination: "a_raiz" redirects www.<dominio>
 // to it and "a_www" expects a www.<raíz> dominio and redirects the root to it.
@@ -54,12 +111,18 @@ export function generarConfigProyecto(params: {
     const alias = ruta.servicio ? `${ruta.servicio}.${base}` : base;
     const nombre = `${base}-${ruta.id}`;
     const host = `Host(\`${limpiar(ruta.dominio)}\`)`;
+    const cadena = cadenaMiddlewares(ruta);
+    for (const [tipo, definicion] of cadena)
+      middlewares[`${nombre}-${tipo}`] = definicion;
     routers[nombre] = {
       rule: ruta.path
         ? `${host} && PathPrefix(\`${limpiar(ruta.path)}\`)`
         : host,
       service: nombre,
       entryPoints: ["websecure"],
+      ...(cadena.length > 0 && {
+        middlewares: cadena.map(([tipo]) => `${nombre}-${tipo}`),
+      }),
       tls: { certResolver: "letsencrypt" },
     };
     services[nombre] = {
@@ -105,10 +168,19 @@ export async function sincronizarTraefikCliente(
     },
   });
   if (!cliente) return;
+  // A corrupt middlewares column throws: silently dropping it would publish
+  // the route without its auth or IP allowlist.
+  const proyectos = cliente.proyectos.map((p) => ({
+    ...p,
+    rutas: p.rutas.map((r) => ({
+      ...r,
+      middlewares: middlewaresSchema.parse(r.middlewares),
+    })),
+  }));
 
   let ficheros: { anteriores: number; escritos: number };
   try {
-    ficheros = await escribirFicherosCliente(cliente);
+    ficheros = await escribirFicherosCliente({ slug: cliente.slug, proyectos });
   } catch (err) {
     if (env.NODE_ENV === "production") throw err;
     log.warn(
