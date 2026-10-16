@@ -42,6 +42,7 @@ vi.mock("@/lib/docker/proyectos", () => ({
   iniciarProyecto: vi.fn(),
   detenerProyecto: vi.fn(),
   restartProyecto: vi.fn(),
+  listarServicios: vi.fn(),
   estadoContenedores: vi.fn().mockResolvedValue("running"),
   DockerError: class DockerError extends Error {
     constructor(
@@ -111,6 +112,7 @@ import {
   iniciarProyecto,
   detenerProyecto,
   restartProyecto,
+  listarServicios,
   estadoContenedores,
   DockerError,
 } from "@/lib/docker/proyectos";
@@ -372,7 +374,11 @@ describe("proyectos.iniciar", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.iniciar({ id: "p1" });
 
-    expect(iniciarProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(iniciarProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      undefined,
+    );
     expect(iniciarProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
@@ -447,7 +453,11 @@ describe("proyectos.detener", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.detener({ id: "p1" });
 
-    expect(detenerProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(detenerProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      undefined,
+    );
     expect(detenerProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
@@ -524,7 +534,11 @@ describe("proyectos.restart", () => {
     const ctx = await createContext();
     const result = await createCaller(ctx).proyectos.restart({ id: "p1" });
 
-    expect(restartProyecto).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(restartProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      undefined,
+    );
     expect(restartProyecto).toHaveBeenCalledTimes(1);
     expect(prisma.proyecto.update).toHaveBeenCalledWith({
       where: { id: "p1" },
@@ -577,6 +591,121 @@ describe("proyectos.restart", () => {
     await expect(
       createCaller(ctx).proyectos.restart({ id: "p1" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("proyectos — acciones sobre un servicio", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockImplementation(
+      (args) => Promise.resolve(args.data) as never,
+    );
+    vi.mocked(iniciarProyecto).mockResolvedValue(undefined);
+    vi.mocked(detenerProyecto).mockResolvedValue(undefined);
+    vi.mocked(restartProyecto).mockResolvedValue(undefined);
+  });
+
+  it("iniciar arranca solo el servicio indicado y deja el proyecto running", async () => {
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.iniciar({
+      id: "p1",
+      servicio: "worker",
+    });
+
+    expect(iniciarProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      "worker",
+    );
+    expect(result.estado).toBe("running");
+  });
+
+  it("restart reinicia solo el servicio indicado", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.restart({ id: "p1", servicio: "db" });
+
+    expect(restartProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      "db",
+    );
+  });
+
+  it("detener un servicio deja el proyecto running si siguen otros en marcha", async () => {
+    vi.mocked(estadoContenedores).mockResolvedValueOnce("running");
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.detener({
+      id: "p1",
+      servicio: "worker",
+    });
+
+    expect(detenerProyecto).toHaveBeenCalledWith(
+      "cliente-uno",
+      "web-app",
+      "worker",
+    );
+    expect(estadoContenedores).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(result.estado).toBe("running");
+  });
+
+  it("detener el último servicio en marcha deja el proyecto stopped", async () => {
+    vi.mocked(estadoContenedores).mockResolvedValueOnce("stopped");
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.detener({
+      id: "p1",
+      servicio: "web",
+    });
+
+    expect(result.estado).toBe("stopped");
+  });
+
+  it.each(["", "-web", "web app", "web;rm", "a".repeat(129)])(
+    "rechaza el nombre de servicio %j",
+    async (servicio) => {
+      const ctx = await createContext();
+      await expect(
+        createCaller(ctx).proyectos.restart({ id: "p1", servicio }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(restartProyecto).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("proyectos.servicios", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+  });
+
+  it("devuelve los servicios del proyecto con su estado en Docker", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+    const servicios = [
+      { servicio: "db", estado: "running" as const, detalle: "Up 1 hour" },
+    ];
+    vi.mocked(listarServicios).mockResolvedValue(servicios);
+
+    const ctx = await createContext();
+    const result = await createCaller(ctx).proyectos.servicios({ id: "p1" });
+
+    expect(listarServicios).toHaveBeenCalledWith("cliente-uno", "web-app");
+    expect(result).toEqual(servicios);
+  });
+
+  it("lanza NOT_FOUND si el proyecto no existe", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.servicios({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 

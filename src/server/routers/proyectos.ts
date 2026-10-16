@@ -19,6 +19,7 @@ import {
   detenerProyecto,
   estadoContenedores,
   iniciarProyecto,
+  listarServicios,
   restartProyecto,
 } from "@/lib/docker/proyectos";
 import { formatHace } from "@/lib/formatHace";
@@ -63,6 +64,17 @@ const proyectoInput = z.object({
 });
 
 const idInput = z.object({ id: z.string() });
+
+// Docker Compose service names: alphanumeric start, then [a-zA-Z0-9._-]
+const accionInput = idInput.extend({
+  servicio: z
+    .string()
+    .max(128)
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, {
+      message: "Nombre de servicio no válido",
+    })
+    .optional(),
+});
 
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
@@ -232,10 +244,19 @@ export const proyectosRouter = router({
     };
   }),
 
-  iniciar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
+  servicios: protectedProcedure.input(idInput).query(async ({ input }) => {
+    const proyecto = await findProyectoOrThrow(input.id);
+    return listarServicios(proyecto.cliente.slug, proyecto.nombre);
+  }),
+
+  iniciar: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await iniciarProyecto(proyecto.cliente.slug, proyecto.nombre);
+      await iniciarProyecto(
+        proyecto.cliente.slug,
+        proyecto.nombre,
+        input.servicio,
+      );
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
@@ -250,10 +271,14 @@ export const proyectosRouter = router({
     });
   }),
 
-  detener: protectedProcedure.input(idInput).mutation(async ({ input }) => {
+  detener: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await detenerProyecto(proyecto.cliente.slug, proyecto.nombre);
+      await detenerProyecto(
+        proyecto.cliente.slug,
+        proyecto.nombre,
+        input.servicio,
+      );
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
@@ -262,16 +287,24 @@ export const proyectosRouter = router({
         });
       throw err;
     }
+    // Stopping one service leaves the project running if others still are
+    const estado = input.servicio
+      ? await estadoContenedores(proyecto.cliente.slug, proyecto.nombre)
+      : "stopped";
     return prisma.proyecto.update({
       where: { id: input.id },
-      data: { estado: "stopped" },
+      data: { estado },
     });
   }),
 
-  restart: protectedProcedure.input(idInput).mutation(async ({ input }) => {
+  restart: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
     try {
-      await restartProyecto(proyecto.cliente.slug, proyecto.nombre);
+      await restartProyecto(
+        proyecto.cliente.slug,
+        proyecto.nombre,
+        input.servicio,
+      );
     } catch (err) {
       if (err instanceof DockerError)
         throw new TRPCError({
