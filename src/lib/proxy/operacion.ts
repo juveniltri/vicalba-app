@@ -112,13 +112,15 @@ export async function limpiarOperacionProxyHuerfana(): Promise<number> {
   return count;
 }
 
-// Fresh installs and updates from < 2.3.0 have no static file: Traefik keeps
-// restarting until the Panel writes it here.
+// Fresh installs and updates from < 2.3.0 have no static file. Without it
+// Traefik doesn't fail: it silently runs its defaults (only :80, no HTTPS, no
+// providers), so it must be restarted once the file is written.
 export async function asegurarTraefikEstatico(): Promise<boolean> {
   const deps = depsAplicarTraefik();
   if ((await deps.leerEstatico()) !== null) return false;
   const { aplicada } = await leerConfiguracionProxy();
   await deps.escribirEstatico(generarTraefikEstatico(aplicada, opcionesAcme()));
   await deps.escribirTls(generarTlsDinamico(aplicada));
+  await deps.reiniciarTraefik();
   return true;
 }

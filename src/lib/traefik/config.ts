@@ -5,6 +5,7 @@ import {
   conectarTraefikARed,
   desconectarTraefikDeRed,
 } from "@/lib/docker/traefik";
+import { asegurarRedCliente } from "@/lib/docker/networks";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { type Middlewares, middlewaresSchema } from "@/lib/schemas/middlewares";
@@ -190,8 +191,11 @@ export async function sincronizarTraefikCliente(
     return;
   }
 
-  if (ficheros.escritos > 0) await conectarTraefikARed(cliente.slug);
-  else if (ficheros.anteriores > 0) await desconectarTraefikDeRed(cliente.slug);
+  if (ficheros.escritos > 0) {
+    await asegurarRedCliente(cliente.slug);
+    await conectarTraefikARed(cliente.slug);
+  } else if (ficheros.anteriores > 0)
+    await desconectarTraefikDeRed(cliente.slug);
 }
 
 async function escribirFicherosCliente(cliente: {

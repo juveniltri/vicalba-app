@@ -147,7 +147,7 @@ export function ConfiguracionProxy({ inicial }: { inicial: EstadoProxy }) {
             rows={3}
             value={form.ips}
             onChange={(e) => set("ips", e.target.value)}
-            placeholder="173.245.48.0/20"
+            placeholder="ej: 173.245.48.0/20"
             className={`${claseInput} py-2 font-mono`}
           />
           <p className="font-body text-xs text-text-muted">

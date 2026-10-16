@@ -18,6 +18,7 @@ const { bd, traefik } = vi.hoisted(() => ({
     tls: null as string | null,
     arranca: (_estatico: string | null) => true,
     enMarcha: true,
+    reinicios: 0,
   },
 }));
 
@@ -86,6 +87,7 @@ vi.mock("@/lib/docker/traefik", () => ({
       traefik.tls = c;
     },
     reiniciarTraefik: async () => {
+      traefik.reinicios++;
       traefik.enMarcha = traefik.arranca(traefik.estatico);
     },
     traefikResponde: async () => traefik.enMarcha,
@@ -127,6 +129,7 @@ beforeEach(() => {
   traefik.tls = null;
   traefik.arranca = () => true;
   traefik.enMarcha = true;
+  traefik.reinicios = 0;
 });
 
 describe("leerConfiguracionProxy", () => {
@@ -226,7 +229,7 @@ describe("arranque del Panel", () => {
     expect(await limpiarOperacionProxyHuerfana()).toBe(0);
   });
 
-  it("si falta el traefik.yml estático lo escribe con la configuración aplicada; si existe no lo toca", async () => {
+  it("si falta el traefik.yml estático lo escribe y reinicia Traefik (sin el fichero arranca con la config por defecto); si existe no lo toca", async () => {
     bd.fila = {
       id: "default",
       aplicada: NUEVA,
@@ -239,9 +242,11 @@ describe("arranque del Panel", () => {
     expect(await asegurarTraefikEstatico()).toBe(true);
     expect(traefik.estatico).toContain("level: DEBUG");
     expect(traefik.tls).toContain("VersionTLS12");
+    expect(traefik.reinicios).toBe(1);
 
     traefik.estatico = "# a mano\n";
     expect(await asegurarTraefikEstatico()).toBe(false);
     expect(traefik.estatico).toBe("# a mano\n");
+    expect(traefik.reinicios).toBe(1);
   });
 });

@@ -62,6 +62,11 @@ vi.mock("@/lib/docker/traefik", () => ({
   desconectarTraefikDeRed: mockDesconectar,
 }));
 
+const { mockAsegurarRed } = vi.hoisted(() => ({ mockAsegurarRed: vi.fn() }));
+vi.mock("@/lib/docker/networks", () => ({
+  asegurarRedCliente: mockAsegurarRed,
+}));
+
 import { parse } from "yaml";
 import { env } from "@/env";
 import {
@@ -287,6 +292,11 @@ describe("sincronizarTraefikCliente", () => {
       "Host(`app.example.com`)",
     );
     expect(mockConectar).toHaveBeenCalledWith("acme");
+    // A Cliente never deployed (or a freshly recovered VPS) has no network yet.
+    expect(mockAsegurarRed).toHaveBeenCalledWith("acme");
+    expect(mockAsegurarRed.mock.invocationCallOrder[0]).toBeLessThan(
+      mockConectar.mock.invocationCallOrder[0]!,
+    );
     expect(fs.mkdir).toHaveBeenCalledWith(DIR, { recursive: true });
   });
 
