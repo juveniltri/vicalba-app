@@ -123,4 +123,42 @@ describe("AtencionPanel", () => {
     );
     expect(screen.queryByText(/Todo en orden/)).not.toBeInTheDocument();
   });
+
+  it("avisa de las rutas a un Servicio parado con enlace a los dominios del Proyecto", () => {
+    render(
+      <AtencionPanel
+        proyectos={[]}
+        rutasSinServicio={[
+          {
+            proyectoId: "p1",
+            proyecto: "crm",
+            cliente: "Microcapilar",
+            servicio: "api",
+            dominios: ["api.crm.com", "admin.crm.com"],
+          },
+          {
+            proyectoId: "p2",
+            proyecto: "blog",
+            cliente: "Tienda",
+            servicio: "ghost",
+            dominios: ["blog.com"],
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /Microcapilar \/ crm: el Servicio «api» no está en marcha/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/api\.crm\.com, admin\.crm\.com responden 502/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/blog\.com responde 502/)).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: "Ver dominios" })[0],
+    ).toHaveAttribute("href", "/proyectos/p1?tab=dominios");
+    expect(screen.queryByText(/Todo en orden/)).not.toBeInTheDocument();
+  });
 });

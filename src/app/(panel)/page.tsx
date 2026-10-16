@@ -71,6 +71,7 @@ export default async function DashboardPage() {
 
       <AtencionPanel
         proyectos={actividad.atencion}
+        rutasSinServicio={actividad.rutasSinServicio}
         avisoBackups={avisoBackups(resumenBackups, new Date())}
       />
 

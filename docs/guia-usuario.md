@@ -70,9 +70,11 @@ Objetivo: crear un Cliente y un Proyecto Docker Compose que se despliega desde s
    - **Rama** que se despliega (normalmente `main`).
    - **Dominio** (opcional): por ejemplo `app.cliente.com`. Traefik lo enrutará al Proyecto y
      pedirá el certificado SSL a Let's Encrypt en el primer deploy. El DNS del dominio debe
-     apuntar ya a la IP de la VPS.
-   - **Puerto expuesto** (opcional): el puerto en el que escucha la aplicación dentro del
-     contenedor. Por defecto, 80.
+     apuntar ya a la IP de la VPS. Más dominios, paths o Servicios se añaden después en la
+     pestaña **Dominios**.
+   - **Puerto del contenedor** (opcional): el puerto en el que escucha la aplicación dentro
+     del contenedor. Por defecto, 80. No se publica en la VPS: la aplicación solo es accesible
+     a través de sus dominios.
 6. Pulsa **Crear**. El Proyecto aparece en la tarjeta del Cliente, parado y sin deploys.
 7. Si el repositorio es **privado**, asígnale una credencial SSH: abre el Proyecto y, en
    **Ajustes**, elige la credencial. Antes tienes que crearla en Configuración → Credenciales
@@ -310,10 +312,24 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
   deploys recientes.
 - **Deploys**: historial completo con su log y **Rollback** en cada uno.
 - **Logs**: logs del contenedor en vivo (tarea 6).
+- **Dominios**: los dominios del Proyecto. Cada uno puede llevar un path (`/api`), apuntar a
+  un Servicio concreto del compose y a otro puerto, y redirigir `www` al dominio (o al revés).
+  Las rutas que pasan por Cloudflare llevan marcada **Detrás de Cloudflare**: piden el
+  certificado por DNS (o HTTP sin token) y la protección por IP y el límite de peticiones usan
+  la IP real del visitante, no la de Cloudflare.
+  Muestra el estado del certificado, avisa si el Servicio no tiene contenedor y enseña el YAML
+  que recibe Traefik. Los cambios se aplican al guardar; una ruta a un Servicio que no tenía
+  ninguna funciona tras el siguiente deploy.
+  En **Protección y cabeceras** cada ruta puede pedir usuario y contraseña, admitir solo
+  ciertas IPs, limitar las peticiones por segundo de cada IP y el tamaño de las peticiones,
+  añadir cabeceras de seguridad (HSTS, nosniff, iframes, Referrer-Policy) o propias, comprimir
+  las respuestas y quitar el path antes de pasar la petición al Servicio. **Copiar protección
+  de** trae la de otra ruta del Proyecto. Las contraseñas no se pueden consultar después: para
+  cambiar una, escribe la nueva; si la dejas vacía, se mantiene.
 - **Variables**: variables de entorno (tarea 5).
 - **Volúmenes**: carpetas persistentes y su explorador.
 - **Compose**: el `docker-compose.yml` del Proyecto (solo en Proyectos Docker Compose).
-- **Ajustes**: editar el Proyecto (rama, dominio, puerto, credencial SSH…) y la **Zona
+- **Ajustes**: editar el Proyecto (rama, puerto, credencial SSH…) y la **Zona
   peligrosa**: **Eliminar proyecto** borra el Proyecto, sus contenedores y sus datos; pide
   confirmación en dos pasos y no se puede deshacer.
 
@@ -323,7 +339,8 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
 
 ![Formulario de Proyecto de tipo Node.js](../public/guia/proyecto-tipo-nodejs.png)
 
-Campos comunes: **Nombre**, **Tipo**, **Dominio** y **Puerto expuesto**. Según el tipo:
+Campos comunes: **Nombre**, **Tipo**, **Dominio** (solo al crear) y **Puerto del contenedor**.
+Según el tipo:
 
 - **Docker Compose**: el repositorio contiene un `docker-compose.yml`. El repositorio es opcional:
   sin él, el compose se escribe en la pestaña Compose del Proyecto.
@@ -379,6 +396,32 @@ Cada canal se activa con su casilla y muestra el resultado de su último envío.
 
 - **Tiempo máximo de deploy**: un deploy que lo supera se cancela solo y se notifica. Entre 5 y
   180 minutos; 0 lo desactiva.
+
+## Configuración — Proxy
+
+Ajustes de Traefik que valen para todos los Proyectos (los dominios y su protección van en la
+pestaña Dominios de cada Proyecto):
+
+- **IPs de confianza**: los proxies que haya delante de Traefik (por ejemplo los rangos de
+  Cloudflare). Solo de ellos se aceptan las cabeceras `X-Forwarded-*`; vacío, Traefik es la
+  entrada y pone él la IP real del visitante.
+- **Timeouts** de lectura, escritura e inactividad, en segundos (0 = sin límite).
+- **Nivel de log**, **TLS mínimo** (1.2 o 1.3) y **Access log** (una línea por petición; actívalo
+  solo para depurar, con tráfico tapa los errores).
+- **Cloudflare**: marca la casilla si algún dominio pasa por el proxy de Cloudflare (nube
+  naranja): sus rangos (editables, con **Actualizar desde cloudflare.com**) pasan a ser de
+  confianza. El **token de la API** (permiso Zone → DNS → Edit sobre las zonas) permite pedir los
+  certificados por DNS; sin token se piden por HTTP. Se guarda cifrado y no se puede volver a
+  ver: escribe otro para cambiarlo o marca **Quitar el token**. En Cloudflare, el modo SSL debe
+  ser **Full (strict)**.
+
+**Aplicar** reinicia Traefik: se cortan las conexiones unos segundos y el Panel puede no
+responder mientras tanto; la página espera y muestra el resultado. Si Traefik no arranca con la
+nueva configuración, se vuelve sola a la anterior y se enseña el motivo con el log de Traefik.
+**Ver las últimas líneas del log de Traefik** ayuda a depurar.
+
+Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no pasa por Traefik:
+`ssh -L 3000:localhost:3000 usuario@vps` y abre `http://localhost:3000`.
 
 ## Configuración — Backups
 

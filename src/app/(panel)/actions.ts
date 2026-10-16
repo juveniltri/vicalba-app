@@ -3,6 +3,8 @@
 import { signOut } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { DestinoInput } from "@/server/routers/backups";
+import type { MiddlewaresEntrada } from "@/lib/schemas/middlewares";
+import type { ConfiguracionProxy } from "@/lib/schemas/proxy";
 
 function parseTRPCError(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) return fallback;
@@ -25,28 +27,28 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function iniciarAction(id: string) {
+export async function iniciarAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.iniciar({ id });
+    await api.proyectos.iniciar({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al iniciar") };
   }
 }
 
-export async function detenerAction(id: string) {
+export async function detenerAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.detener({ id });
+    await api.proyectos.detener({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al detener") };
   }
 }
 
-export async function restartAction(id: string) {
+export async function restartAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.restart({ id });
+    await api.proyectos.restart({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al reiniciar") };
   }
@@ -115,7 +117,6 @@ export async function crearProyectoAction(
 export async function editarProyectoAction(
   id: string,
   nombre: string,
-  dominio: string | undefined,
   repositorioUrl?: string,
   rama?: string,
   tipo?: string,
@@ -130,7 +131,6 @@ export async function editarProyectoAction(
     await api.proyectos.editar({
       id,
       nombre,
-      dominio,
       repositorioUrl,
       rama,
       tipo: tipo as "compose" | "dockerfile" | "image" | "nodejs" | undefined,
@@ -542,6 +542,97 @@ export async function restaurarBackupAction(
   } catch (err) {
     return {
       error: parseTRPCError(err, "No se pudo iniciar la restauración"),
+    };
+  }
+}
+
+export type DatosRuta = {
+  dominio: string;
+  path: string;
+  servicio: string | null;
+  puerto?: number;
+  redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  cloudflare?: boolean;
+  middlewares?: MiddlewaresEntrada;
+};
+
+export async function crearRutaAction(proyectoId: string, datos: DatosRuta) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.crear({ proyectoId, ...datos });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al añadir el dominio") };
+  }
+}
+
+export async function editarRutaAction(id: string, datos: DatosRuta) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.editar({ id, ...datos });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al guardar el dominio") };
+  }
+}
+
+export async function eliminarRutaAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar el dominio") };
+  }
+}
+
+export async function copiarMiddlewaresAction(
+  desdeId: string,
+  haciaId: string,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.copiarMiddlewares({ desdeId, haciaId });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al copiar los middlewares") };
+  }
+}
+
+export async function obtenerProxyAction() {
+  try {
+    const api = await createServerCaller();
+    return await api.proxy.obtener();
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "Error al leer la configuración del Proxy"),
+    };
+  }
+}
+
+// tokenCloudflare: undefined keeps the stored one, null removes it.
+export async function aplicarProxyAction(
+  config: ConfiguracionProxy,
+  tokenCloudflare?: string | null,
+) {
+  try {
+    const api = await createServerCaller();
+    return await api.proxy.aplicar({ ...config, tokenCloudflare });
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "Error al aplicar la configuración del Proxy"),
+    };
+  }
+}
+
+export async function logProxyAction() {
+  const api = await createServerCaller();
+  return api.proxy.log();
+}
+
+export async function rangosCloudflareAction() {
+  try {
+    const api = await createServerCaller();
+    return { rangos: await api.proxy.rangosCloudflare() };
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "No se pudo descargar la lista de Cloudflare"),
     };
   }
 }

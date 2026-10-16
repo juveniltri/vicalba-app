@@ -1,6 +1,9 @@
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
+import type { DepsAplicar } from "@/lib/proxy/aplicar";
+import { PUERTO_PING } from "@/lib/proxy/estatico";
 import { docker } from "./client";
 
 const log = logger.child({ module: "docker" });
@@ -140,4 +143,80 @@ export async function desconectarTraefikDeRed(
     if (err instanceof Error && err.message.includes("not connected")) return;
     throw err;
   }
+}
+
+// Docker log frames (non-TTY): 8-byte header (stream, 0, 0, 0, size BE) + payload.
+function textoDeFrames(buffer: Buffer): string {
+  const partes: string[] = [];
+  let i = 0;
+  while (i + 8 <= buffer.length) {
+    const tamano = buffer.readUInt32BE(i + 4);
+    partes.push(buffer.subarray(i + 8, i + 8 + tamano).toString("utf-8"));
+    i += 8 + tamano;
+  }
+  return partes.join("");
+}
+
+export function depsAplicarTraefik(): DepsAplicar {
+  const estatico = `${env.TRAEFIK_STATIC_DIR}/traefik.yml`;
+  const contenedor = async () => {
+    const traefik = await encontrarContenedorTraefik();
+    if (!traefik)
+      throw new Error(
+        `Contenedor Traefik (${env.TRAEFIK_CONTAINER_NAME}) no encontrado`,
+      );
+    return docker.getContainer(traefik.Id);
+  };
+  return {
+    leerEstatico: async () => {
+      try {
+        return await readFile(estatico, "utf-8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      }
+    },
+    escribirEstatico: async (contenido) => {
+      await mkdir(env.TRAEFIK_STATIC_DIR, { recursive: true });
+      await writeFile(estatico, contenido, "utf-8");
+    },
+    // Read by Traefik's Cloudflare DNS provider (CF_DNS_API_TOKEN_FILE).
+    escribirTokenCloudflare: async (token) => {
+      const fichero = `${env.TRAEFIK_STATIC_DIR}/cf-token`;
+      if (token === null) return rm(fichero, { force: true });
+      await mkdir(env.TRAEFIK_STATIC_DIR, { recursive: true });
+      await writeFile(fichero, token, { encoding: "utf-8", mode: 0o600 });
+    },
+    guardarPrevio: (contenido) =>
+      writeFile(`${estatico}.prev`, contenido, "utf-8"),
+    escribirTls: async (contenido) => {
+      await mkdir(env.TRAEFIK_DYNAMIC_DIR, { recursive: true });
+      await writeFile(
+        `${env.TRAEFIK_DYNAMIC_DIR}/_proxy.yml`,
+        contenido,
+        "utf-8",
+      );
+    },
+    reiniciarTraefik: async () => {
+      await (await contenedor()).restart({ t: 5 });
+    },
+    traefikResponde: async () => {
+      const res = await fetch(
+        `http://${env.TRAEFIK_CONTAINER_NAME}:${PUERTO_PING}/ping`,
+        { signal: AbortSignal.timeout(2_000) },
+      );
+      return res.ok;
+    },
+    ultimasLineasLog: async () => {
+      const salida = (await (
+        await contenedor()
+      ).logs({
+        stdout: true,
+        stderr: true,
+        tail: 30,
+      })) as unknown as Buffer;
+      return textoDeFrames(salida).trim();
+    },
+    esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
+  };
 }

@@ -24,6 +24,12 @@ release/X.X.X → preparación de release (desde develop; en una versión de par
 
 **Regla:** nunca se hace commit directo a `master` ni a `develop`. Todo entra por PR.
 
+GitHub lo obliga: las dos ramas están protegidas (PR obligatorio sin aprobaciones, los 7 checks de
+CI en verde, también para administradores; sin force-push ni borrado). Con
+`gh pr merge <n> --auto --merge` (o «Enable auto-merge») el PR se mergea solo al pasar la CI, y
+GitHub borra la rama de trabajo al mergear. Los ajustes del repositorio (protección, auto-merge)
+los cambia el usuario: Claude Code tiene bloqueado modificarlos.
+
 ### Commits — Conventional Commits
 
 ```
@@ -52,6 +58,9 @@ Dashboard (`src/lib/changelog.ts` lo interpreta). En cada release, antes del PR 
    (`git tag vX.Y.Z && git push origin vX.Y.Z`). El workflow `release.yml` crea la Release
    de GitHub con esa sección del CHANGELOG (`scripts/notas-release.mjs`) y el PR del merge;
    falla si el tag no coincide con `package.json`.
+4. Sincronizar `develop`: PR de `master` a `develop` con auto-merge (como #47 y #59).
+
+Antes del PR a `master`, `/security-review` de la rama de release.
 
 El fichero entra en la imagen por la excepción `!CHANGELOG.md` de `.dockerignore` y su `COPY`
 en el `Dockerfile`; si falta, Novedades sale vacía pero el panel funciona.
@@ -94,7 +103,8 @@ src/
     db/              ← queries y schemas Prisma
   lib/
     docker/          ← integración con dockerode
-    traefik/         ← generación de config dinámica Traefik
+    traefik/         ← config dinámica de Traefik (rutas de los Proyectos)
+    proxy/           ← traefik.yml estático, aplicar con vuelta atrás, Cloudflare
     schemas/         ← schemas Zod compartidos
   styles/
     tokens.css       ← design tokens (NO editar valores en componentes)
@@ -111,7 +121,9 @@ src/
 ### Docker y Traefik
 
 - Nunca llamar al socket Docker directamente desde un componente — siempre a través de `src/lib/docker/`
-- La config dinámica de Traefik se genera programáticamente en `src/lib/traefik/` — no editar manualmente
+- Toda la config de Traefik la genera el Panel — no editar a mano: la dinámica (`dynamic/<cliente>_<proyecto>.yml`,
+  con cabecera `# generado por vicalba-panel`) en `src/lib/traefik/`; la estática (`static/traefik.yml`) y
+  `dynamic/_proxy.yml` (TLS mínimo) en `src/lib/proxy/`
 - Las redes Docker de clientes siguen la convención `cliente-[slug]-network`
 
 ### Comentarios
@@ -194,7 +206,7 @@ npm run guia             # regenera capturas y PDF de la guía (Docker, puertos 
 
 ```bash
 # Crear directorios persistentes
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
 # El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
 chown -R 1001:1001 /var/vicalba
 
@@ -202,7 +214,7 @@ chown -R 1001:1001 /var/vicalba
 ```
 
 Los certificados de Let's Encrypt los guarda Traefik en el volumen Docker con
-nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
+nombre `letsencrypt` (ver `storage` en `src/lib/proxy/estatico.ts`), no en un fichero
 bind-mounted — Docker lo crea solo al arrancar. Traefik fuerza permisos 600 en
 ese fichero (propiedad de su propio usuario), así que el panel —que corre como
 usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
@@ -210,7 +222,7 @@ usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
 (`src/lib/docker/traefik.ts`), que hace `docker exec cat <ruta>` en el propio
 contenedor Traefik vía el socket Docker que el panel ya tiene montado.
 `ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
-del contenedor Traefik, debe coincidir con `storage` en `traefik/traefik.yml`.
+del contenedor Traefik; el `traefik.yml` estático lo genera el Panel con ese `storage`.
 
 ### Primera vez
 
@@ -241,12 +253,26 @@ El script crea `.env.local` automáticamente con secretos generados si no existe
 detecta el socket Docker en macOS/Linux y crea los directorios necesarios en `/tmp/vicalba/`.
 Credenciales del seed: `admin@vicalba.local` / `dev-password-2026`
 
-### Nota — redes de clientes y Traefik
+### Nota — rutas, redes de clientes y Traefik
 
-La conexión de Traefik a las redes de cliente es **automática** desde la feature Gestión de Dominios.
-Al crear/editar/eliminar un proyecto con dominio, el panel llama a `conectarTraefikARed` /
-`desconectarTraefikDeRed` via dockerode. Variable de entorno relevante: `TRAEFIK_CONTAINER_NAME`
-(default: `traefik`). Solo hace falta intervención manual en instalaciones con un nombre distinto.
+Los dominios de un Proyecto son `RutaProyecto` (dominio, path, Servicio, puerto, redirección www,
+Cloudflare y middlewares en JSON validado con `middlewaresSchema`). `sincronizarTraefikCliente`
+regenera los ficheros de todos los Proyectos del Cliente, asegura su red y conecta o desconecta
+Traefik; se llama al cambiar rutas o Proyectos y `regenerarConfigTraefik` lo hace para todos al
+arrancar (borra los ficheros generados huérfanos, nunca los que no llevan la cabecera). Cada Servicio
+con ruta recibe en el deploy el alias `<servicio>.<cliente>-<proyecto>`. La contraseña de la
+autenticación básica se guarda como bcrypt `$2y$` coste 5 y el Panel nunca devuelve los hashes.
+Variable relevante: `TRAEFIK_CONTAINER_NAME` (default: `traefik`).
+
+### Nota — Proxy (config estática de Traefik)
+
+Configuración → Proxy guarda en `ConfiguracionProxy` la config aplicada y la pendiente. Aplicar
+(`lanzarAplicacionProxy`) corre en segundo plano: `.prev`, escribe, reinicia Traefik, espera a
+`http://traefik:8082/ping` y si no responde vuelve a la anterior. Traefik ignora los flags de CLI
+cuando hay fichero de config y, si falta el fichero de `--configFile`, arranca en silencio con la
+config por defecto (solo :80): por eso el Panel lo escribe y reinicia Traefik al arrancar si falta.
+El token de Cloudflare va cifrado en BD y en `static/cf-token` (`CF_DNS_API_TOKEN_FILE`). Acceso
+de emergencia: el Panel publica `127.0.0.1:3000` en la VPS (`ssh -L 3000:localhost:3000`).
 
 ### Nota — variables que inyecta el panel en el build
 
@@ -390,6 +416,10 @@ Ver `CONTEXT.md` para el glosario completo.
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
   - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
   - Versión 2.2.0 (`release/2.2.0`, PR #56 + #57): backups fase A (restic a S3/SFTP, copia diaria, restauración desde el Panel con copia previa, kit de recuperación, `docs/recuperacion.md`); guía de usuario (`docs/guia-usuario.md`, página `/guia`, PDF y capturas con `npm run guia`); arreglos de los filtros por nivel de los logs y del estado de certificados en instalaciones nuevas; `develop` y `master` protegidas (PR + 7 checks) con auto-merge (1105 tests)
-- **En construcción:** —
+- **En construcción:** 2.3.0 — Proxy y servicios (`feature/2.3.0`, diseño `docs/diseno-proxy.md`): acciones por Servicio;
+  rutas múltiples por Proyecto (pestaña Dominios, alias por Servicio, ficheros `<cliente>_<proyecto>.yml`); middlewares
+  por ruta; Configuración → Proxy con vuelta atrás y acceso de emergencia; modo Cloudflare; arreglos de Proyectos
+  `image` sin red y de puertos publicados en el host (1258 tests). Falta la verificación de certificados
+  reales con Cloudflare en la VPS de desarrollo y la release.
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** 2.3.0 — backups fases B (volúmenes) y C (BDs de Clientes), pendientes menores de la fase A y de la guía, E2E (ver `docs/roadmap.md`)
+- **Próximo hito:** release 2.3.0; después 2.4.0 — backups fases B (volúmenes) y C (BDs de Clientes), E2E, CSP estricta (ver `docs/roadmap.md`)

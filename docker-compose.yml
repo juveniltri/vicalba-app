@@ -18,12 +18,19 @@ services:
 
   # ── Traefik — proxy inverso + SSL automático ─────────────────────────────────
   traefik:
-    image: traefik:v3
+    # Fixed version: an upgrade is a decision, not a side effect of a restart.
+    image: traefik:v3.7.15
     container_name: traefik
     restart: unless-stopped
     logging: *logging
+    # The Panel writes this file (Configuración → Proxy). It is the only static
+    # source: Traefik ignores CLI flags when a config file is present.
     command:
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--configFile=/etc/traefik/static/traefik.yml"
+    environment:
+      # Cloudflare API token for DNS-01, written by the Panel (Configuración →
+      # Proxy). A file, so changing it needs a restart, not a new container.
+      CF_DNS_API_TOKEN_FILE: /etc/traefik/static/cf-token
     networks:
       - vicalba-net
     ports:
@@ -31,7 +38,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      # The directory, not the file: a missing file would become a directory.
+      - /var/vicalba/traefik/static:/etc/traefik/static:ro
       - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
       - letsencrypt:/letsencrypt
 
@@ -63,6 +71,9 @@ services:
     logging: *logging
     networks:
       - vicalba-net
+    # Emergency access when Traefik is down: ssh -L 3000:localhost:3000 <vps>
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
@@ -72,9 +83,11 @@ services:
       PANEL_DOMAIN: ${PANEL_DOMAIN}
       DOCKER_SOCKET_PATH: /var/run/docker.sock
       TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
+      TRAEFIK_STATIC_DIR: /etc/traefik/static
+      ACME_EMAIL: ${ACME_EMAIL:-}
       REPOS_DIR: /var/vicalba/repos
       # Ruta del fichero de certificados DENTRO del contenedor traefik (debe
-      # coincidir con `storage` en traefik.yml) — el panel lo lee vía `docker
+      # coincidir con el `storage` que genera el panel) — el panel lo lee vía `docker
       # exec` sobre ese contenedor (leerFicheroTraefik), no como fichero propio:
       # Traefik fuerza permisos 600 en ese fichero y el panel corre como
       # usuario no-root, así que no puede leerlo aunque comparta el volumen.
@@ -87,6 +100,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Config dinámica de Traefik — compartida con el contenedor traefik
       - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      # Config estática de Traefik — la escribe el panel (Configuración → Proxy)
+      - /var/vicalba/traefik/static:/etc/traefik/static
       # Repositorios clonados para los deploys
       - /var/vicalba/repos:/var/vicalba/repos
       # Métricas del host — solo lectura

@@ -114,7 +114,7 @@ Resumen:
 ```bash
 # En la VPS (Ubuntu):
 curl -fsSL https://get.docker.com | sh
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
 chown -R 1001:1001 /var/vicalba   # el panel corre como uid 1001
 
 git clone git@github.com:juveniltri/vicalba-app.git /opt/vicalba-app

@@ -23,6 +23,25 @@ function renderButton(action: () => Promise<{ error: string } | undefined>) {
 }
 
 describe("ProjectActionButton", () => {
+  it("usa ariaLabel como nombre accesible cuando se indica", () => {
+    render(
+      <ToastProvider>
+        <ProjectActionButton
+          action={vi.fn()}
+          label="Reiniciar"
+          ariaLabel="Reiniciar worker"
+          pendingLabel="Reiniciando…"
+          successMessage="Servicio reiniciado"
+          className="btn"
+        />
+      </ToastProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Reiniciar worker" }),
+    ).toBeInTheDocument();
+  });
+
   it("muestra el label y pasa a pendingLabel mientras la acción está en curso", async () => {
     const user = userEvent.setup();
     let resolveAction: (v: undefined) => void = () => {};

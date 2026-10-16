@@ -5,6 +5,10 @@ import { env } from "@/env";
 import { logger } from "@/lib/logger";
 import { notificarFalloBackup } from "@/lib/notificaciones";
 import { prisma } from "@/lib/prisma";
+import {
+  lanzarAplicacionProxy,
+  leerConfiguracionProxy,
+} from "@/lib/proxy/operacion";
 import { cargarConfigResuelta, conRestic } from "./configuracion";
 import { hacerCopia } from "./copia";
 import {
@@ -160,6 +164,13 @@ export async function iniciarRestauracion(
         );
         // Prepared statements cached by the pool point at the dropped tables.
         await prisma.$disconnect();
+        // The DB is the source of truth for Traefik's static config: re-apply
+        // the restored one through the safe path (no restart if unchanged).
+        await leerConfiguracionProxy()
+          .then(({ aplicada }) => lanzarAplicacionProxy(aplicada))
+          .catch((err: unknown) =>
+            log.warn({ err }, "No se volvió a aplicar la config del Proxy"),
+          );
         await prisma.backup.update({
           where: { id: restauracionId },
           data: { resultado: "exito", finalizadoEn: new Date() },

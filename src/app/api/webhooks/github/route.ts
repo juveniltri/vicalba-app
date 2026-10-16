@@ -62,7 +62,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const candidatos = await prisma.proyecto.findMany({
     where: { rama, autoDeployHabilitado: true, repositorioUrl: { not: null } },
-    include: { cliente: true, credencial: true },
+    include: {
+      cliente: true,
+      credencial: true,
+      rutas: { orderBy: { creadoEn: "asc" } },
+    },
   });
   const proyectos = candidatos.filter((p) =>
     urlsRecibidas.some((u) => mismoRepositorio(p.repositorioUrl!, u)),
