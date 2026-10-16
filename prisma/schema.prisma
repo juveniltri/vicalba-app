@@ -264,3 +264,22 @@ model Backup {
 
   @@index([iniciadoEn])
 }
+
+enum EstadoProxy {
+  aplicada
+  en_curso
+  revertida
+  error
+}
+
+// Configuración → Proxy. "aplicada" is what Traefik is running; "pendiente" the
+// last request, kept when it was reverted or failed so the UI can show it.
+model ConfiguracionProxy {
+  id            String      @id @default("default")
+  aplicada      Json
+  pendiente     Json?
+  estado        EstadoProxy @default(aplicada)
+  mensaje       String?
+  log           String?     @db.Text
+  actualizadoEn DateTime    @updatedAt
+}

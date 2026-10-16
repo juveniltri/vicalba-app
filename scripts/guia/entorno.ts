@@ -132,6 +132,13 @@ export async function esperarPanelSano(timeoutMs = 300_000): Promise<void> {
   );
 }
 
+// The Panel writes Traefik's static file at startup; on the first start the
+// volume was still root-owned, so it starts again once it can write there.
+export async function reiniciarPanel(): Promise<void> {
+  docker(["restart", "vicalba-panel"]);
+  await esperarPanelSano();
+}
+
 // Named volumes are created root-owned; the panel runs as uid 1001.
 export function prepararVolumenes(): void {
   docker([
@@ -144,6 +151,7 @@ export function prepararVolumenes(): void {
     "1001:1001",
     "/var/vicalba/repos",
     "/etc/traefik/dynamic",
+    "/etc/traefik/static",
   ]);
 }
 

@@ -9,6 +9,7 @@ import {
   generarEnv,
   limpiar,
   prepararVolumenes,
+  reiniciarPanel,
 } from "./entorno";
 import { capturar, entrar, imprimirPdf } from "./capturas";
 import { sembrar } from "./datos-demo";
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     compose(["up", "-d", "--build"]);
     await esperarPanelSano();
     prepararVolumenes();
+    await reiniciarPanel();
     const claveSftp = generarClaveSsh();
     await arrancarSftp(claveSftp.publica);
     await sembrar(entorno, claveSftp);

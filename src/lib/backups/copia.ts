@@ -37,6 +37,12 @@ export async function hacerCopia(
     await cp(env.TRAEFIK_DYNAMIC_DIR, dir("traefik", "dynamic"), {
       recursive: true,
     });
+    // Reference only: the Panel regenerates it from the DB (Configuración → Proxy).
+    await cp(env.TRAEFIK_STATIC_DIR, dir("traefik", "static"), {
+      recursive: true,
+    }).catch((err: unknown) =>
+      log.warn({ err }, "Copia sin la config estática de Traefik"),
+    );
     try {
       const acme = await leerFicheroTraefik(env.ACME_JSON_PATH);
       await writeFile(dir("traefik", "acme.json"), acme, { mode: 0o600 });

@@ -53,6 +53,7 @@ setup_env() {
 NODE_ENV=development
 REPOS_DIR=/tmp/vicalba/repos
 TRAEFIK_DYNAMIC_DIR=/tmp/vicalba/traefik/dynamic
+TRAEFIK_STATIC_DIR=/tmp/vicalba/traefik/static
 ACME_JSON_PATH=/tmp/vicalba/traefik/acme.json
 DATABASE_URL=postgresql://vicalba:dev-password@localhost:5432/vicalba
 NEXTAUTH_SECRET=$(openssl rand -base64 32)
@@ -83,11 +84,13 @@ load_env() {
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
+  # .env.local created before 2.3.0 lacks it; the default (/etc/traefik/static) is for the container
+  export TRAEFIK_STATIC_DIR="${TRAEFIK_STATIC_DIR:-/tmp/vicalba/traefik/static}"
 }
 
 # ─── Directorios locales ──────────────────────────────────────────────────────
 setup_dirs() {
-  mkdir -p /tmp/vicalba/repos /tmp/vicalba/traefik/dynamic
+  mkdir -p /tmp/vicalba/repos /tmp/vicalba/traefik/dynamic /tmp/vicalba/traefik/static
   # acme.json vacío para que leerEstadoSSL no falle al leer el archivo
   touch /tmp/vicalba/traefik/acme.json
   ok "Directorios en /tmp/vicalba/ listos"

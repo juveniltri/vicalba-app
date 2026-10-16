@@ -203,7 +203,7 @@ npm run guia             # regenera capturas y PDF de la guía (Docker, puertos 
 
 ```bash
 # Crear directorios persistentes
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/repos
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
 # El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
 chown -R 1001:1001 /var/vicalba
 
@@ -211,7 +211,7 @@ chown -R 1001:1001 /var/vicalba
 ```
 
 Los certificados de Let's Encrypt los guarda Traefik en el volumen Docker con
-nombre `letsencrypt` (ver `storage` en `traefik/traefik.yml`), no en un fichero
+nombre `letsencrypt` (ver `storage` en `src/lib/proxy/estatico.ts`), no en un fichero
 bind-mounted — Docker lo crea solo al arrancar. Traefik fuerza permisos 600 en
 ese fichero (propiedad de su propio usuario), así que el panel —que corre como
 usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
@@ -219,7 +219,7 @@ usuario no-root— no puede leerlo aunque comparta el volumen. Por eso
 (`src/lib/docker/traefik.ts`), que hace `docker exec cat <ruta>` en el propio
 contenedor Traefik vía el socket Docker que el panel ya tiene montado.
 `ACME_JSON_PATH` (por defecto `/letsencrypt/acme.json`) es la ruta _dentro_
-del contenedor Traefik, debe coincidir con `storage` en `traefik/traefik.yml`.
+del contenedor Traefik; el `traefik.yml` estático lo genera el Panel con ese `storage`.
 
 ### Primera vez
 

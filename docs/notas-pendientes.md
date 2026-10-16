@@ -24,6 +24,21 @@ Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master.
 
 ---
 
+## Operación al desplegar la 2.3.0 (Proxy y servicios)
+
+1. **Antes** de actualizar: `mkdir -p /var/vicalba/traefik/static && chown 1001:1001 /var/vicalba/traefik/static`
+   (si lo crea Docker al arrancar, queda de root y el Panel no puede escribir el `traefik.yml`).
+2. `git pull && docker compose up -d --build` — el stack completo: cambian la imagen de Traefik
+   (fijada a v3.7.15), su `command`, sus volúmenes y el puerto local del Panel. Traefik se reinicia
+   hasta que el Panel escribe `static/traefik.yml` al arrancar (unos segundos). Las migraciones
+   (rutas, middlewares, Configuración → Proxy) se aplican solas: cada dominio pasa a ser la primera
+   ruta de su Proyecto y los ficheros de `dynamic/` se renombran a `<cliente>_<proyecto>.yml`.
+3. Comprobar que el Panel y los dominios responden; `ls /var/vicalba/traefik/dynamic` sin `<proyecto>.yml` antiguos.
+4. Redesplegar los Proyectos dockerfile/nodejs/image: dejan de publicar su puerto en la VPS (solo
+   por sus dominios) y los `image` pasan a conectarse a la red del Cliente.
+5. Probar el acceso de emergencia: `ssh -L 3000:localhost:3000 <vps>` y abrir `http://localhost:3000`.
+6. El email de Let's Encrypt (`ACME_EMAIL`) ahora sí llega a Traefik (antes se ignoraba el flag).
+
 ## Operación al desplegar la 2.2.0 (backups)
 
 1. `git pull && docker compose up -d --build panel` — la migración de backups se aplica sola.

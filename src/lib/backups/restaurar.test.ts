@@ -29,6 +29,8 @@ const m = vi.hoisted(() => ({
   disconnect: vi.fn(),
   notificar: vi.fn(),
   reemplazarDinamica: vi.fn(),
+  leerProxy: vi.fn(),
+  lanzarProxy: vi.fn(),
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -61,6 +63,10 @@ vi.mock("./configuracion", () => ({
     fn({ env: {}, args: [], signal }),
 }));
 vi.mock("./copia", () => ({ hacerCopia: m.hacerCopia }));
+vi.mock("@/lib/proxy/operacion", () => ({
+  leerConfiguracionProxy: m.leerProxy,
+  lanzarAplicacionProxy: m.lanzarProxy,
+}));
 vi.mock("./restic", () => ({ restaurarSnapshot: m.restaurarSnapshot }));
 vi.mock("./postgres", () => ({ pgRestore: m.pgRestore }));
 vi.mock("./procesos", () => ({ ejecutar: m.ejecutar }));
@@ -122,6 +128,8 @@ describe("iniciarRestauracion", () => {
     m.credFind.mockResolvedValue({ id: "cred1", nombre: "backups" });
     m.backupFindMany.mockResolvedValue([{ id: "previa" }]);
     m.transaction.mockImplementation((ops: unknown[]) => Promise.all(ops));
+    m.leerProxy.mockResolvedValue({ aplicada: { logNivel: "INFO" } });
+    m.lanzarProxy.mockResolvedValue({ terminado: Promise.resolve() });
   });
 
   it("copia previa, restaura la BD, conserva lo de backups, migra, restaura Traefik y marca éxito", async () => {
@@ -180,11 +188,31 @@ describe("iniciarRestauracion", () => {
       expect.anything(),
     );
     expect(m.disconnect).toHaveBeenCalled();
+    // The restored Proxy config goes through the safe apply (rollback included).
+    expect(m.lanzarProxy).toHaveBeenCalledWith({ logNivel: "INFO" });
     expect(m.backupUpdate).toHaveBeenLastCalledWith({
       where: { id: "rest" },
       data: { resultado: "exito", finalizadoEn: expect.any(Date) },
     });
     expect(hayOperacionEnCurso()).toBe(false);
+  });
+
+  it("si no se puede volver a aplicar el Proxy restaurado, la restauración no falla", async () => {
+    m.restaurarSnapshot.mockImplementation(
+      async (_r: unknown, _id: string, destino: string) => {
+        await mkdir(path.join(destino, "x"), { recursive: true });
+        await writeFile(path.join(destino, "x", "panel-db.dump"), "dump");
+      },
+    );
+    m.lanzarProxy.mockRejectedValue(new Error("ya hay una en curso"));
+
+    await iniciarRestauracion("abc123");
+    await terminar();
+
+    expect(m.backupUpdate).toHaveBeenLastCalledWith({
+      where: { id: "rest" },
+      data: { resultado: "exito", finalizadoEn: expect.any(Date) },
+    });
   });
 
   it("si la copia previa falla no toca la BD", async () => {
