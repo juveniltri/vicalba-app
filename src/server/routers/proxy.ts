@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { depsAplicarTraefik } from "@/lib/docker/traefik";
 import {
   lanzarAplicacionProxy,
   leerConfiguracionProxy,
@@ -9,6 +10,14 @@ import { protectedProcedure, router } from "@/server/trpc";
 
 export const proxyRouter = router({
   obtener: protectedProcedure.query(() => leerConfiguracionProxy()),
+
+  log: protectedProcedure.query(() =>
+    depsAplicarTraefik()
+      .ultimasLineasLog()
+      .catch(
+        (err: unknown) => `No se pudo leer el log de Traefik: ${String(err)}`,
+      ),
+  ),
 
   aplicar: protectedProcedure
     .input(configuracionProxySchema)

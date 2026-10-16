@@ -4,6 +4,7 @@ import { signOut } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import type { DestinoInput } from "@/server/routers/backups";
 import type { MiddlewaresEntrada } from "@/lib/schemas/middlewares";
+import type { ConfiguracionProxy } from "@/lib/schemas/proxy";
 
 function parseTRPCError(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) return fallback;
@@ -591,4 +592,31 @@ export async function copiarMiddlewaresAction(
   } catch (err) {
     return { error: parseTRPCError(err, "Error al copiar los middlewares") };
   }
+}
+
+export async function obtenerProxyAction() {
+  try {
+    const api = await createServerCaller();
+    return await api.proxy.obtener();
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "Error al leer la configuración del Proxy"),
+    };
+  }
+}
+
+export async function aplicarProxyAction(config: ConfiguracionProxy) {
+  try {
+    const api = await createServerCaller();
+    return await api.proxy.aplicar(config);
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "Error al aplicar la configuración del Proxy"),
+    };
+  }
+}
+
+export async function logProxyAction() {
+  const api = await createServerCaller();
+  return api.proxy.log();
 }

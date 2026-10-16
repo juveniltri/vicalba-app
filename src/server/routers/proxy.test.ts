@@ -10,6 +10,10 @@ vi.mock("@/lib/proxy/operacion", () => ({
   OperacionProxyEnCurso: EnCurso,
 }));
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
+const { mockLog } = vi.hoisted(() => ({ mockLog: vi.fn() }));
+vi.mock("@/lib/docker/traefik", () => ({
+  depsAplicarTraefik: () => ({ ultimasLineasLog: mockLog }),
+}));
 
 import { auth } from "@/lib/auth";
 import { CONFIG_PROXY_POR_DEFECTO } from "@/lib/schemas/proxy";
@@ -78,6 +82,18 @@ describe("proxy", () => {
         logNivel: "TRACE",
       } as never),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("log devuelve las últimas líneas de Traefik o explica por qué no", async () => {
+    mockLog.mockResolvedValueOnce("INF Starting provider");
+    expect(await (await caller()).log()).toBe("INF Starting provider");
+
+    mockLog.mockRejectedValueOnce(
+      new Error("Contenedor Traefik no encontrado"),
+    );
+    expect(await (await caller()).log()).toMatch(
+      /No se pudo leer.*no encontrado/,
+    );
   });
 
   it("sin sesión no deja ni leer", async () => {
