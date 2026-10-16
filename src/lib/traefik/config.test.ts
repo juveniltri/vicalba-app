@@ -21,12 +21,126 @@ vi.mock("@/env", () => ({
   env: { TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic", NODE_ENV: "test" },
 }));
 
+import { parse } from "yaml";
 import { env } from "@/env";
 import {
+  generarConfigProyecto,
   generarConfigTraefik,
   escribirConfigTraefik,
   eliminarConfigTraefik,
 } from "./config";
+
+type ConfigTraefik = {
+  http: {
+    routers: Record<
+      string,
+      {
+        rule: string;
+        service: string;
+        entryPoints: string[];
+        tls: { certResolver: string };
+        middlewares?: string[];
+      }
+    >;
+    services: Record<string, { loadBalancer: { servers: { url: string }[] } }>;
+    middlewares?: Record<string, unknown>;
+  };
+};
+
+const ruta = (
+  extra: Partial<
+    Parameters<typeof generarConfigProyecto>[0]["rutas"][number]
+  > = {},
+) => ({
+  id: "r1",
+  dominio: "app.example.com",
+  path: null,
+  servicio: null,
+  puerto: 3000,
+  redireccionWww: "ninguna" as const,
+  ...extra,
+});
+
+function generar(rutas: ReturnType<typeof ruta>[]) {
+  const yaml = generarConfigProyecto({
+    clienteSlug: "acme",
+    proyectoNombre: "web",
+    rutas,
+  });
+  return { yaml, config: parse(yaml ?? "") as ConfigTraefik };
+}
+
+describe("generarConfigProyecto", () => {
+  it("una ruta sin servicio enruta su dominio por HTTPS al alias del Proyecto", () => {
+    const { yaml, config } = generar([ruta()]);
+
+    expect(yaml?.startsWith("# generado por vicalba-panel\n")).toBe(true);
+    const routers = Object.values(config.http.routers);
+    expect(routers).toHaveLength(1);
+    const [router] = routers;
+    expect(router.rule).toBe("Host(`app.example.com`)");
+    expect(router.entryPoints).toEqual(["websecure"]);
+    expect(router.tls).toEqual({ certResolver: "letsencrypt" });
+    expect(config.http.services[router.service].loadBalancer.servers).toEqual([
+      { url: "http://acme-web:3000" },
+    ]);
+  });
+
+  it("una ruta con servicio y path enruta ese prefijo al alias del Servicio", () => {
+    const { config } = generar([
+      ruta({ path: "/api", servicio: "backend", puerto: 8080 }),
+    ]);
+
+    const [router] = Object.values(config.http.routers);
+    expect(router.rule).toBe("Host(`app.example.com`) && PathPrefix(`/api`)");
+    expect(config.http.services[router.service].loadBalancer.servers).toEqual([
+      { url: "http://backend.acme-web:8080" },
+    ]);
+  });
+
+  it("no deja inyectar reglas con comillas invertidas en el dominio o el path", () => {
+    const { config } = generar([
+      ruta({
+        dominio: "a.com`) || Host(`b.com",
+        path: "/x`) || PathPrefix(`/",
+      }),
+    ]);
+
+    const [router] = Object.values(config.http.routers);
+    expect(router.rule).toBe(
+      "Host(`a.com) || Host(b.com`) && PathPrefix(`/x) || PathPrefix(/`)",
+    );
+  });
+
+  it("sin rutas no genera configuración", () => {
+    expect(generar([]).yaml).toBeNull();
+  });
+
+  it.each([
+    ["a_raiz", "www.example.com", "example.com"],
+    ["a_www", "example.com", "www.example.com"],
+  ] as const)(
+    "redirección %s: router aparte con su propio certificado y 301 al dominio de la ruta",
+    (redireccionWww, origen, destino) => {
+      const { config } = generar([
+        ruta({ dominio: destino, path: "/app", redireccionWww }),
+      ]);
+
+      const routers = Object.values(config.http.routers);
+      expect(routers).toHaveLength(2);
+      const redireccion = routers.find((r) => r.rule === `Host(\`${origen}\`)`);
+      expect(redireccion?.tls).toEqual({ certResolver: "letsencrypt" });
+      expect(redireccion?.middlewares).toHaveLength(1);
+      expect(config.http.middlewares?.[redireccion!.middlewares![0]]).toEqual({
+        redirectRegex: {
+          regex: `^https?://${origen.replace(/\./g, "\\.")}/(.*)`,
+          replacement: `https://${destino}/\${1}`,
+          permanent: true,
+        },
+      });
+    },
+  );
+});
 
 describe("generarConfigTraefik", () => {
   it("genera un router con la regla Host correcta", () => {
