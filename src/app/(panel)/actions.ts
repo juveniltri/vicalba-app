@@ -25,28 +25,28 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function iniciarAction(id: string) {
+export async function iniciarAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.iniciar({ id });
+    await api.proyectos.iniciar({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al iniciar") };
   }
 }
 
-export async function detenerAction(id: string) {
+export async function detenerAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.detener({ id });
+    await api.proyectos.detener({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al detener") };
   }
 }
 
-export async function restartAction(id: string) {
+export async function restartAction(id: string, servicio?: string) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.restart({ id });
+    await api.proyectos.restart({ id, servicio });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al reiniciar") };
   }

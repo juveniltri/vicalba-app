@@ -46,6 +46,9 @@ import {
 } from "@/app/(panel)/actions";
 import { IconRedeploy, IconStop, IconCheck } from "@/components/ui/icons";
 
+const botonServicio =
+  "inline-flex items-center min-h-8 px-2.5 rounded-[var(--radius-md)] border border-border-strong bg-transparent text-text-primary font-body text-xs hover:bg-elevated transition-colors disabled:opacity-50 disabled:pointer-events-none";
+
 const PESTANAS = [
   "resumen",
   "deploys",
@@ -78,12 +81,15 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales, volumenes] = await Promise.all([
-    api.variables.listar({ proyectoId: id }),
-    api.proyectos.listarDeploys({ proyectoId: id }),
-    api.credenciales.listar(),
-    api.volumenes.listar({ proyectoId: id }),
-  ]);
+  const [variables, deploys, credenciales, volumenes, servicios] =
+    await Promise.all([
+      api.variables.listar({ proyectoId: id }),
+      api.proyectos.listarDeploys({ proyectoId: id }),
+      api.credenciales.listar(),
+      api.volumenes.listar({ proyectoId: id }),
+      // Without a Docker daemon (local dev) the page still renders
+      api.proyectos.servicios({ id }).catch(() => []),
+    ]);
 
   const disponibles = PESTANAS.filter(
     (p) => p !== "compose" || proyecto.tipo === "compose",
@@ -271,6 +277,70 @@ export default async function DetalleProyectoPage({
               <DeployLogsPanel proyectoId={id} active />
             ) : (
               <UltimoDeploy proyectoId={id} deploy={deploys[0]} />
+            )}
+            {servicios.length > 1 && (
+              <div className="mt-5">
+                <Card titulo="Servicios">
+                  <ul className="m-0 -mx-5 list-none font-body text-xs">
+                    {servicios.map(({ servicio, estado, detalle }) => (
+                      <li
+                        key={servicio}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-2.5 border-t border-border first:border-t-0"
+                      >
+                        <span className="font-semibold text-text-primary">
+                          {servicio}
+                        </span>
+                        <StatusBadge estado={estado} />
+                        <span className="text-text-muted">{detalle}</span>
+                        <div className="ml-auto flex flex-wrap gap-1.5">
+                          <ProjectActionButton
+                            action={async () => {
+                              "use server";
+                              const result = await iniciarAction(id, servicio);
+                              revalidatePath(`/proyectos/${id}`);
+                              return result;
+                            }}
+                            label="Iniciar"
+                            ariaLabel={`Iniciar ${servicio}`}
+                            pendingLabel="Iniciando…"
+                            successMessage={`Servicio ${servicio} iniciado`}
+                            disabled={!canAct || estado === "running"}
+                            className={botonServicio}
+                          />
+                          <ProjectActionButton
+                            action={async () => {
+                              "use server";
+                              const result = await detenerAction(id, servicio);
+                              revalidatePath(`/proyectos/${id}`);
+                              return result;
+                            }}
+                            label="Detener"
+                            ariaLabel={`Detener ${servicio}`}
+                            pendingLabel="Deteniendo…"
+                            successMessage={`Servicio ${servicio} detenido`}
+                            disabled={!canAct || estado === "stopped"}
+                            className={botonServicio}
+                          />
+                          <ProjectActionButton
+                            action={async () => {
+                              "use server";
+                              const result = await restartAction(id, servicio);
+                              revalidatePath(`/proyectos/${id}`);
+                              return result;
+                            }}
+                            label="Reiniciar"
+                            ariaLabel={`Reiniciar ${servicio}`}
+                            pendingLabel="Reiniciando…"
+                            successMessage={`Servicio ${servicio} reiniciado`}
+                            disabled={!canAct || estado === "stopped"}
+                            className={botonServicio}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
             )}
           </div>
 
