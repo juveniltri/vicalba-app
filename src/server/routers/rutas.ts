@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
+import { leerCertificados } from "@/lib/ssl/acme";
 import {
   generarConfigProyecto,
   hostRedireccionWww,
@@ -119,17 +120,29 @@ export const rutasRouter = router({
     .input(z.object({ proyectoId: z.string() }))
     .query(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.proyectoId);
-      const rutas = await prisma.rutaProyecto.findMany({
-        where: { proyectoId: proyecto.id },
-        orderBy: { creadoEn: "asc" },
-      });
+      const [rutas, certificados] = await Promise.all([
+        prisma.rutaProyecto.findMany({
+          where: { proyectoId: proyecto.id },
+          orderBy: { creadoEn: "asc" },
+        }),
+        leerCertificados(),
+      ]);
       const yaml = generarConfigProyecto({
         proyectoId: proyecto.id,
         clienteSlug: proyecto.cliente.slug,
         proyectoNombre: proyecto.nombre,
         rutas,
       });
-      return { rutas, yaml };
+      return {
+        rutas: rutas.map((r) => {
+          const cert = certificados[r.dominio];
+          return {
+            ...r,
+            ssl: { activo: !!cert, caducaEn: cert?.caducaEn ?? null },
+          };
+        }),
+        yaml,
+      };
     }),
 
   editar: protectedProcedure

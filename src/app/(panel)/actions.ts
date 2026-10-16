@@ -543,3 +543,38 @@ export async function restaurarBackupAction(
     };
   }
 }
+
+export type DatosRuta = {
+  dominio: string;
+  path: string;
+  servicio: string | null;
+  puerto?: number;
+  redireccionWww: "ninguna" | "a_raiz" | "a_www";
+};
+
+export async function crearRutaAction(proyectoId: string, datos: DatosRuta) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.crear({ proyectoId, ...datos });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al añadir el dominio") };
+  }
+}
+
+export async function editarRutaAction(id: string, datos: DatosRuta) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.editar({ id, ...datos });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al guardar el dominio") };
+  }
+}
+
+export async function eliminarRutaAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.rutas.eliminar({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al eliminar el dominio") };
+  }
+}

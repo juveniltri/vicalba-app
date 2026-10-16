@@ -208,6 +208,51 @@ export async function lanzarDeploy(
   return proyectoDeploying;
 }
 
+// Routes whose Servicio has no running container: Traefik answers 502 there.
+async function rutasSinServicio() {
+  const proyectos = await prisma.proyecto.findMany({
+    where: { estado: "running", rutas: { some: { servicio: { not: null } } } },
+    orderBy: { nombre: "asc" },
+    select: {
+      id: true,
+      nombre: true,
+      cliente: { select: { nombre: true, slug: true } },
+      rutas: {
+        where: { servicio: { not: null } },
+        orderBy: { creadoEn: "asc" },
+        select: { dominio: true, servicio: true },
+      },
+    },
+  });
+  const porProyecto = await Promise.all(
+    proyectos.map(async (p) => {
+      // Without Docker there's nothing to compare against: no warning.
+      const servicios = await listarServicios(p.cliente.slug, p.nombre).catch(
+        () => null,
+      );
+      if (!servicios) return [];
+      const enMarcha = new Set(
+        servicios.filter((s) => s.estado === "running").map((s) => s.servicio),
+      );
+      const faltan = new Map<string, string[]>();
+      for (const r of p.rutas)
+        if (r.servicio && !enMarcha.has(r.servicio))
+          faltan.set(r.servicio, [
+            ...(faltan.get(r.servicio) ?? []),
+            r.dominio,
+          ]);
+      return [...faltan].map(([servicio, dominios]) => ({
+        proyectoId: p.id,
+        proyecto: p.nombre,
+        cliente: p.cliente.nombre,
+        servicio,
+        dominios,
+      }));
+    }),
+  );
+  return porProyecto.flat();
+}
+
 export const proyectosRouter = router({
   obtener: protectedProcedure.input(idInput).query(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
@@ -660,6 +705,7 @@ export const proyectosRouter = router({
           };
         }),
       ),
+      rutasSinServicio: await rutasSinServicio(),
     };
   }),
 

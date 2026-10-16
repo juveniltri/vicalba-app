@@ -2584,6 +2584,52 @@ describe("proyectos.actividad", () => {
     vi.mocked(prisma.proyecto.findMany).mockResolvedValue([]);
   });
 
+  it("avisa de las rutas a Servicios sin contenedor en marcha, sin contar los Proyectos sin Docker", async () => {
+    vi.mocked(prisma.proyecto.findMany).mockImplementation((async (args: {
+      where?: { rutas?: unknown };
+    }) =>
+      args.where?.rutas
+        ? [
+            {
+              id: "p1",
+              nombre: "crm",
+              cliente: { nombre: "Microcapilar", slug: "micro" },
+              rutas: [
+                { dominio: "crm.com", servicio: "web" },
+                { dominio: "api.crm.com", servicio: "api" },
+                { dominio: "admin.crm.com", servicio: "api" },
+              ],
+            },
+            {
+              id: "p2",
+              nombre: "blog",
+              cliente: { nombre: "Tienda", slug: "tienda" },
+              rutas: [{ dominio: "blog.com", servicio: "ghost" }],
+            },
+          ]
+        : []) as never);
+    vi.mocked(listarServicios).mockImplementation(async (slug: string) => {
+      if (slug === "tienda") throw new Error("docker caído");
+      return [
+        { servicio: "web", estado: "running", detalle: "Up" },
+        { servicio: "api", estado: "stopped", detalle: "Exited (1)" },
+      ];
+    });
+
+    const ctx = await createContext();
+    const { rutasSinServicio } = await createCaller(ctx).proyectos.actividad();
+
+    expect(rutasSinServicio).toEqual([
+      {
+        proyectoId: "p1",
+        proyecto: "crm",
+        cliente: "Microcapilar",
+        servicio: "api",
+        dominios: ["api.crm.com", "admin.crm.com"],
+      },
+    ]);
+  });
+
   it("devuelve los últimos deploys de todos los proyectos con su cliente", async () => {
     vi.mocked(prisma.deploy.findMany).mockResolvedValue([
       {
@@ -2620,7 +2666,7 @@ describe("proyectos.actividad", () => {
   });
 
   it("lista en atención los proyectos en error con el final del log de su último deploy", async () => {
-    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValueOnce([
       {
         id: "p9",
         nombre: "api",
@@ -2662,7 +2708,7 @@ describe("proyectos.actividad", () => {
   });
 
   it("ofrece rollback al último deploy correcto de un proyecto en error", async () => {
-    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValueOnce([
       {
         id: "p9",
         nombre: "api",
@@ -2689,7 +2735,7 @@ describe("proyectos.actividad", () => {
 
   it("para un proyecto desplegando usa las líneas en vivo del deploy", async () => {
     getOrCreateDeployEmitter("p1").emit("line", "#12 RUN npm run build");
-    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValueOnce([
       {
         id: "p1",
         nombre: "crm",
@@ -2716,7 +2762,7 @@ describe("proyectos.actividad", () => {
   });
 
   it("tolera un proyecto en atención que aún no tiene deploys", async () => {
-    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValueOnce([
       {
         id: "p2",
         nombre: "nuevo",
@@ -2744,7 +2790,7 @@ describe("proyectos.indice", () => {
   });
 
   it("devuelve id, nombre, cliente y estado de cada proyecto sin leer certificados", async () => {
-    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValueOnce([
       {
         id: "p1",
         nombre: "crm",

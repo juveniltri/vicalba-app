@@ -20,6 +20,8 @@ import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import { VolumenesPanel } from "@/components/dashboard/VolumenesPanel";
+import { DominiosPanel } from "@/components/dashboard/DominiosPanel";
+import { extraerServicios } from "@/lib/compose";
 import {
   EditarProyectoButton,
   EliminarProyectoButton,
@@ -53,6 +55,7 @@ const PESTANAS = [
   "resumen",
   "deploys",
   "logs",
+  "dominios",
   "variables",
   "volumenes",
   "compose",
@@ -81,15 +84,17 @@ export default async function DetalleProyectoPage({
     notFound();
   }
 
-  const [variables, deploys, credenciales, volumenes, servicios] =
+  const [variables, deploys, credenciales, volumenes, serviciosDocker, rutas] =
     await Promise.all([
       api.variables.listar({ proyectoId: id }),
       api.proyectos.listarDeploys({ proyectoId: id }),
       api.credenciales.listar(),
       api.volumenes.listar({ proyectoId: id }),
       // Without a Docker daemon (local dev) the page still renders
-      api.proyectos.servicios({ id }).catch(() => []),
+      api.proyectos.servicios({ id }).catch(() => null),
+      api.rutas.listar({ proyectoId: id }),
     ]);
+  const servicios = serviciosDocker ?? [];
 
   const disponibles = PESTANAS.filter(
     (p) => p !== "compose" || proyecto.tipo === "compose",
@@ -105,6 +110,7 @@ export default async function DetalleProyectoPage({
     resumen: "Resumen",
     deploys: `Deploys`,
     logs: "Logs",
+    dominios: "Dominios",
     variables: "Variables",
     volumenes: "Volúmenes",
     compose: "Compose",
@@ -112,6 +118,7 @@ export default async function DetalleProyectoPage({
   };
   const contadores: Partial<Record<Pestana, number>> = {
     deploys: deploys.length,
+    dominios: rutas.rutas.length,
     variables: variables.length,
     volumenes: volumenes.length,
   };
@@ -487,6 +494,29 @@ export default async function DetalleProyectoPage({
           titulo="Logs del contenedor"
           className="h-[65vh]"
         />
+      )}
+
+      {pestana === "dominios" && (
+        <Card titulo="Dominios">
+          <DominiosPanel
+            proyectoId={id}
+            esCompose={proyecto.tipo === "compose"}
+            puertoProyecto={proyecto.puerto}
+            rutas={rutas.rutas}
+            yaml={rutas.yaml}
+            serviciosConocidos={[
+              ...new Set([
+                ...extraerServicios(proyecto.composeContent ?? ""),
+                ...servicios.map((s) => s.servicio),
+              ]),
+            ]}
+            serviciosEnMarcha={
+              serviciosDocker
+                ?.filter((s) => s.estado === "running")
+                .map((s) => s.servicio) ?? null
+            }
+          />
+        </Card>
       )}
 
       {pestana === "variables" && (

@@ -92,6 +92,11 @@ vi.mock("@/lib/traefik/config", async (importOriginal) => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 
+const { mockLeerCertificados } = vi.hoisted(() => ({
+  mockLeerCertificados: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("@/lib/ssl/acme", () => ({ leerCertificados: mockLeerCertificados }));
+
 vi.mock("@/env", () => ({
   env: { PANEL_DOMAIN: "panel.vicalba.com", NODE_ENV: "test" },
 }));
@@ -373,6 +378,23 @@ describe("rutas.editar / eliminar / listar", () => {
     expect(delProyecto.map((r) => r.dominio)).toEqual(["example.com"]);
     expect(yaml).toContain("Host(`example.com`)");
     expect(yaml).not.toContain("otro.com");
+  });
+
+  it("listar incluye el estado del certificado de cada dominio, leyendo acme.json una vez", async () => {
+    const api = await caller();
+    await api.crear({ proyectoId: "p1", dominio: "con-cert.com" });
+    await api.crear({ proyectoId: "p1", dominio: "sin-cert.com" });
+    mockLeerCertificados.mockResolvedValue({
+      "con-cert.com": { caducaEn: "2026-12-01T00:00:00.000Z" },
+    });
+
+    const { rutas: lista } = await api.listar({ proyectoId: "p1" });
+
+    expect(lista.map((r) => r.ssl)).toEqual([
+      { activo: true, caducaEn: "2026-12-01T00:00:00.000Z" },
+      { activo: false, caducaEn: null },
+    ]);
+    expect(mockLeerCertificados).toHaveBeenCalledOnce();
   });
 });
 
