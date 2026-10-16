@@ -58,7 +58,7 @@ Varios dominios por Proyecto con su protección, la configuración de Traefik ed
   la pestaña Dominios.
 - Redespliega los Proyectos Dockerfile, Node.js e imagen: dejan de responder en `IP:puerto` y los
   de tipo imagen pasan a conectarse a la red del Cliente.
-- Detalle paso a paso en `docs/notas-pendientes.md`, «Operación al desplegar la 2.3.0».
+- Detalle paso a paso en `production.md`, § B3.
 
 ## [2.2.0] - 2026-10-14
 
@@ -119,7 +119,7 @@ Discord vuelve a recibir los avisos de deploy, el disco de la VPS deja de llenar
 - La migración de base de datos se aplica sola al arrancar el panel.
 - Todos los usuarios tendrán que volver a iniciar sesión una vez.
 - Para liberar ya el espacio ocupado y aplicar el límite de logs a Traefik, PostgreSQL y los
-  proyectos existentes, sigue los pasos de `docs/notas-pendientes.md`.
+  proyectos existentes, sigue los pasos de `production.md`, § B5.
 
 ## [2.1.0] - 2026-10-14
 

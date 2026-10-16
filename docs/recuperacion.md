@@ -5,9 +5,10 @@ y la **`ENCRYPTION_KEY`** del `.env` original.
 
 ## 1. Preparar la VPS
 
-Sigue «Requisitos previos en la VPS» y «Primera vez» de `CLAUDE.md` **sin** arrancar el stack:
-`mkdir` y `chown -R 1001:1001 /var/vicalba` (sin él el Panel no puede escribir en esas carpetas),
-`git clone`, `cp .env.production.example .env` y rellénalo con **la misma `ENCRYPTION_KEY`**.
+Sigue `production.md` § A1–A7 **sin** arrancar el stack (sin el § A8): Docker, firewall,
+`mkdir` y `chown -R 1001:1001 /var/vicalba` (sin él el Panel no puede escribir en esas carpetas,
+`traefik/static` incluida), `git clone`, DNS y `cp .env.production.example .env`, rellenándolo con
+**la misma `ENCRYPTION_KEY`**.
 
 ## 2. Descargar la última copia
 
