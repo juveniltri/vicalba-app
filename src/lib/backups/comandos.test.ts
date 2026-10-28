@@ -60,6 +60,13 @@ describe("Postgres", () => {
     expect(script(procesoRolesPg("c"))).toContain("--globals-only");
   });
 
+  it("pasa la base de conexión de pg_dumpall con -l: su -d es una cadena de conexión", () => {
+    // Real pg_dumpall 16: `-d postgres` fails with
+    // 'missing "=" after "postgres" in connection info string'.
+    expect(script(procesoRolesPg("c"))).toContain(" -l postgres ");
+    expect(script(procesoRolesPg("c"))).not.toContain("-d postgres");
+  });
+
   it("restaura leyendo stdin", () => {
     const p = procesoRestaurarPg("c");
     expect(p.args.slice(0, 3)).toEqual(["exec", "-i", "c"]);

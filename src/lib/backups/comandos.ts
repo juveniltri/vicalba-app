@@ -94,10 +94,11 @@ export function procesoDumpPg(contenedorId: string, base: string): Proceso {
   );
 }
 
+// pg_dumpall's -d is a connection string, not a database name.
 export function procesoRolesPg(contenedorId: string): Proceso {
   return exec(
     contenedorId,
-    `pg_dumpall -U ${USUARIO_PG} -d postgres --globals-only`,
+    `pg_dumpall -U ${USUARIO_PG} -l postgres --globals-only`,
   );
 }
 
