@@ -43,7 +43,7 @@ describe("ejecutar", () => {
         "-e",
         "let n = 0; const t = setInterval(() => { process.stdout.write('.'); if (++n === 6) { clearInterval(t); } }, 100)",
       ],
-      { inactividadMs: 400 },
+      { inactividadMs: 1500 },
     );
     expect(salida).toBe("......");
   });

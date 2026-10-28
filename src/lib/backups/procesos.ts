@@ -76,7 +76,11 @@ export function ejecutar(
     proc.on("error", (err) => {
       // Aborted: wait for "close" so the error keeps what the process said.
       if (err.name === "AbortError") cancelado = true;
-      else reject(err);
+      else {
+        // spawn failures (ENOENT) may never emit "close".
+        clearTimeout(vigilante);
+        reject(err);
+      }
     });
     proc.on("close", (codigo) => {
       clearTimeout(vigilante);
