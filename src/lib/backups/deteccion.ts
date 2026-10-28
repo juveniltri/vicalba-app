@@ -1,10 +1,11 @@
 import path from "path";
 import { env } from "@/env";
 import {
-  etiquetasVolumen,
   inspeccionarProyecto,
+  inspeccionarVolumen,
   type ContenedorInspeccionado,
   type Montaje,
+  type VolumenInspeccionado,
 } from "@/lib/docker/inspeccion";
 import { logger } from "@/lib/logger";
 import { comprobarRuta, type EstadoRuta } from "./rutaSegura";
@@ -42,7 +43,7 @@ type Contexto = {
   reposDir: string;
   clienteSlug: string;
   proyectoNombre: string;
-  etiquetasVolumen: (n: string) => Promise<Record<string, string>>;
+  inspeccionarVolumen: (n: string) => Promise<VolumenInspeccionado | null>;
   comprobarRuta: (o: string) => Promise<EstadoRuta>;
 };
 
@@ -91,7 +92,11 @@ function motorDe(imagen: string): MotorBd | null {
 
 function directorioBd(c: ContenedorInspeccionado, motor: MotorBd): string {
   return motor === "postgres"
-    ? limpia(c.env.PGDATA ?? "/var/lib/postgresql/data")
+    ? limpia(
+        c.env.PGDATA && path.posix.isAbsolute(c.env.PGDATA)
+          ? c.env.PGDATA
+          : "/var/lib/postgresql/data",
+      )
     : "/var/lib/mysql";
 }
 
@@ -106,6 +111,7 @@ type Clasificacion =
 
 async function clasificarBind(
   origen: string,
+  rutasBd: string[],
   ctx: Contexto,
 ): Promise<Clasificacion> {
   if (!path.posix.isAbsolute(origen))
@@ -131,6 +137,9 @@ async function clasificarBind(
   }
   if (rel.split("/").includes(".git"))
     return { tipo: "no_copiado", motivo: "Dentro de .git" };
+  // Restoring a parent folder would empty a live database's files.
+  if (rutasBd.some((d) => relativa(origen, d) !== null))
+    return { tipo: "no_copiado", motivo: "Contiene los datos de una BD" };
   const estado = await ctx.comprobarRuta(origen);
   if (estado === "no_carpeta") return { tipo: "ignorar" };
   if (estado !== "ok")
@@ -147,12 +156,23 @@ async function clasificarVolumen(
 ): Promise<Clasificacion> {
   // Compose labels the volumes it creates; `external: true` ones (another
   // Cliente's, the Panel's own) lack the label and must never be restored.
-  const etiquetas = await ctx.etiquetasVolumen(nombre);
+  const volumen = await ctx.inspeccionarVolumen(nombre);
   if (
-    etiquetas["com.docker.compose.project"] !==
+    volumen?.etiquetas["com.docker.compose.project"] !==
     `${ctx.clienteSlug}-${ctx.proyectoNombre}`
   )
     return { tipo: "no_copiado", motivo: "Volumen externo o de otro Proyecto" };
+  // `driver_opts: { type: none, o: bind, device: /etc }` gives a labelled
+  // volume whose data is any host folder; only plain local volumes are safe.
+  if (
+    volumen.driver !== "local" ||
+    "device" in volumen.opciones ||
+    (volumen.opciones.o ?? "").includes("bind")
+  )
+    return {
+      tipo: "no_copiado",
+      motivo: "Volumen enlazado a una carpeta del host",
+    };
   return {
     tipo: "elemento",
     elemento: {
@@ -165,8 +185,12 @@ async function clasificarVolumen(
   };
 }
 
-function clasificar(m: Montaje, ctx: Contexto): Promise<Clasificacion> {
-  if (m.tipo === "bind") return clasificarBind(limpia(m.origen), ctx);
+function clasificar(
+  m: Montaje,
+  rutasBd: string[],
+  ctx: Contexto,
+): Promise<Clasificacion> {
+  if (m.tipo === "bind") return clasificarBind(limpia(m.origen), rutasBd, ctx);
   // Anonymous volumes (a Dockerfile VOLUME) change name on every recreate.
   if (m.tipo === "volume" && m.nombre && !VOLUMEN_ANONIMO.test(m.nombre))
     return clasificarVolumen(m.nombre, ctx);
@@ -202,12 +226,24 @@ function detectarBds(contenedores: ContenedorInspeccionado[]): {
   return { bds: [...porServicio.values()], excluidos };
 }
 
+// A folder inside another detected folder is already in its copy; as a
+// separate element, restoring both would extract the inner one twice.
+function sinAnidados(datos: ElementoDatos[]): ElementoDatos[] {
+  const binds = datos.filter((d) => d.montaje === "bind").map((d) => d.origen);
+  return datos.filter(
+    (d) =>
+      d.montaje !== "bind" ||
+      !binds.some((b) => b !== d.origen && relativa(b, d.origen) !== null),
+  );
+}
+
 export async function detectarElementos(
   contenedores: ContenedorInspeccionado[],
   ctx: Contexto,
 ): Promise<Deteccion> {
   if (contenedores.length === 0) return SIN_DETECTAR;
   const { bds, excluidos } = detectarBds(contenedores);
+  const rutasBd = [...excluidos].filter((id) => path.posix.isAbsolute(id));
   const datos: ElementoDatos[] = [];
   const noCopiados: NoCopiado[] = [];
   const vistos = new Set<string>();
@@ -216,12 +252,16 @@ export async function detectarElementos(
     const id = identidad(m);
     if (vistos.has(id) || excluidos.has(id)) continue;
     vistos.add(id);
-    const r = await clasificar(m, ctx);
+    const r = await clasificar(m, rutasBd, ctx);
     if (r.tipo === "elemento") datos.push(r.elemento);
     else if (r.tipo === "no_copiado")
       noCopiados.push({ origen: id, motivo: r.motivo });
   }
-  return { valida: true, elementos: [...bds, ...datos], noCopiados };
+  return {
+    valida: true,
+    elementos: [...bds, ...sinAnidados(datos)],
+    noCopiados,
+  };
 }
 
 export async function detectarProyecto(
@@ -237,7 +277,7 @@ export async function detectarProyecto(
       reposDir: env.REPOS_DIR,
       clienteSlug,
       proyectoNombre,
-      etiquetasVolumen,
+      inspeccionarVolumen,
       comprobarRuta: (origen) => comprobarRuta(origen),
     });
   } catch (err) {

@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContenedorInspeccionado, Montaje } from "@/lib/docker/inspeccion";
+import type {
+  ContenedorInspeccionado,
+  Montaje,
+  VolumenInspeccionado,
+} from "@/lib/docker/inspeccion";
 
 const m = vi.hoisted(() => ({
   inspeccionar: vi.fn(),
-  etiquetas: vi.fn(),
+  volumen: vi.fn(),
   comprobar: vi.fn(),
   warn: vi.fn(),
 }));
@@ -13,7 +17,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/docker/inspeccion", () => ({
   inspeccionarProyecto: m.inspeccionar,
-  etiquetasVolumen: m.etiquetas,
+  inspeccionarVolumen: m.volumen,
 }));
 vi.mock("./rutaSegura", () => ({ comprobarRuta: m.comprobar }));
 
@@ -71,14 +75,24 @@ const crm = (): ContenedorInspeccionado[] => [
   contenedor("redis", "redis:7", [volumen(ANONIMO, "/data")]),
 ];
 
-let etiquetas: Record<string, Record<string, string>>;
+let volumenes: Record<string, VolumenInspeccionado>;
+
+const deProyecto = (
+  proyecto = "c-crm",
+  driver = "local",
+  opciones: Record<string, string> = {},
+): VolumenInspeccionado => ({
+  etiquetas: { "com.docker.compose.project": proyecto },
+  driver,
+  opciones,
+});
 let rutas: Record<string, EstadoRuta>;
 
 const ctx = () => ({
   reposDir: "/r",
   clienteSlug: "c",
   proyectoNombre: "crm",
-  etiquetasVolumen: (n: string) => Promise.resolve(etiquetas[n] ?? {}),
+  inspeccionarVolumen: (n: string) => Promise.resolve(volumenes[n] ?? null),
   comprobarRuta: (o: string) => Promise.resolve(rutas[o] ?? "ok"),
 });
 
@@ -88,7 +102,7 @@ const conDatos = (...montajes: Montaje[]) => [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  etiquetas = {};
+  volumenes = {};
   rutas = {};
 });
 
@@ -269,7 +283,7 @@ describe("detectarElementos", () => {
   });
 
   it("un volumen con nombre del propio Proyecto se copia", async () => {
-    etiquetas.c_crm_uploads = { "com.docker.compose.project": "c-crm" };
+    volumenes.c_crm_uploads = deProyecto();
     const r = await detectarElementos(
       conDatos(volumen("c_crm_uploads", "/uploads")),
       ctx(),
@@ -285,16 +299,26 @@ describe("detectarElementos", () => {
     ]);
   });
 
-  it("un volumen sin label o de otro Proyecto no se copia", async () => {
-    etiquetas.ajeno = { "com.docker.compose.project": "c-otro" };
+  it("un volumen sin label, de otro Proyecto o desaparecido no se copia", async () => {
+    volumenes.externo = {
+      etiquetas: {},
+      driver: "local",
+      opciones: {},
+    };
+    volumenes.ajeno = deProyecto("c-otro");
     const r = await detectarElementos(
-      conDatos(volumen("externo", "/a"), volumen("ajeno", "/b")),
+      conDatos(
+        volumen("externo", "/a"),
+        volumen("ajeno", "/b"),
+        volumen("borrado", "/c"),
+      ),
       ctx(),
     );
     expect(r.elementos).toEqual([]);
     expect(r.noCopiados).toEqual([
       { origen: "externo", motivo: "Volumen externo o de otro Proyecto" },
       { origen: "ajeno", motivo: "Volumen externo o de otro Proyecto" },
+      { origen: "borrado", motivo: "Volumen externo o de otro Proyecto" },
     ]);
   });
 
@@ -370,7 +394,7 @@ describe("detectarElementos", () => {
   });
 
   it("mariadb: BD MySQL y su /var/lib/mysql excluido", async () => {
-    etiquetas.c_crm_mysql = { "com.docker.compose.project": "c-crm" };
+    volumenes.c_crm_mysql = deProyecto();
     const r = await detectarElementos(
       [
         contenedor(
@@ -437,6 +461,107 @@ describe("detectarElementos", () => {
     });
     expect(r.elementos.map((e) => e.clave)).toEqual(["datos:./data"]);
   });
+  it.each([
+    ["con device", "local", { type: "none", o: "bind", device: "/etc" }],
+    ["solo con device", "local", { device: "/etc" }],
+    ["con o=bind", "local", { o: "rbind,ro" }],
+    ["con otro driver", "rexray/ebs", {}],
+  ])(
+    "un volumen del Proyecto %s no se copia",
+    async (_caso, driver, opciones: Record<string, string>) => {
+      volumenes.v = deProyecto("c-crm", driver, opciones);
+      const r = await detectarElementos(conDatos(volumen("v", "/v")), ctx());
+      expect(r.elementos).toEqual([]);
+      expect(r.noCopiados).toEqual([
+        { origen: "v", motivo: "Volumen enlazado a una carpeta del host" },
+      ]);
+    },
+  );
+
+  it("un volumen local con opciones que no enlazan se copia", async () => {
+    volumenes.v = deProyecto("c-crm", "local", { type: "tmpfs", o: "size=1m" });
+    const r = await detectarElementos(conDatos(volumen("v", "/v")), ctx());
+    expect(r.elementos.map((e) => e.clave)).toEqual(["volumen:v"]);
+  });
+
+  it("una carpeta que contiene los datos de la BD no se copia", async () => {
+    const r = await detectarElementos(
+      [
+        contenedor("db", "postgres:16", [
+          bind("/r/c/crm/data/pg", "/var/lib/postgresql/data"),
+        ]),
+        contenedor("app", "node:22", [
+          bind("/r/c/crm/data", "/data"),
+          bind("/r/c/crm/data/media", "/media"),
+        ]),
+      ],
+      ctx(),
+    );
+    expect(r.elementos.map((e) => e.clave)).toEqual([
+      "bd:db",
+      "datos:./data/media",
+    ]);
+    expect(r.noCopiados).toEqual([
+      { origen: "/r/c/crm/data", motivo: "Contiene los datos de una BD" },
+    ]);
+  });
+
+  it("también en .panel", async () => {
+    const r = await detectarElementos(
+      [
+        contenedor("app", "node:22", [bind("/r/c/.panel/data", "/data")]),
+        contenedor("db", "mysql:8", [
+          bind("/r/c/.panel/data/mysql", "/var/lib/mysql"),
+        ]),
+      ],
+      ctx(),
+    );
+    expect(r.elementos.map((e) => e.clave)).toEqual(["bd:db"]);
+    expect(r.noCopiados).toEqual([
+      { origen: "/r/c/.panel/data", motivo: "Contiene los datos de una BD" },
+    ]);
+  });
+
+  it("de dos carpetas anidadas solo es elemento la de fuera", async () => {
+    const r = await detectarElementos(
+      conDatos(
+        bind("/r/c/crm/data/media", "/media"),
+        bind("/r/c/crm/data", "/data"),
+        bind("/r/c/crm/data/media/fotos", "/fotos"),
+        bind("/r/c/crm/database", "/database"),
+      ),
+      ctx(),
+    );
+    expect(r.elementos.map((e) => e.clave)).toEqual([
+      "datos:./data",
+      "datos:./database",
+    ]);
+    expect(r.noCopiados).toEqual([]);
+  });
+
+  it("un PGDATA relativo usa el directorio por defecto", async () => {
+    const r = await detectarElementos(
+      [
+        contenedor(
+          "db",
+          "postgres:16",
+          [bind("/r/c/crm/data/pg", "/var/lib/postgresql/data")],
+          { env: { PGDATA: "pgdata" } },
+        ),
+      ],
+      ctx(),
+    );
+    expect(r.elementos.map((e) => e.clave)).toEqual(["bd:db"]);
+  });
+
+  it.each(["/r/c/crm-otro/data", "/r/c/.panel-x/data", "/r/c/crmdata"])(
+    "%s no pasa por el repo ni por .panel",
+    async (origen) => {
+      const r = await detectarElementos(conDatos(bind(origen, "/x")), ctx());
+      expect(r.elementos).toEqual([]);
+      expect(r.noCopiados).toEqual([{ origen, motivo: "Fuera del Proyecto" }]);
+    },
+  );
 });
 
 describe("detectarProyecto", () => {
@@ -455,9 +580,9 @@ describe("detectarProyecto", () => {
 
   it("usa las etiquetas reales de los volúmenes", async () => {
     m.inspeccionar.mockResolvedValue(conDatos(volumen("v", "/v")));
-    m.etiquetas.mockResolvedValue({ "com.docker.compose.project": "c-crm" });
+    m.volumen.mockResolvedValue(deProyecto());
     const r = await detectarProyecto("c", "crm");
-    expect(m.etiquetas).toHaveBeenCalledWith("v");
+    expect(m.volumen).toHaveBeenCalledWith("v");
     expect(r.elementos.map((e) => e.clave)).toEqual(["volumen:v"]);
   });
 

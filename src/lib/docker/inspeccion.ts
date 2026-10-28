@@ -41,8 +41,16 @@ const inspeccionSchema = z.object({
 });
 
 const volumenSchema = z.object({
+  Driver: z.string().default(""),
   Labels: z.record(z.string(), z.string()).nullish(),
+  Options: z.record(z.string(), z.string()).nullish(),
 });
+
+export type VolumenInspeccionado = {
+  etiquetas: Record<string, string>;
+  driver: string;
+  opciones: Record<string, string>;
+};
 
 function aEnv(lineas: string[]): Record<string, string> {
   const env: Record<string, string> = {};
@@ -92,16 +100,20 @@ export async function inspeccionarProyecto(
   );
 }
 
-export async function etiquetasVolumen(
+export async function inspeccionarVolumen(
   nombre: string,
-): Promise<Record<string, string>> {
+): Promise<VolumenInspeccionado | null> {
   try {
     const datos = volumenSchema.parse(await docker.getVolume(nombre).inspect());
-    return datos.Labels ?? {};
+    return {
+      etiquetas: datos.Labels ?? {},
+      driver: datos.Driver,
+      opciones: datos.Options ?? {},
+    };
   } catch (err) {
-    // A volume removed between the container inspect and this call has no
-    // labels: it is then reported as external instead of failing detection.
-    if ((err as { statusCode?: number }).statusCode === 404) return {};
+    // A volume removed between the container inspect and this call is then
+    // reported as external instead of failing the whole detection.
+    if ((err as { statusCode?: number }).statusCode === 404) return null;
     throw err;
   }
 }
