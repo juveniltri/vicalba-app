@@ -253,7 +253,8 @@ algo de su configuración depende de la versión anterior.
 ### B2b. A la 2.4.0 (backups de Proyectos y «Solo desde Cloudflare»)
 
 (Su número es B2b para no renumerar los apartados que citan otras notas y versiones.) Si la VPS
-está en la **2.2.x** o anterior, haz también § B3 y § B4 antes.
+está en la **2.1.x** o anterior, haz también § B3 y § B4 (en ese orden); si está en la **2.2.x**,
+solo § B3.
 
 **Actualizar:** § B1. Las migraciones se aplican solas al arrancar el Panel; no hay variables
 nuevas en el `.env`.

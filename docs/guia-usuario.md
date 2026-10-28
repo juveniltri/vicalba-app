@@ -312,10 +312,10 @@ imagen ni aparecen. Los datos de `.panel/` se copian, pero se restauran a mano (
 ### Restaurar
 
 1. En **Backups**, la lista de copias muestra fecha, origen (programada, manual o antes de
-   restaurar), contenido y tamaño. Pulsa **Restaurar** en la que quieras.
+   restaurar) y tamaño. Pulsa **Restaurar** en la que quieras.
 2. Marca qué elementos devolver (por defecto, todos los que se pueden). Un elemento que ya no se
    monta en el Proyecto, o que se copió a medias en esa copia, se rechaza.
-3. Lee el aviso, escribe el nombre del Proyecto y confirma con **Restaurar copia**.
+3. Lee el aviso, escribe el nombre del Proyecto y confirma con **Restaurar**.
 4. El Panel hace antes una copia «Antes de restaurar» de lo que va a sustituir; si falla, no
    toca nada. Después **para los Servicios** del Proyecto (salvo las BDs), sustituye los datos y
    las bases, y arranca de nuevo lo que estaba en marcha. El Proyecto aparece como
@@ -338,9 +338,12 @@ imagen ni aparecen. Los datos de `.panel/` se copian, pero se restauran a mano (
 Al eliminar un Proyecto, la casilla **Borrar también sus copias ahora** (desmarcada por defecto)
 las olvida de inmediato. Si la dejas desmarcada, las copias se borran solas pasados 30 días. Si
 hay una copia o restauración en curso, la eliminación se rechaza hasta que termine. **Lo que se
-olvida no se puede recuperar**: tampoco las copias de una carpeta que dejó de montarse, que
-caducan igual a los 30 días. Si un Proyecto tiene algo en «No se copia», sus copias no se
-caducan solas.
+olvida no se puede recuperar**. Las copias de un Proyecto eliminado caducan siempre a los 30
+días.
+
+En un Proyecto que sigue existiendo, las de una carpeta que dejó de montarse también caducan a
+los 30 días, salvo que el Proyecto tenga algo en «No se copia»: entonces no se caduca ninguna
+copia suya, por si la causa es un fallo de detección.
 
 # Parte II — Referencia por pantallas
 
