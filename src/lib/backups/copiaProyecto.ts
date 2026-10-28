@@ -153,9 +153,21 @@ export async function copiarProyecto(p: {
     : p.incluidos;
   const resultados: ResultadoElemento[] = [];
   for (const e of p.deteccion.elementos.filter((x) => elegido(x.clave))) {
-    const fila = await prisma.elementoCopia.create({
-      data: { backupId: p.backupId, clave: e.clave },
-    });
+    let fila: { id: string };
+    try {
+      fila = await prisma.elementoCopia.create({
+        data: { backupId: p.backupId, clave: e.clave },
+      });
+    } catch (err) {
+      // Prisma rejects with Error; without a row the element is not attempted.
+      const error = (err as Error).message;
+      log.error(
+        { err, clave: e.clave, backupId: p.backupId },
+        "No se pudo registrar el elemento de la copia",
+      );
+      resultados.push({ clave: e.clave, ok: false, error });
+      continue;
+    }
     const acumulado: Acumulado = { snapshotIds: [], bytes: 0 };
     let error: string | undefined;
     try {
@@ -164,15 +176,23 @@ export async function copiarProyecto(p: {
       // copiarElemento always rejects with an Error carrying the reason.
       error = (err as Error).message;
     }
-    await prisma.elementoCopia.update({
-      where: { id: fila.id },
-      data: {
-        resultado: error === undefined ? "exito" : "error",
-        ...(error === undefined ? {} : { error }),
-        snapshotIds: acumulado.snapshotIds,
-        bytesAnadidos: BigInt(acumulado.bytes),
-      },
-    });
+    // The row stays en_curso until startup's orphan cleanup closes it.
+    await prisma.elementoCopia
+      .update({
+        where: { id: fila.id },
+        data: {
+          resultado: error === undefined ? "exito" : "error",
+          ...(error === undefined ? {} : { error }),
+          snapshotIds: acumulado.snapshotIds,
+          bytesAnadidos: BigInt(acumulado.bytes),
+        },
+      })
+      .catch((err: unknown) =>
+        log.error(
+          { err, clave: e.clave, backupId: p.backupId },
+          "No se pudo cerrar el elemento de la copia",
+        ),
+      );
     resultados.push(
       error === undefined
         ? { clave: e.clave, ok: true }

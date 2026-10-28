@@ -10,9 +10,10 @@ const m = vi.hoisted(() => ({
   snapshot: vi.fn(),
   eliminarAuxiliar: vi.fn(),
   warn: vi.fn(),
+  error: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({
-  logger: { child: () => ({ warn: m.warn }) },
+  logger: { child: () => ({ warn: m.warn, error: m.error }) },
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { elementoCopia: { create: m.create, update: m.update } },
@@ -407,6 +408,43 @@ describe("copiarProyecto", () => {
     expect(r).toEqual([{ clave: "datos:./data/media", ok: true }]);
     expect(m.warn).toHaveBeenCalledWith(
       expect.objectContaining({ auxiliar: "aux-b1-datos:./data/media" }),
+      expect.any(String),
+    );
+  });
+
+  it("si no se puede cerrar la fila de un elemento, sigue con el resto", async () => {
+    m.update.mockRejectedValueOnce(new Error("BD caída"));
+
+    const r = await copiarProyecto(
+      params({ deteccion: deteccion(MEDIA, UPLOADS) }),
+    );
+
+    expect(r).toEqual([
+      { clave: "datos:./data/media", ok: true },
+      { clave: "volumen:cli-crm_uploads", ok: true },
+    ]);
+    expect(m.snapshot).toHaveBeenCalledTimes(2);
+    expect(m.error).toHaveBeenCalledWith(
+      expect.objectContaining({ clave: "datos:./data/media", backupId: "b1" }),
+      expect.any(String),
+    );
+  });
+
+  it("si no se puede crear la fila, el elemento falla sin copiarse y sigue el resto", async () => {
+    m.create.mockRejectedValueOnce(new Error("BD caída"));
+
+    const r = await copiarProyecto(
+      params({ deteccion: deteccion(MEDIA, UPLOADS) }),
+    );
+
+    expect(r).toEqual([
+      { clave: "datos:./data/media", ok: false, error: "BD caída" },
+      { clave: "volumen:cli-crm_uploads", ok: true },
+    ]);
+    expect(m.snapshot).toHaveBeenCalledTimes(1);
+    expect(m.update).toHaveBeenCalledTimes(1);
+    expect(m.error).toHaveBeenCalledWith(
+      expect.objectContaining({ clave: "datos:./data/media", backupId: "b1" }),
       expect.any(String),
     );
   });
