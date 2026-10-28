@@ -172,10 +172,13 @@ export async function toggleAutoDeployAction(id: string) {
   }
 }
 
-export async function eliminarProyectoAction(id: string) {
+export async function eliminarProyectoAction(
+  id: string,
+  borrarCopias: boolean = false,
+) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.eliminar({ id });
+    await api.proyectos.eliminar({ id, borrarCopias });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al eliminar proyecto") };
   }
