@@ -65,9 +65,10 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
 
 ### Más adelante
 
+- [ ] **2.5 — varios destinos a la vez (local + externo)**.
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
 - [ ] **2FA (TOTP)** en el login.
-- [ ] **Backups — más adelante**: cambiar la clave de cifrado, varios destinos a la vez, retención configurable y `restic check` periódico.
+- [ ] **Backups — más adelante**: cambiar la clave de cifrado, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
 ---

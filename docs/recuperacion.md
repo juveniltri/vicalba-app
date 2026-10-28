@@ -18,6 +18,9 @@ export RESTIC_REPOSITORY='<repositorio del kit>'
 export RESTIC_PASSWORD='<clave del kit>'
 # S3:
 export AWS_ACCESS_KEY_ID='...' AWS_SECRET_ACCESS_KEY='...'
+# Local (en la VPS): sin credenciales. Saca antes la carpeta de la VPS, p. ej.
+#   rsync -a /var/vicalba/backups/restic/ otro-servidor:/ruta/restic/
+#   y usa esa copia: RESTIC_REPOSITORY=/ruta/restic (o `restic -r /ruta/restic snapshots`).
 # SFTP: la clave SSH del destino en ~/.ssh y, si el puerto no es 22,
 #   restic -o sftp.command="ssh -p 2222 usuario@host -s sftp" ...
 restic snapshots --tag panel

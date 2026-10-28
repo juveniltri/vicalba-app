@@ -46,8 +46,8 @@ En el firewall del proveedor (Hetzner Cloud Firewall u otro), reglas **Inbound**
 ### A4. Directorios persistentes
 
 ```bash
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
-# El Panel corre como uid 1001 y escribe en las tres
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos /var/vicalba/backups
+# El Panel corre como uid 1001 y escribe en todas
 chown -R 1001:1001 /var/vicalba
 ```
 
@@ -187,8 +187,14 @@ Configuración → Webhook de GitHub del Panel muestra estos datos para copiarlo
 
 En **Configuración → Backups**:
 
-1. Destino: S3 compatible (Backblaze B2, Cloudflare R2, Hetzner…) o SFTP con una credencial SSH
-   del Panel. Pulsa **Probar y guardar**.
+1. Destino: S3 compatible (Backblaze B2, Cloudflare R2, Hetzner…), SFTP con una credencial SSH
+   del Panel, o **Local (en la VPS)** si aún no tienes un destino externo. Pulsa **Probar y
+   guardar**.
+
+   El destino local guarda el repositorio en `/var/vicalba/backups/restic` (carpeta fija, la crea
+   y da permisos el § A4; el `docker-compose.yml` la monta en el Panel). Si la VPS o su disco se
+   pierden, las copias se pierden con ella: monta ahí un volumen o disco aparte del proveedor
+   (`/var/vicalba/backups` como punto de montaje) y pasa a S3/SFTP en cuanto puedas.
 2. Guarda el **kit de recuperación** que aparece **y** la `ENCRYPTION_KEY` fuera de la VPS.
    Confirma en el Panel que los has guardado.
 3. Activa la copia diaria y elige la hora (Europe/Madrid). Al día siguiente, comprueba en el
@@ -257,7 +263,9 @@ está en la **2.1.x** o anterior, haz también § B3 y § B4 (en ese orden); si 
 solo § B3.
 
 **Actualizar:** § B1. Las migraciones se aplican solas al arrancar el Panel; no hay variables
-nuevas en el `.env`.
+nuevas en el `.env`. Para el destino **Local (en la VPS)** (opcional) crea antes la carpeta
+(`mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups`) y levanta el stack
+completo con `docker compose up -d` para que el Panel tenga el montaje nuevo (§ B1 ya lo hace).
 
 **Qué esperar:**
 

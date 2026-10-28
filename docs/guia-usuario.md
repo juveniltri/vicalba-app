@@ -216,6 +216,10 @@ de Traefik fuera de la VPS.
      carpeta, el access key ID y la secret key.
    - **SFTP**: un servidor tuyo. Rellena host, puerto, usuario, ruta absoluta y la credencial
      SSH (créala antes en Credenciales SSH y añade su clave pública al servidor).
+   - **Local (en la VPS)**: sin campos; guarda las copias en la carpeta fija
+     `/var/vicalba/backups` de la propia VPS (el administrador la crea al instalar). Es un
+     sustituto mientras no haya un destino externo: si se pierde la VPS o su disco, se pierden
+     también las copias. El Panel lo recuerda con un aviso ámbar y muestra el espacio libre.
 2. Pulsa **Probar y guardar**. El Panel comprueba que llega al destino, genera la clave de
    cifrado y prepara el repositorio de copias.
 3. Aparece el **kit de recuperación**: el repositorio y la clave. **Cópialo y guárdalo fuera de
@@ -509,7 +513,7 @@ Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no 
 
 - **Estado**: última copia (hace cuánto y si fue correcta, o el motivo del fallo), próxima copia
   y **Hacer copia ahora**.
-- **Destino**: S3 o SFTP y sus datos; **Probar y guardar** (tarea 8).
+- **Destino**: S3, SFTP o local (en la VPS) y sus datos; **Probar y guardar** (tarea 8).
 - **Programación**: copia diaria y hora.
 - **Historial**: cada copia y restauración (también las de Proyectos) con su fecha, origen (programada, manual o antes de
   restaurar), resultado y tamaño.

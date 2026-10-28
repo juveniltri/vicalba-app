@@ -312,7 +312,8 @@ imágenes; el texto se actualiza a mano.
 
 ### Nota — backups
 
-Configuración → Backups: destino S3 compatible o SFTP (credencial SSH del Panel), copia diaria a la
+Configuración → Backups: destino S3 compatible, SFTP (credencial SSH del Panel) o local (`BACKUPS_LOCAL_DIR`, por defecto
+`/var/vicalba/backups`, repositorio `<dir>/restic`, aviso ámbar permanente: está en la misma VPS), copia diaria a la
 hora elegida (Europe/Madrid), 7 diarias + 4 semanales. Cada copia es un snapshot de restic con
 `panel-db.dump` (`pg_dump -Fc`) y `traefik/` (dinámica + `acme.json`). La caché de restic y el
 `known_hosts` del destino SFTP viven en `<REPOS_DIR>/.backups/`. El kit de recuperación (repositorio
