@@ -309,12 +309,24 @@ describe("EliminarProyectoButton", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("la casilla de borrar las copias está desmarcada y se pasa a la acción", async () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+    const casilla = screen.getByLabelText("Borrar también sus copias ahora");
+    expect(casilla).not.toBeChecked();
+    fireEvent.click(casilla);
+    fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
+    await waitFor(() =>
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", true),
+    );
+  });
+
   it("Confirmar llama eliminarProyectoAction con el id", async () => {
     render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
     fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() =>
-      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1"),
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false),
     );
   });
 

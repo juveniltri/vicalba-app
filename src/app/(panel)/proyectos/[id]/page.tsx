@@ -20,6 +20,7 @@ import { VariablesPanel } from "@/components/dashboard/VariablesPanel";
 import { HistorialDeploys } from "@/components/dashboard/HistorialDeploys";
 import { CredencialSelector } from "@/components/dashboard/CredencialSelector";
 import { VolumenesPanel } from "@/components/dashboard/VolumenesPanel";
+import { BackupsProyecto } from "@/components/backups/BackupsProyecto";
 import { DominiosPanel } from "@/components/dashboard/DominiosPanel";
 import { extraerServicios } from "@/lib/compose";
 import {
@@ -58,10 +59,29 @@ const PESTANAS = [
   "dominios",
   "variables",
   "volumenes",
+  "backups",
   "compose",
   "ajustes",
 ] as const;
 type Pestana = (typeof PESTANAS)[number];
+
+async function cargarBackups(
+  api: Awaited<ReturnType<typeof createServerCaller>>,
+  proyectoId: string,
+) {
+  const mensaje = (e: unknown) => ({
+    error: e instanceof Error ? e.message : String(e),
+  });
+  const [config, estado] = await Promise.all([
+    api.backups.obtenerConfiguracion(),
+    api.backups.elementosProyecto({ proyectoId }).catch(mensaje),
+  ]);
+  const destinoConfigurado = config.tipoDestino !== null;
+  const copias = destinoConfigurado
+    ? await api.backups.copiasProyecto({ proyectoId }).catch(mensaje)
+    : null;
+  return { destinoConfigurado, estado, copias };
+}
 
 export default async function DetalleProyectoPage({
   params,
@@ -102,6 +122,8 @@ export default async function DetalleProyectoPage({
   const pestana: Pestana = disponibles.includes(tab as Pestana)
     ? (tab as Pestana)
     : "resumen";
+  // Only on this tab: detecting items inspects Docker and listing copies queries the remote destination.
+  const backups = pestana === "backups" ? await cargarBackups(api, id) : null;
   const isDeploying = proyecto.estado === "deploying";
   const canAct = !isDeploying;
   const enProduccion = deploys.find((d) => d.resultado === "exito");
@@ -113,6 +135,7 @@ export default async function DetalleProyectoPage({
     dominios: "Dominios",
     variables: "Variables",
     volumenes: "Volúmenes",
+    backups: "Backups",
     compose: "Compose",
     ajustes: "Ajustes",
   };
@@ -528,6 +551,18 @@ export default async function DetalleProyectoPage({
       {pestana === "volumenes" && (
         <Card titulo="Volúmenes">
           <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
+        </Card>
+      )}
+
+      {pestana === "backups" && backups && (
+        <Card titulo="Backups">
+          <BackupsProyecto
+            proyectoId={id}
+            proyectoNombre={proyecto.nombre}
+            destinoConfigurado={backups.destinoConfigurado}
+            estado={backups.estado}
+            copias={backups.copias}
+          />
         </Card>
       )}
 

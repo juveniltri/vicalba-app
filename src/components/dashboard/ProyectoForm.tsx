@@ -387,10 +387,11 @@ export function EliminarProyectoButton({
   const [confirm, setConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [borrarCopias, setBorrarCopias] = useState(false);
 
   async function handleEliminar() {
     setLoading(true);
-    const result = await eliminarProyectoAction(proyectoId);
+    const result = await eliminarProyectoAction(proyectoId, borrarCopias);
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -405,6 +406,14 @@ export function EliminarProyectoButton({
         <span className="font-body text-xs text-state-error">
           ¿Eliminar &quot;{proyectoNombre}&quot;?
         </span>
+        <label className="flex items-center gap-1.5 font-body text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={borrarCopias}
+            onChange={(e) => setBorrarCopias(e.target.checked)}
+          />
+          Borrar también sus copias ahora
+        </label>
         <button
           onClick={handleEliminar}
           disabled={loading}

@@ -8,6 +8,8 @@ const fila = {
   snapshotId: null,
   bytesAnadidos: null,
   error: null,
+  proyectoId: null,
+  proyectoNombre: null,
 };
 
 describe("formatearBytes", () => {
@@ -76,5 +78,37 @@ describe("HistorialBackups", () => {
     expect(restauracion).toHaveTextContent("Restauración");
     expect(restauracion).toHaveTextContent("Manual");
     expect(restauracion).toHaveTextContent("En curso");
+  });
+
+  it("la columna Proyecto muestra Panel o el nombre del Proyecto", () => {
+    render(
+      <HistorialBackups
+        historial={[
+          {
+            ...fila,
+            id: "p1",
+            operacion: "copia",
+            origen: "manual",
+            resultado: "exito",
+            iniciadoEn: new Date("2026-10-14T01:00:00Z"),
+          },
+          {
+            ...fila,
+            id: "p2",
+            operacion: "copia",
+            origen: "manual",
+            resultado: "exito",
+            iniciadoEn: new Date("2026-10-14T02:00:00Z"),
+            proyectoId: "x",
+            proyectoNombre: "acme/crm",
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "Proyecto" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Panel")).toBeInTheDocument();
+    expect(screen.getByText("acme/crm")).toBeInTheDocument();
   });
 });

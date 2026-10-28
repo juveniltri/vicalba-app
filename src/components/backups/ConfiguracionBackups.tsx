@@ -16,6 +16,7 @@ import type {
   CopiaBackup,
   EjecucionBackup,
 } from "@/lib/schemas/dashboard";
+import { BotonCancelarBackup } from "./BackupsProyecto";
 import { CopiasBackup } from "./CopiasBackup";
 import { DestinoBackupForm } from "./DestinoBackupForm";
 import { HistorialBackups, formatearFecha } from "./HistorialBackups";
@@ -107,14 +108,17 @@ export function ConfiguracionBackups({
             }
           />
         </div>
-        <button
-          type="button"
-          onClick={hacerCopia}
-          disabled={config.enCurso || isPending}
-          className="self-start inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-        >
-          Hacer copia ahora
-        </button>
+        <div className="flex items-center gap-2 self-start">
+          <button
+            type="button"
+            onClick={hacerCopia}
+            disabled={config.enCurso || isPending}
+            className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          >
+            Hacer copia ahora
+          </button>
+          {config.enCurso && <BotonCancelarBackup />}
+        </div>
         {errorKit && (
           <p className="font-body text-xs text-state-error">{errorKit}</p>
         )}

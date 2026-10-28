@@ -640,3 +640,67 @@ export async function rangosCloudflareAction() {
     };
   }
 }
+
+export async function cancelarBackupAction() {
+  try {
+    const api = await createServerCaller();
+    await api.backups.cancelar();
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo cancelar la operación") };
+  }
+}
+
+export async function habilitarProyectoBackupAction(
+  proyectoId: string,
+  habilitado: boolean,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.backups.habilitarProyecto({ proyectoId, habilitado });
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo guardar el cambio") };
+  }
+}
+
+export async function marcarElementoBackupAction(
+  proyectoId: string,
+  clave: string,
+  incluido: boolean,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.backups.marcarElemento({ proyectoId, clave, incluido });
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo guardar el cambio") };
+  }
+}
+
+export async function copiarProyectoBackupAction(proyectoId: string) {
+  try {
+    const api = await createServerCaller();
+    await api.backups.copiarProyecto({ proyectoId });
+  } catch (err) {
+    return { error: parseTRPCError(err, "No se pudo lanzar la copia") };
+  }
+}
+
+export async function restaurarProyectoBackupAction(
+  proyectoId: string,
+  copiaId: string,
+  claves: string[],
+  confirmacion: string,
+) {
+  try {
+    const api = await createServerCaller();
+    await api.backups.restaurarProyecto({
+      proyectoId,
+      copiaId,
+      claves,
+      confirmacion,
+    });
+  } catch (err) {
+    return {
+      error: parseTRPCError(err, "No se pudo iniciar la restauración"),
+    };
+  }
+}

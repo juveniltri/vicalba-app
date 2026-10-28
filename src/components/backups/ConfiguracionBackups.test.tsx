@@ -10,6 +10,7 @@ const a = vi.hoisted(() => ({
   confirmarClaveBackupAction: vi.fn(),
   guardarDestinoBackupAction: vi.fn(),
   restaurarBackupAction: vi.fn(),
+  cancelarBackupAction: vi.fn(),
   refresh: vi.fn(),
 }));
 vi.mock("@/app/(panel)/actions", () => a);
@@ -60,6 +61,8 @@ const ejecucion = (e: Partial<EjecucionBackup>): EjecucionBackup => ({
   snapshotId: null,
   bytesAnadidos: null,
   error: null,
+  proyectoId: null,
+  proyectoNombre: null,
   ...e,
 });
 
@@ -152,6 +155,25 @@ describe("ConfiguracionBackups", () => {
     expect(
       screen.getByRole("button", { name: "Hacer copia ahora" }),
     ).toBeDisabled();
+  });
+
+  it("«Cancelar» solo aparece con una operación en curso y pide confirmación", async () => {
+    a.cancelarBackupAction.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const { unmount } = renderizar();
+    expect(
+      screen.queryByRole("button", { name: /^Cancelar/ }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    renderizar({ ...lista, enCurso: true });
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(a.cancelarBackupAction).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "¿Cancelar la operación?" }),
+    );
+    expect(a.cancelarBackupAction).toHaveBeenCalled();
+    expect(await screen.findByText("Operación cancelada")).toBeInTheDocument();
   });
 
   it("con la clave sin confirmar abre el kit de recuperación", async () => {
