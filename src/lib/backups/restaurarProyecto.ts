@@ -80,6 +80,21 @@ const nombreDe = (p: ProyectoRestauracion) => `${p.clienteSlug}/${p.nombre}`;
 const aviso = (p: ProyectoRestauracion) =>
   `Los Servicios de ${nombreDe(p)} se han quedado parados. Restaura otra vez (la copia previa está en la lista) o arráncalos a mano.`;
 
+// A failed element may have left some bases without others (or without
+// roles): restoring that would silently drop data.
+function copiaEntera(
+  e: Elemento,
+  partes: SnapshotProyecto[],
+  registrados: { clave: string; resultado: string }[],
+): boolean {
+  const filas = registrados.filter((r) => r.clave === e.clave);
+  if (filas.length > 0) return filas.every((r) => r.resultado === "exito");
+  // No row (Panel recovered on a new VPS): the snapshots must show it finished.
+  if (e.tipo === "datos") return true;
+  const fin = e.motor === "mysql" ? "/todo.sql" : "/_roles.sql";
+  return partes.some((s) => s.ruta.endsWith(fin));
+}
+
 async function validar(p: {
   proyectoId: string;
   copiaId: string;
@@ -115,6 +130,10 @@ async function validar(p: {
     proyecto.clienteSlug,
     proyecto.nombre,
   );
+  const registrados = await prisma.elementoCopia.findMany({
+    where: { backupId: p.copiaId, clave: { in: claves } },
+    select: { clave: true, resultado: true },
+  });
   const seleccion: Seleccion[] = [];
   for (const clave of claves) {
     const partes = snapshots.filter(
@@ -127,6 +146,11 @@ async function validar(p: {
     const elemento = deteccion.elementos.find((e) => e.clave === clave);
     if (!elemento) {
       throw new RestauracionRechazada(`${clave} ya no se monta en el Proyecto`);
+    }
+    if (!copiaEntera(elemento, partes, registrados)) {
+      throw new RestauracionRechazada(
+        `${clave} no se copió entero en esa copia`,
+      );
     }
     if (elemento.tipo === "datos") {
       if (!elemento.restaurable) {
@@ -184,7 +208,7 @@ async function copiaPrevia(
   previaId: string,
   arrancadas: Set<string>,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<string> {
   // copiarProyecto refuses stopped databases: those started in step 1 run now.
   const deteccion: Deteccion = {
     ...plan.deteccion,
@@ -216,15 +240,16 @@ async function copiaPrevia(
           .filter((r) => !r.ok)
           .map((r) => `${r.clave}: ${r.error}`)
           .join("\n");
-  const error = fallidos || (count > 0 ? ELEMENTO_SIN_CERRAR : "");
-  await prisma.backup.update({
+  return fallidos || (count > 0 ? ELEMENTO_SIN_CERRAR : "");
+}
+
+function cerrarPrevia(previaId: string, error: string) {
+  return prisma.backup.update({
     where: { id: previaId },
     data: error
       ? { resultado: "error", error, finalizadoEn: new Date() }
       : { resultado: "exito", finalizadoEn: new Date() },
   });
-  // Without a good pre-copy nothing may be replaced.
-  if (error) throw new Error(`No se restauró: falló la copia previa (${error})`);
 }
 
 async function restaurarPartes(
@@ -235,6 +260,11 @@ async function restaurarPartes(
 ): Promise<void> {
   const e = s.elemento;
   if (e.tipo === "datos") {
+    // The pre-copy can take hours: the folder may have become a link since.
+    if (e.montaje === "bind") {
+      const estado = await comprobarRuta(e.origen);
+      if (estado !== "ok") throw new Error(MOTIVO_RUTA[estado]);
+    }
     const [parte] = s.partes;
     await encadenar(
       volcarSnapshot(r, parte.id, parte.ruta),
@@ -324,22 +354,34 @@ async function restaurar(
 ): Promise<void> {
   const { proyecto } = plan;
   const { clienteSlug: slug, nombre } = proyecto;
-  const enMarcha = (await listarServicios(slug, nombre))
-    .filter(estabaEnMarcha)
-    .map((s) => s.servicio);
   const bds = plan.seleccion.flatMap((s) =>
     s.elemento.tipo === "bd" ? [s.elemento] : [],
   );
   const servicioBd = new Set(bds.map((b) => b.servicio));
   const arrancadas = new Set<string>();
+  let previaCerrada = false;
   let tocado = false;
   try {
+    const enMarcha = (await listarServicios(slug, nombre))
+      .filter(estabaEnMarcha)
+      .map((s) => s.servicio);
     for (const bd of bds.filter((b) => !b.enMarcha)) {
       arrancadas.add(bd.servicio);
       await iniciarProyecto(slug, nombre, bd.servicio);
     }
     for (const bd of bds) await esperarBd(bd, signal);
-    await copiaPrevia(plan, filas.previa, arrancadas, signal);
+    const errorPrevia = await copiaPrevia(
+      plan,
+      filas.previa,
+      arrancadas,
+      signal,
+    );
+    await cerrarPrevia(filas.previa, errorPrevia);
+    previaCerrada = true;
+    // Without a good pre-copy nothing may be replaced.
+    if (errorPrevia) {
+      throw new Error(`No se restauró: falló la copia previa (${errorPrevia})`);
+    }
     signal.throwIfAborted();
     tocado = true;
     for (const s of enMarcha.filter((x) => !servicioBd.has(x))) {
@@ -357,42 +399,95 @@ async function restaurar(
       }
     });
     for (const s of enMarcha) await iniciarProyecto(slug, nombre, s);
-    for (const s of arrancadas) await detenerProyecto(slug, nombre, s);
+  } catch (err) {
+    await fallar(plan, filas, motivoDeFallo(err, signal), {
+      tocado,
+      previaCerrada,
+      arrancadas,
+    });
+    return;
+  }
+  await terminar(plan, filas, arrancadas, signal);
+}
+
+// The restored Servicios are running again: a bookkeeping failure from here on
+// is reported but must never stop them.
+async function terminar(
+  plan: Plan,
+  filas: Filas,
+  arrancadas: Set<string>,
+  signal: AbortSignal,
+): Promise<void> {
+  const { proyecto } = plan;
+  const avisos: string[] = [];
+  const anotar = (texto: string) => (err: unknown) => {
+    log.error({ err, proyectoId: proyecto.id }, texto);
+    avisos.push(`${texto}: ${motivoDeFallo(err, signal)}`);
+  };
+  for (const s of arrancadas) {
+    await detenerProyecto(proyecto.clienteSlug, proyecto.nombre, s).catch(
+      anotar(`Restaurado, pero no se pudo volver a parar ${s}`),
+    );
+  }
+  await prisma.backup
+    .update({
+      where: { id: filas.restauracion },
+      data: {
+        resultado: "exito",
+        finalizadoEn: new Date(),
+        ...(avisos.length > 0 ? { error: avisos.join("\n") } : {}),
+      },
+    })
+    .catch(anotar("Restaurado, pero no se pudo registrar en el historial"));
+  if (avisos.length > 0) {
+    await notificarFalloBackup({
+      operacion: "restauracion",
+      origen: "manual",
+      error: avisos.join("\n"),
+      proyecto: nombreDe(proyecto),
+    });
+  }
+}
+
+async function fallar(
+  plan: Plan,
+  filas: Filas,
+  motivo: string,
+  estado: { tocado: boolean; previaCerrada: boolean; arrancadas: Set<string> },
+): Promise<void> {
+  const { proyecto } = plan;
+  const { clienteSlug: slug, nombre } = proyecto;
+  const pararSinPerder = (s?: string) =>
+    (s
+      ? detenerProyecto(slug, nombre, s)
+      : detenerProyecto(slug, nombre)
+    ).catch((e: unknown) =>
+      log.warn(
+        { err: e, proyectoId: proyecto.id },
+        "No se pudieron parar los Servicios tras la restauración fallida",
+      ),
+    );
+  let error = motivo;
+  if (estado.tocado) {
+    // Half-restored data must not be served: everything stays stopped.
+    await pararSinPerder();
+    error = `${motivo}\n${aviso(proyecto)}`;
+  } else {
+    for (const s of estado.arrancadas) await pararSinPerder(s);
+  }
+  try {
+    if (!estado.previaCerrada) await cerrarPrevia(filas.previa, motivo);
     await prisma.backup.update({
       where: { id: filas.restauracion },
-      data: { resultado: "exito", finalizadoEn: new Date() },
+      data: { resultado: "error", error, finalizadoEn: new Date() },
     });
-  } catch (err) {
-    const motivo = motivoDeFallo(err, signal);
-    const pararSinPerder = (s?: string) =>
-      (s ? detenerProyecto(slug, nombre, s) : detenerProyecto(slug, nombre))
-        .catch((e: unknown) =>
-          log.warn(
-            { err: e, proyectoId: proyecto.id },
-            "No se pudieron parar los Servicios tras la restauración fallida",
-          ),
-        );
-    let error = motivo;
-    if (tocado) {
-      // Half-restored data must not be served: everything stays stopped.
-      await pararSinPerder();
-      error = `${motivo}\n${aviso(proyecto)}`;
-    } else {
-      for (const s of arrancadas) await pararSinPerder(s);
-    }
-    try {
-      await prisma.backup.update({
-        where: { id: filas.restauracion },
-        data: { resultado: "error", error, finalizadoEn: new Date() },
-      });
-    } finally {
-      await notificarFalloBackup({
-        operacion: "restauracion",
-        origen: "manual",
-        error,
-        proyecto: nombreDe(proyecto),
-      });
-    }
+  } finally {
+    await notificarFalloBackup({
+      operacion: "restauracion",
+      origen: "manual",
+      error,
+      proyecto: nombreDe(proyecto),
+    });
   }
 }
 
@@ -420,6 +515,13 @@ export async function iniciarRestauracionProyecto(p: {
       proyectoId: proyecto.id,
       proyectoNombre: nombreDe(proyecto),
     };
+    // A deploy may have started while validating; it checks the mark after
+    // setting "deploying", so one of the two always sees the other.
+    const actual = await prisma.proyecto.findUnique({
+      where: { id: proyecto.id },
+      select: { estado: true },
+    });
+    if (actual?.estado === "deploying") throw new DeployEnCurso();
     const restauracion = await prisma.backup.create({
       data: { operacion: "restauracion", origen: "manual", ...datos },
     });

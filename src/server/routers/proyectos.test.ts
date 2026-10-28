@@ -3146,4 +3146,22 @@ describe("proyectos — Proyecto restaurando", () => {
       expect(ejecutarDeploy).not.toHaveBeenCalled();
     },
   );
+
+  it("deploy: si la restauración se marca mientras se prepara, vuelve al estado previo y rechaza", async () => {
+    vi.mocked(estaRestaurando)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    await expect(
+      createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: MENSAJE });
+    expect(prisma.proyecto.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "p1" },
+      data: { estado: "deploying" },
+    });
+    expect(prisma.proyecto.update).toHaveBeenNthCalledWith(2, {
+      where: { id: "p1" },
+      data: { estado: "stopped" },
+    });
+    expect(ejecutarDeploy).not.toHaveBeenCalled();
+  });
 });

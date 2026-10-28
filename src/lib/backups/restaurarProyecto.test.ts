@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   elementosUpdateMany: vi.fn(),
+  elementosFindMany: vi.fn(),
   notificar: vi.fn(),
   cargar: vi.fn(),
   snapshots: vi.fn(),
@@ -28,7 +29,10 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     proyecto: { findUnique: m.proyecto },
     backup: { create: m.create, update: m.update },
-    elementoCopia: { updateMany: m.elementosUpdateMany },
+    elementoCopia: {
+      updateMany: m.elementosUpdateMany,
+      findMany: m.elementosFindMany,
+    },
   },
 }));
 vi.mock("@/lib/logger", () => ({
@@ -96,7 +100,8 @@ import {
 
 const AVISO =
   "Los Servicios de acme/web se han quedado parados. Restaura otra vez (la copia previa está en la lista) o arráncalos a mano.";
-const ROLES_SQL = "CREATE ROLE app;\nALTER ROLE app WITH PASSWORD 'x';\nCREATE ROLE lector;\n";
+const ROLES_SQL =
+  "CREATE ROLE app;\nALTER ROLE app WITH PASSWORD 'x';\nCREATE ROLE lector;\n";
 
 const PROYECTO = {
   id: "p1",
@@ -220,11 +225,14 @@ beforeEach(() => {
   m.snapshots.mockResolvedValue(SNAPSHOTS);
   m.detectar.mockResolvedValue(deteccion(bd, datos, mysql, panel, volumen));
   m.comprobarRuta.mockResolvedValue("ok");
-  m.create.mockImplementation(async ({ data }: { data: { origen: string } }) => ({
-    id: data.origen === "antes_de_restaurar" ? "previa" : "rest",
-  }));
+  m.create.mockImplementation(
+    async ({ data }: { data: { origen: string } }) => ({
+      id: data.origen === "antes_de_restaurar" ? "previa" : "rest",
+    }),
+  );
   m.update.mockResolvedValue({});
   m.elementosUpdateMany.mockResolvedValue({ count: 0 });
+  m.elementosFindMany.mockResolvedValue([]);
   m.notificar.mockResolvedValue(undefined);
   m.listarServicios.mockResolvedValue([
     { servicio: "db", estado: "running", detalle: "Up 2 hours" },
@@ -238,12 +246,10 @@ beforeEach(() => {
   m.detener.mockImplementation(async (_c: string, _n: string, s?: string) => {
     llamadas.push(`detener:${s ?? "todos"}`);
   });
-  m.copiarProyecto.mockImplementation(
-    async (a: { soloClaves: string[] }) => {
-      llamadas.push(`copia_previa:${a.soloClaves.join(",")}`);
-      return a.soloClaves.map((clave) => ({ clave, ok: true }));
-    },
-  );
+  m.copiarProyecto.mockImplementation(async (a: { soloClaves: string[] }) => {
+    llamadas.push(`copia_previa:${a.soloClaves.join(",")}`);
+    return a.soloClaves.map((clave) => ({ clave, ok: true }));
+  });
   m.ejecutar.mockImplementation(
     async (cmd: string, args: string[], o: { entrada?: string }) => {
       const e = etiqueta(cmd, args);
@@ -357,9 +363,7 @@ describe("iniciarRestauracionProyecto — orden", () => {
   });
 
   it("BD parada al empezar: se arranca, se espera, se copia con ella en marcha y al final se vuelve a parar", async () => {
-    m.detectar.mockResolvedValue(
-      deteccion({ ...bd, enMarcha: false }, datos),
-    );
+    m.detectar.mockResolvedValue(deteccion({ ...bd, enMarcha: false }, datos));
     m.listarServicios.mockResolvedValue([
       { servicio: "db", estado: "stopped", detalle: "Exited (0)" },
       { servicio: "web", estado: "running", detalle: "Up 2 hours" },
@@ -450,6 +454,10 @@ describe("iniciarRestauracionProyecto — esperar a la BD", () => {
     expect(llamadas).toEqual(["iniciar:db", "detener:db"]);
     const error = "db no acepta conexiones tras 2 minutos";
     expect(m.update).toHaveBeenCalledWith({
+      where: { id: "previa" },
+      data: { resultado: "error", error, finalizadoEn: expect.any(Date) },
+    });
+    expect(m.update).toHaveBeenCalledWith({
       where: { id: "rest" },
       data: { resultado: "error", error, finalizadoEn: expect.any(Date) },
     });
@@ -481,7 +489,8 @@ describe("iniciarRestauracionProyecto — fallos", () => {
         finalizadoEn: expect.any(Date),
       },
     });
-    const error = "No se restauró: falló la copia previa (bd:db: 403 Forbidden)";
+    const error =
+      "No se restauró: falló la copia previa (bd:db: 403 Forbidden)";
     expect(m.update).toHaveBeenCalledWith({
       where: { id: "rest" },
       data: { resultado: "error", error, finalizadoEn: expect.any(Date) },
@@ -754,5 +763,170 @@ describe("iniciarRestauracionProyecto — validación antes del bloqueo", () => 
     ).rejects.toThrow("BD caída");
     expect(hayOperacionEnCurso()).toBe(false);
     expect(estaRestaurando("p1")).toBe(false);
+  });
+});
+
+describe("iniciarRestauracionProyecto — revisión 1", () => {
+  it("un deploy que empezó mientras se validaba → suelta bloqueo y marca y rechaza", async () => {
+    m.proyecto
+      .mockResolvedValueOnce(PROYECTO)
+      .mockResolvedValueOnce({ estado: "deploying" });
+    await expect(
+      iniciarRestauracionProyecto(peticion(["bd:db"])),
+    ).rejects.toBeInstanceOf(DeployEnCurso);
+    expect(m.proyecto).toHaveBeenLastCalledWith({
+      where: { id: "p1" },
+      select: { estado: true },
+    });
+    expect(hayOperacionEnCurso()).toBe(false);
+    expect(estaRestaurando("p1")).toBe(false);
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it("la carpeta pasa a ser un enlace durante la copia previa → no se extrae, Servicios parados", async () => {
+    m.comprobarRuta.mockResolvedValueOnce("ok").mockResolvedValueOnce("enlace");
+    await iniciarRestauracionProyecto(peticion(["datos:./data"]));
+    await terminado();
+    expect(m.comprobarRuta).toHaveBeenCalledTimes(2);
+    expect(m.encadenar).not.toHaveBeenCalled();
+    expect(llamadas.at(-1)).toBe("detener:todos");
+    expect(m.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: `datos:./data: contiene un enlace simbólico
+${AVISO}`,
+      }),
+    );
+  });
+
+  it("falla listarServicios → cierra las dos filas con error y avisa, sin tocar nada", async () => {
+    m.listarServicios.mockRejectedValue(new Error("daemon caído"));
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    for (const id of ["previa", "rest"]) {
+      expect(m.update).toHaveBeenCalledWith({
+        where: { id },
+        data: {
+          resultado: "error",
+          error: "daemon caído",
+          finalizadoEn: expect.any(Date),
+        },
+      });
+    }
+    expect(m.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "daemon caído" }),
+    );
+    expect(m.detener).not.toHaveBeenCalled();
+    expect(m.copiarProyecto).not.toHaveBeenCalled();
+  });
+
+  it("falla un arranque del paso 7 → todo parado y aviso", async () => {
+    m.iniciar.mockImplementation(async (_c: string, _n: string, s?: string) => {
+      llamadas.push(`iniciar:${s}`);
+      if (s === "web") throw new Error("puerto ocupado");
+    });
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(llamadas.at(-1)).toBe("detener:todos");
+    expect(m.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: `puerto ocupado
+${AVISO}`,
+      }),
+    );
+  });
+
+  it("tras arrancar, no poder volver a parar la BD no para nada: error en el log y aviso", async () => {
+    m.detectar.mockResolvedValue(deteccion({ ...bd, enMarcha: false }));
+    m.listarServicios.mockResolvedValue([
+      { servicio: "db", estado: "stopped", detalle: "Exited (0)" },
+      { servicio: "web", estado: "running", detalle: "Up 2 hours" },
+    ]);
+    m.detener.mockImplementation(async (_c: string, _n: string, s?: string) => {
+      llamadas.push(`detener:${s ?? "todos"}`);
+      if (s === "db") throw new Error("daemon caído");
+    });
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(llamadas).not.toContain("detener:todos");
+    expect(llamadas.at(-2)).toBe("iniciar:web");
+    const error = "Restaurado, pero no se pudo volver a parar db: daemon caído";
+    expect(m.error).toHaveBeenCalled();
+    expect(m.update).toHaveBeenCalledWith({
+      where: { id: "rest" },
+      data: { resultado: "exito", finalizadoEn: expect.any(Date), error },
+    });
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "restauracion",
+      origen: "manual",
+      error,
+      proyecto: "acme/web",
+    });
+  });
+
+  it("tras arrancar, no poder registrar el éxito no para nada: error en el log y aviso", async () => {
+    m.update.mockImplementation(
+      async ({ data }: { data: { resultado: string } }) => {
+        if (data.resultado === "exito" && m.update.mock.calls.length > 1)
+          throw new Error("BD caída");
+        return {};
+      },
+    );
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(llamadas).not.toContain("detener:todos");
+    expect(m.error).toHaveBeenCalled();
+    expect(m.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error:
+          "Restaurado, pero no se pudo registrar en el historial: BD caída",
+      }),
+    );
+  });
+});
+
+describe("iniciarRestauracionProyecto — solo copias enteras", () => {
+  async function rechazaEntero(claves: string[], mensaje: string) {
+    await expect(iniciarRestauracionProyecto(peticion(claves))).rejects.toThrow(
+      new RestauracionRechazada(mensaje),
+    );
+    expect(hayOperacionEnCurso()).toBe(false);
+    expect(m.create).not.toHaveBeenCalled();
+  }
+
+  it("con fila de la copia que no es exito → rechazo", async () => {
+    m.elementosFindMany.mockResolvedValue([
+      { clave: "bd:db", resultado: "error" },
+    ]);
+    await rechazaEntero(["bd:db"], "bd:db no se copió entero en esa copia");
+    expect(m.elementosFindMany).toHaveBeenCalledWith({
+      where: { backupId: "c1", clave: { in: ["bd:db"] } },
+      select: { clave: true, resultado: true },
+    });
+  });
+
+  it("con fila exito se restaura aunque falte _roles.sql", async () => {
+    m.elementosFindMany.mockResolvedValue([
+      { clave: "bd:db", resultado: "exito" },
+    ]);
+    m.snapshots.mockResolvedValue(SNAPSHOTS.filter((x) => x.id !== "s-roles"));
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(llamadas).toContain("s-app->psql:c-db");
+  });
+
+  it("sin fila (Panel recuperado): Postgres sin _roles.sql → rechazo", async () => {
+    m.snapshots.mockResolvedValue(SNAPSHOTS.filter((x) => x.id !== "s-roles"));
+    await rechazaEntero(["bd:db"], "bd:db no se copió entero en esa copia");
+  });
+
+  it("sin fila (Panel recuperado): MySQL sin todo.sql → rechazo", async () => {
+    m.snapshots.mockResolvedValue([
+      ...SNAPSHOTS.filter((x) => x.id !== "s-maria"),
+      snap("s-maria2", "bd:maria", "/bd/maria/otra.sql"),
+    ]);
+    await rechazaEntero(
+      ["bd:maria"],
+      "bd:maria no se copió entero en esa copia",
+    );
   });
 });

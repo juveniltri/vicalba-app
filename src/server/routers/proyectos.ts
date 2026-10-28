@@ -147,6 +147,15 @@ export async function lanzarDeploy(
     where: { id: proyecto.id },
     data: { estado: "deploying" },
   });
+  // A restore may have been marked during the awaits above; it checks for
+  // "deploying" after marking, so one of the two always sees the other.
+  if (estaRestaurando(proyecto.id)) {
+    await prisma.proyecto.update({
+      where: { id: proyecto.id },
+      data: { estado: proyecto.estado },
+    });
+    throw new TRPCError({ code: "CONFLICT", message: MENSAJE_RESTAURANDO });
+  }
 
   // HACK: fire-and-forget — Next.js corre en Node.js persistente (no serverless),
   // el event loop mantiene viva la promesa hasta que el deploy termina.
