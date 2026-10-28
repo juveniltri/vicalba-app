@@ -31,6 +31,9 @@ import { comprobarRutaDisponible, dominioSchema } from "./rutas";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { ultimasLineas } from "@/lib/deploy-stream";
+import { logger } from "@/lib/logger";
+import { hayOperacionEnCurso, OperacionEnCurso } from "@/lib/backups/operacion";
+import { iniciarPurgaProyecto } from "@/lib/backups/retencionProyectos";
 
 const proyectoInput = z.object({
   nombre: z
@@ -460,23 +463,45 @@ export const proyectosRouter = router({
       return actualizado;
     }),
 
-  eliminar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
-    const proyecto = await findProyectoOrThrow(input.id);
-    if (proyecto.estado === "running" || proyecto.estado === "deploying")
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "No se puede eliminar un proyecto en ejecución",
+  eliminar: protectedProcedure
+    .input(idInput.extend({ borrarCopias: z.boolean().optional() }))
+    .mutation(async ({ input }) => {
+      const proyecto = await findProyectoOrThrow(input.id);
+      if (proyecto.estado === "running" || proyecto.estado === "deploying")
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "No se puede eliminar un proyecto en ejecución",
+        });
+      if (input.borrarCopias && hayOperacionEnCurso())
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Hay una copia o restauración en curso: inténtalo cuando termine",
+        });
+      await prisma.proyecto.delete({ where: { id: input.id } });
+      if (input.borrarCopias) {
+        try {
+          await iniciarPurgaProyecto(input.id);
+        } catch (err) {
+          if (!(err instanceof OperacionEnCurso)) throw err;
+          // Lost a race: the 30-day rule purges these copies later.
+          logger
+            .child({ module: "backups" })
+            .warn(
+              { proyectoId: input.id },
+              "No se borraron las copias del Proyecto: había otra operación en curso",
+            );
+        }
+      }
+      if (proyecto.rutas.length > 0)
+        await sincronizarTraefikCliente(proyecto.clienteId);
+      const restantes = await prisma.proyecto.count({
+        where: { clienteId: proyecto.clienteId },
       });
-    await prisma.proyecto.delete({ where: { id: input.id } });
-    if (proyecto.rutas.length > 0)
-      await sincronizarTraefikCliente(proyecto.clienteId);
-    const restantes = await prisma.proyecto.count({
-      where: { clienteId: proyecto.clienteId },
-    });
-    if (restantes === 0) {
-      await eliminarRedCliente(proyecto.cliente.slug);
-    }
-  }),
+      if (restantes === 0) {
+        await eliminarRedCliente(proyecto.cliente.slug);
+      }
+    }),
 
   deploy: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
