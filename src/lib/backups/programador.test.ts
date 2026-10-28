@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   findConfig: vi.fn(),
   findBackup: vi.fn(),
-  iniciarCopia: vi.fn(),
+  iniciarCiclo: vi.fn(),
   hay: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -15,7 +15,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: { child: () => ({ error: vi.fn(), info: vi.fn() }) },
 }));
-vi.mock("./copia", () => ({ iniciarCopia: m.iniciarCopia }));
+vi.mock("./ciclo", () => ({ iniciarCicloDiario: m.iniciarCiclo }));
 vi.mock("./operacion", () => ({ hayOperacionEnCurso: m.hay }));
 
 import { comprobarProgramacion, iniciarProgramador } from "./programador";
@@ -33,7 +33,7 @@ beforeEach(() => {
   m.hay.mockReturnValue(false);
   m.findConfig.mockResolvedValue(listo);
   m.findBackup.mockResolvedValue(null);
-  m.iniciarCopia.mockResolvedValue({ id: "b1" });
+  m.iniciarCiclo.mockResolvedValue({ id: "b1" });
 });
 
 describe("comprobarProgramacion", () => {
@@ -44,7 +44,7 @@ describe("comprobarProgramacion", () => {
       orderBy: { iniciadoEn: "desc" },
       select: { iniciadoEn: true },
     });
-    expect(m.iniciarCopia).toHaveBeenCalledWith("programado");
+    expect(m.iniciarCiclo).toHaveBeenCalledWith();
   });
 
   it.each([
@@ -58,7 +58,7 @@ describe("comprobarProgramacion", () => {
   ])("no hace nada si está %s", async (_, config) => {
     m.findConfig.mockResolvedValue(config);
     expect(await comprobarProgramacion(ahora)).toBe(false);
-    expect(m.iniciarCopia).not.toHaveBeenCalled();
+    expect(m.iniciarCiclo).not.toHaveBeenCalled();
   });
 
   it("no hace nada con otra operación en curso", async () => {
@@ -74,7 +74,7 @@ describe("comprobarProgramacion", () => {
   });
 
   it("un error al lanzar no rompe el programador", async () => {
-    m.iniciarCopia.mockRejectedValue(
+    m.iniciarCiclo.mockRejectedValue(
       new Error("Backups sin configurar: no hay destino"),
     );
     expect(await comprobarProgramacion(ahora)).toBe(false);

@@ -26,12 +26,15 @@ export async function hacerCopia(
   backupId: string,
   config: ConfigResuelta,
   signal: AbortSignal,
-  { retencion = true }: { retencion?: boolean } = {},
+  {
+    retencion = true,
+    comprobar = true,
+  }: { retencion?: boolean; comprobar?: boolean } = {},
 ): Promise<void> {
   const carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-backup-"));
   const dir = (...p: string[]) => path.posix.join(carpeta, ...p);
   try {
-    await conRestic(config, signal, comprobarDestino);
+    if (comprobar) await conRestic(config, signal, comprobarDestino);
     await pgDump(env.DATABASE_URL, dir("panel-db.dump"), signal);
     await mkdir(dir("traefik"), { recursive: true });
     await cp(env.TRAEFIK_DYNAMIC_DIR, dir("traefik", "dynamic"), {
@@ -71,17 +74,48 @@ export async function hacerCopia(
   }
 }
 
-export async function iniciarCopia(
-  origen: "programado" | "manual",
-): Promise<{ id: string }> {
-  let config: ConfigResuelta;
+// The Panel copy under a lock the caller already holds, with its own time
+// limit: in the daily cycle that limit must stop this copy, not the Proyectos.
+export async function copiarPanel(
+  backupId: string,
+  config: ConfigResuelta,
+  operacion: AbortSignal,
+  {
+    origen,
+    ...opciones
+  }: {
+    origen: "programado" | "manual";
+    retencion?: boolean;
+    comprobar?: boolean;
+  },
+): Promise<boolean> {
+  const limite = new AbortController();
+  const temporizador = setTimeout(() => limite.abort(MOTIVO_LIMITE), LIMITE_MS);
+  const signal = AbortSignal.any([operacion, limite.signal]);
   try {
-    config = await cargarConfigResuelta();
+    await hacerCopia(backupId, config, signal, opciones);
+    return true;
   } catch (err) {
-    // Without a row the scheduler would retry (and fail) every minute, silently.
-    if (origen === "programado") await registrarFalloSinIniciar(err);
-    throw err;
+    const error = motivoDeFallo(err, signal);
+    log.error({ err, backupId }, "Copia de seguridad fallida");
+    try {
+      await prisma.backup.update({
+        where: { id: backupId },
+        data: { resultado: "error", error, finalizadoEn: new Date() },
+      });
+      await notificarFalloBackup({ operacion: "copia", origen, error });
+    } catch (e) {
+      log.error({ err: e }, "No se pudo registrar el fallo de la copia");
+    }
+    return false;
+  } finally {
+    clearTimeout(temporizador);
   }
+}
+
+// The Panel's «Copiar ahora»; the scheduled copy runs in the daily cycle.
+export async function iniciarCopia(origen: "manual"): Promise<{ id: string }> {
+  const config = await cargarConfigResuelta();
   const controller = tomarOperacion();
   const backup = await prisma.backup
     .create({ data: { operacion: "copia", origen } })
@@ -90,28 +124,14 @@ export async function iniciarCopia(
       throw err;
     });
 
-  const limite = setTimeout(() => controller.abort(MOTIVO_LIMITE), LIMITE_MS);
-  void hacerCopia(backup.id, config, controller.signal)
-    .catch(async (err: unknown) => {
-      const error = motivoDeFallo(err, controller.signal);
-      log.error({ err, backupId: backup.id }, "Copia de seguridad fallida");
-      await prisma.backup.update({
-        where: { id: backup.id },
-        data: { resultado: "error", error, finalizadoEn: new Date() },
-      });
-      await notificarFalloBackup({ operacion: "copia", origen, error });
-    })
-    .catch((err: unknown) =>
-      log.error({ err }, "No se pudo registrar el fallo de la copia"),
-    )
-    .finally(() => {
-      clearTimeout(limite);
-      soltarOperacion();
-    });
+  void copiarPanel(backup.id, config, controller.signal, { origen }).finally(
+    () => soltarOperacion(),
+  );
   return { id: backup.id };
 }
 
-async function registrarFalloSinIniciar(err: unknown): Promise<void> {
+// Without a row the scheduler would retry (and fail) every minute, silently.
+export async function registrarFalloSinIniciar(err: unknown): Promise<void> {
   const error = err instanceof Error ? err.message : String(err);
   await prisma.backup.create({
     data: {

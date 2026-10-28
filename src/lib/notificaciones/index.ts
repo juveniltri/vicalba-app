@@ -82,11 +82,14 @@ export async function notificarFalloBackup(datos: {
   operacion: "copia" | "restauracion";
   origen: keyof typeof ORIGEN_BACKUP;
   error: string;
+  // "<cliente>/<proyecto>"; without it the failure is the Panel's own copy.
+  proyecto?: string;
 }): Promise<void> {
+  const barra = datos.proyecto?.indexOf("/") ?? -1;
   await enviarNotificacion({
     evento: "backup",
-    proyectoNombre: "panel",
-    clienteSlug: "backups",
+    proyectoNombre: datos.proyecto?.slice(barra + 1) ?? "panel",
+    clienteSlug: datos.proyecto?.slice(0, barra) ?? "backups",
     rama:
       datos.operacion === "copia"
         ? `copia ${ORIGEN_BACKUP[datos.origen]}`

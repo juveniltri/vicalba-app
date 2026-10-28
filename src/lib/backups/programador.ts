@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
-import { iniciarCopia } from "./copia";
+import { iniciarCicloDiario } from "./ciclo";
 import { hayOperacionEnCurso } from "./operacion";
 import { tocaCopia } from "./programacion";
 
@@ -29,7 +29,7 @@ export async function comprobarProgramacion(
     });
     if (!tocaCopia(ahora, config.hora, ultimo?.iniciadoEn ?? null))
       return false;
-    await iniciarCopia("programado");
+    await iniciarCicloDiario();
     return true;
   } catch (err) {
     log.error({ err }, "No se pudo lanzar la copia programada");

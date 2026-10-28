@@ -12,8 +12,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import {
+  MOTIVO_LIMITE,
   OperacionEnCurso,
+  cancelarOperacion,
   hayOperacionEnCurso,
+  motivoDeFallo,
   limpiarBackupsHuerfanos,
   soltarOperacion,
   tomarOperacion,
@@ -33,6 +36,44 @@ describe("operación única", () => {
     soltarOperacion();
     expect(hayOperacionEnCurso()).toBe(false);
     expect(() => tomarOperacion()).not.toThrow();
+  });
+});
+
+describe("cancelarOperacion", () => {
+  it("aborta la operación en curso con el motivo, sin soltar el bloqueo", () => {
+    const c = tomarOperacion();
+    expect(cancelarOperacion("Cancelado por ana")).toBe(true);
+    expect(c.signal.aborted).toBe(true);
+    expect(c.signal.reason).toBe("Cancelado por ana");
+    // The operation itself releases the lock once it has stopped.
+    expect(hayOperacionEnCurso()).toBe(true);
+  });
+
+  it("sin operación en curso devuelve false", () => {
+    expect(cancelarOperacion("Cancelado por ana")).toBe(false);
+  });
+});
+
+describe("motivoDeFallo", () => {
+  const abortado = () => new DOMException("aborted", "AbortError");
+
+  it("un proceso abortado da el motivo de la cancelación", () => {
+    const c = new AbortController();
+    c.abort("Cancelado por ana");
+    expect(motivoDeFallo(abortado(), c.signal)).toBe("Cancelado por ana");
+  });
+
+  it("y el del límite de tiempo", () => {
+    const c = new AbortController();
+    c.abort(MOTIVO_LIMITE);
+    expect(motivoDeFallo(abortado(), c.signal)).toBe(MOTIVO_LIMITE);
+  });
+
+  it("sin motivo de texto, el mensaje del error", () => {
+    const c = new AbortController();
+    c.abort();
+    expect(motivoDeFallo(abortado(), c.signal)).toBe("aborted");
+    expect(motivoDeFallo("x", new AbortController().signal)).toBe("x");
   });
 });
 
