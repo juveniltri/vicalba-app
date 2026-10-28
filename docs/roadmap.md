@@ -35,16 +35,16 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
 
 ### 2.4.0
 
-- [ ] **Backups — fase B (volúmenes)** de los Proyectos.
-- [ ] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración.
-- [ ] **Backups — pendientes de la fase A** (menores de la revisión y de la verificación real):
-  - al restaurar Traefik se borra `dynamic/` antes de copiar (hueco breve de rutas; si falta el origen, queda vacía);
-  - host y usuario SFTP admiten un `-` inicial (opciones de `ssh`; sin ejecución de código);
-  - el interruptor y la hora de la programación no se resincronizan tras refrescar, y la hora no se bloquea mientras se guarda;
-  - sin destino configurado, «Copias disponibles» muestra el aviso en rojo;
-  - la primera comprobación del programador es a los 60 s del arranque;
-  - no se impide borrar una credencial SSH en uso por los backups (la copia queda en error y avisa);
-  - si el destino cae a mitad de una copia (tras la comprobación inicial), restic reintenta hasta ~15 min.
+- [x] **Backups — fase B (volúmenes)** de los Proyectos (volúmenes con nombre y carpetas de datos; restauración desde el Panel; `.panel/` a mano).
+- [x] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración (Postgres y MySQL/MariaDB). Falta la verificación real en la VPS de desarrollo.
+- [x] **Backups — pendientes de la fase A** (menores de la revisión y de la verificación real):
+  - [x] al restaurar Traefik se borra `dynamic/` antes de copiar (hueco breve de rutas; si falta el origen, queda vacía);
+  - [x] host y usuario SFTP admiten un `-` inicial (opciones de `ssh`; sin ejecución de código);
+  - [x] el interruptor y la hora de la programación no se resincronizan tras refrescar, y la hora no se bloquea mientras se guarda;
+  - [x] sin destino configurado, «Copias disponibles» muestra el aviso en rojo;
+  - [x] la primera comprobación del programador es a los 60 s del arranque;
+  - [x] no se impide borrar una credencial SSH en uso por los backups (la copia queda en error y avisa);
+  - [x] si el destino cae a mitad de una copia (tras la comprobación inicial), restic reintenta hasta ~15 min.
 - [ ] **Tests E2E** (ver Técnico).
 - [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.

@@ -250,6 +250,38 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
+### B2b. A la 2.4.0 (backups de Proyectos y «Solo desde Cloudflare»)
+
+(Su número es B2b para no renumerar los apartados que citan otras notas y versiones.) Si la VPS
+está en la **2.2.x** o anterior, haz también § B3 y § B4 antes.
+
+**Actualizar:** § B1. Las migraciones se aplican solas al arrancar el Panel; no hay variables
+nuevas en el `.env`.
+
+**Qué esperar:**
+
+- La **primera copia diaria** (y cada «Copia ahora») copia **todos** los Proyectos con
+  contenedores: dump de sus BDs Postgres y MySQL/MariaDB y `tar` de sus volúmenes y carpetas de
+  datos. Puede tardar horas con medias grandes y ocupa tanto como esos datos, comprimidos y
+  deduplicados, en el destino: comprueba antes que hay espacio. Las siguientes solo suben lo que
+  cambia. Entre tanto, el Panel sigue funcionando; una operación a la vez (cancelable desde
+  Configuración → Backups o desde el Proyecto).
+- Se descarga la imagen `busybox:1.37.0` la primera vez que se copia una carpeta de datos.
+- Cada Proyecto empieza con la copia diaria activada; desmárcala en su pestaña **Backups** donde
+  no la quieras, y desmarca los elementos que se regeneran.
+
+**Comprobaciones:**
+
+1. Al día siguiente, Configuración → Backups → Historial: la copia del Panel y las de cada
+   Proyecto en «Correcta».
+2. En cada Proyecto, pestaña **Backups**: revisa qué lista como «No se copia» y por qué.
+3. Recomendado: restaurar un Proyecto de pruebas desde su pestaña, y un simulacro de
+   `docs/recuperacion.md` («Datos de un Proyecto») en una VPS de usar y tirar.
+
+**«Solo desde Cloudflare»:** las rutas que ya estén detrás de Cloudflare quedan **sin** la opción
+(la migración la deja desactivada, así que nada cambia solo). Para activarla en una ruta hacen
+falta los rangos de Cloudflare aplicados (§ C2); los pasos y la comprobación están en § C3 y § C6.
+
 ### B3. A la 2.3.0 (Proxy y servicios)
 
 Si la VPS está en la **2.1.x**, haz también § B4 (2.2.0) después de esta actualización: las
