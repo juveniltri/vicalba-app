@@ -186,6 +186,44 @@ describe("aplicarRetencionProyectos", () => {
     expect(m.podar).not.toHaveBeenCalled();
   });
 
+  it("no purga elementos si la detección trae noCopiados", async () => {
+    m.listar.mockResolvedValue([snap({ id: "a", fecha: dias(90) })]);
+    m.findMany.mockResolvedValue([
+      { id: "p1", nombre: "web", cliente: { slug: "uno" } },
+    ]);
+    m.detectar.mockResolvedValue({
+      valida: true,
+      elementos: [],
+      noCopiados: [{ origen: "/data", motivo: "enlace simbólico" }],
+    });
+    await aplicarRetencionProyectos(r);
+    expect(m.olvidar).not.toHaveBeenCalledWith(
+      r,
+      expect.objectContaining({ politica: "todo" }),
+    );
+    expect(m.olvidar).toHaveBeenCalledWith(
+      r,
+      expect.objectContaining({ politica: "7+4" }),
+    );
+  });
+
+  it("frena la purga de Proyectos eliminados si la BD no tiene Proyectos", async () => {
+    m.listar.mockResolvedValue([
+      snap({ id: "a", fecha: dias(90), proyectoId: "gone" }),
+    ]);
+    m.findMany.mockResolvedValue([]);
+    await aplicarRetencionProyectos(r);
+    expect(m.warn).toHaveBeenCalledTimes(1);
+    expect(m.olvidar).not.toHaveBeenCalledWith(
+      r,
+      expect.objectContaining({ politica: "todo" }),
+    );
+    expect(m.olvidar).toHaveBeenCalledWith(
+      r,
+      expect.objectContaining({ politica: "7+4" }),
+    );
+  });
+
   it("no llama a olvidar 'todo' si no hay purgas", async () => {
     m.listar.mockResolvedValue([]);
     m.findMany.mockResolvedValue([]);

@@ -46,6 +46,8 @@ export function planRetencion(
   const plan: PlanRetencion = { olvidos: [], purgas: [] };
   for (const [proyectoId, delProyecto] of porProyecto) {
     if (!ctx.proyectosExistentes.has(proyectoId)) {
+      // Aged by the newest snapshot of the whole Proyecto (stricter than per
+      // pair, on purpose).
       if (ultimaFecha(delProyecto) < limite) {
         plan.purgas.push(...delProyecto.map((s) => s.id));
       }
@@ -94,11 +96,25 @@ export async function aplicarRetencionProyectos(r: Restic): Promise<void> {
     const d = await detectarProyecto(p.cliente.slug, p.nombre);
     detectados.set(
       p.id,
-      d.valida ? new Set(d.elementos.map((e) => hashClave(e.clave))) : null,
+      // Elements in noCopiados may still exist (symlink, unreadable): never
+      // purge their last copies on a partial detection.
+      d.valida && d.noCopiados.length === 0
+        ? new Set(d.elementos.map((e) => hashClave(e.clave)))
+        : null,
+    );
+  }
+  // Brake: an empty Proyecto table with Proyecto snapshots looks like a wrong
+  // database, not a mass deletion.
+  const frenar = proyectos.length === 0 && snaps.length > 0;
+  if (frenar) {
+    log.warn(
+      "Sin Proyectos en la BD: no se purgan copias de Proyectos eliminados",
     );
   }
   const plan = planRetencion(snaps, {
-    proyectosExistentes: new Set(proyectos.map((p) => p.id)),
+    proyectosExistentes: new Set(
+      frenar ? snaps.map((s) => s.proyectoId) : proyectos.map((p) => p.id),
+    ),
     detectados,
     ahora: new Date(),
   });

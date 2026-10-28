@@ -479,6 +479,15 @@ export const proyectosRouter = router({
             "Hay una copia o restauración en curso: inténtalo cuando termine",
         });
       await prisma.proyecto.delete({ where: { id: input.id } });
+      if (proyecto.rutas.length > 0)
+        await sincronizarTraefikCliente(proyecto.clienteId);
+      const restantes = await prisma.proyecto.count({
+        where: { clienteId: proyecto.clienteId },
+      });
+      if (restantes === 0) {
+        await eliminarRedCliente(proyecto.cliente.slug);
+      }
+      // Last, so an unexpected error here cannot skip the cleanup above.
       if (input.borrarCopias) {
         try {
           await iniciarPurgaProyecto(input.id);
@@ -492,14 +501,6 @@ export const proyectosRouter = router({
               "No se borraron las copias del Proyecto: había otra operación en curso",
             );
         }
-      }
-      if (proyecto.rutas.length > 0)
-        await sincronizarTraefikCliente(proyecto.clienteId);
-      const restantes = await prisma.proyecto.count({
-        where: { clienteId: proyecto.clienteId },
-      });
-      if (restantes === 0) {
-        await eliminarRedCliente(proyecto.cliente.slug);
       }
     }),
 

@@ -1052,12 +1052,14 @@ describe("proyectos.eliminar", () => {
       expect(prisma.proyecto.delete).toHaveBeenCalled();
     });
 
-    it("propaga cualquier otro error al iniciar la purga", async () => {
+    it("propaga cualquier otro error al iniciar la purga, tras la limpieza", async () => {
+      vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
       vi.mocked(iniciarPurgaProyecto).mockRejectedValueOnce(new Error("boom"));
       const ctx = await createContext();
       await expect(
         createCaller(ctx).proyectos.eliminar({ id: "p1", borrarCopias: true }),
       ).rejects.toThrow("boom");
+      expect(eliminarRedCliente).toHaveBeenCalledWith("cliente-uno");
     });
   });
 });
