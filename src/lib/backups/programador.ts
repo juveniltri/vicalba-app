@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
-import { iniciarCopia } from "./copia";
+import { iniciarCicloDiario } from "./ciclo";
 import { hayOperacionEnCurso } from "./operacion";
 import { tocaCopia } from "./programacion";
 
@@ -23,13 +23,13 @@ export async function comprobarProgramacion(
       return false;
     }
     const ultimo = await prisma.backup.findFirst({
-      where: { operacion: "copia", origen: "programado" },
+      where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
       select: { iniciadoEn: true },
     });
     if (!tocaCopia(ahora, config.hora, ultimo?.iniciadoEn ?? null))
       return false;
-    await iniciarCopia("programado");
+    await iniciarCicloDiario();
     return true;
   } catch (err) {
     log.error({ err }, "No se pudo lanzar la copia programada");
@@ -40,6 +40,7 @@ export async function comprobarProgramacion(
 // The state lives in the database, so a restart neither skips nor repeats a day.
 export function iniciarProgramador(): void {
   if (global.programadorBackups) return;
+  void comprobarProgramacion();
   global.programadorBackups = setInterval(
     () => void comprobarProgramacion(),
     60_000,

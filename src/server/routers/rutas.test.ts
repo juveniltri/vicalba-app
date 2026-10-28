@@ -8,11 +8,13 @@ type Ruta = {
   servicio: string | null;
   puerto: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
+  cloudflare?: boolean;
+  soloCloudflare?: boolean;
   creadoEn: Date;
 };
 
 // In-memory RutaProyecto table: tests assert on the routes that end up stored.
-const { rutas, proyectos, mockSincronizar } = vi.hoisted(() => ({
+const { rutas, proyectos, mockSincronizar, mockContexto } = vi.hoisted(() => ({
   rutas: [] as Ruta[],
   proyectos: new Map<
     string,
@@ -26,6 +28,7 @@ const { rutas, proyectos, mockSincronizar } = vi.hoisted(() => ({
     }
   >(),
   mockSincronizar: vi.fn(),
+  mockContexto: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -89,10 +92,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/traefik/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/traefik/config")>()),
   sincronizarTraefikCliente: mockSincronizar,
-  contextoCloudflare: async () => ({
-    resolver: "letsencrypt-dns",
-    rangos: ["173.245.48.0/20"],
-  }),
+  contextoCloudflare: mockContexto,
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
@@ -137,6 +137,10 @@ beforeEach(() => {
     user: { id: "u1", email: "admin@vicalba.local" },
     expires: "2099-01-01",
   } as never);
+  mockContexto.mockResolvedValue({
+    resolver: "letsencrypt-dns",
+    rangos: ["173.245.48.0/20"],
+  });
   proyecto("p1");
 });
 
@@ -462,6 +466,54 @@ describe("rutas — Cloudflare", () => {
 
     await api.editar({ id: ruta.id, dominio: "a.com" });
     expect(rutas[0].cloudflare).toBe(false);
+  });
+});
+
+describe("rutas — solo desde Cloudflare", () => {
+  const SIN_RANGOS =
+    "No hay rangos de Cloudflare aplicados en Configuración → Proxy";
+
+  it("sin Cloudflare la casilla no se guarda", async () => {
+    await (
+      await caller()
+    ).crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      cloudflare: false,
+      soloCloudflare: true,
+    });
+    expect(rutas[0].soloCloudflare).toBe(false);
+  });
+
+  it("con Cloudflare se guarda y listar la devuelve", async () => {
+    const api = await caller();
+    await api.crear({
+      proyectoId: "p1",
+      dominio: "a.com",
+      cloudflare: true,
+      soloCloudflare: true,
+    });
+    expect(rutas[0].soloCloudflare).toBe(true);
+    expect((await api.listar({ proyectoId: "p1" })).rutas[0]).toMatchObject({
+      soloCloudflare: true,
+    });
+  });
+
+  it("crear y editar rechazan la casilla si no hay rangos aplicados", async () => {
+    const api = await caller();
+    const ruta = await api.crear({ proyectoId: "p1", dominio: "a.com" });
+    mockContexto.mockResolvedValue({ resolver: "letsencrypt-dns", rangos: [] });
+    const datos = { dominio: "a.com", cloudflare: true, soloCloudflare: true };
+
+    await expect(
+      api.crear({ proyectoId: "p1", ...datos, dominio: "b.com" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: SIN_RANGOS });
+    await expect(api.editar({ id: ruta.id, ...datos })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: SIN_RANGOS,
+    });
+    expect(rutas).toHaveLength(1);
+    expect(rutas[0].soloCloudflare).toBeFalsy();
   });
 });
 

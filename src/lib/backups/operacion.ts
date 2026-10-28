@@ -3,14 +3,15 @@ import { prisma } from "@/lib/prisma";
 export const LIMITE_MS = 60 * 60 * 1000;
 export const MOTIVO_LIMITE = "Cancelado: superó 60 minutos";
 
-// An aborted child process rejects with a generic AbortError; say why instead.
+// An aborted child process rejects with a generic AbortError; say why instead
+// (the time limit or «Cancelado por <usuario>»).
 export function motivoDeFallo(err: unknown, signal: AbortSignal): string {
   if (
     err instanceof Error &&
     err.name === "AbortError" &&
-    signal.reason === MOTIVO_LIMITE
+    typeof signal.reason === "string"
   ) {
-    return MOTIVO_LIMITE;
+    return signal.reason;
   }
   return err instanceof Error ? err.message : String(err);
 }
@@ -36,6 +37,13 @@ export function soltarOperacion(): void {
   global.operacionBackup = undefined;
 }
 
+// The lock stays taken: the operation releases it once its processes stop.
+export function cancelarOperacion(motivo: string): boolean {
+  if (!global.operacionBackup) return false;
+  global.operacionBackup.abort(motivo);
+  return true;
+}
+
 export function hayOperacionEnCurso(): boolean {
   return global.operacionBackup !== undefined;
 }
@@ -46,6 +54,10 @@ export async function limpiarBackupsHuerfanos(motivo: string): Promise<number> {
   const { count } = await prisma.backup.updateMany({
     where: { resultado: "en_curso" },
     data: { resultado: "error", error: motivo, finalizadoEn: new Date() },
+  });
+  await prisma.elementoCopia.updateMany({
+    where: { resultado: "en_curso" },
+    data: { resultado: "error", error: motivo },
   });
   return count;
 }

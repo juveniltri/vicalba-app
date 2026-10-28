@@ -10,6 +10,7 @@ const a = vi.hoisted(() => ({
   confirmarClaveBackupAction: vi.fn(),
   guardarDestinoBackupAction: vi.fn(),
   restaurarBackupAction: vi.fn(),
+  cancelarBackupAction: vi.fn(),
   refresh: vi.fn(),
 }));
 vi.mock("@/app/(panel)/actions", () => a);
@@ -43,6 +44,7 @@ const lista: ConfiguracionBackupVista = {
     ruta: null,
     credencialId: null,
   },
+  local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
   tieneClave: true,
   claveConfirmada: true,
   repositorioInicializado: true,
@@ -60,6 +62,8 @@ const ejecucion = (e: Partial<EjecucionBackup>): EjecucionBackup => ({
   snapshotId: null,
   bytesAnadidos: null,
   error: null,
+  proyectoId: null,
+  proyectoNombre: null,
   ...e,
 });
 
@@ -86,6 +90,19 @@ describe("ConfiguracionBackups", () => {
     a.guardarProgramacionBackupAction.mockResolvedValue(undefined);
     a.obtenerKitBackupAction.mockResolvedValue({ kit: "Clave:        K" });
     a.confirmarClaveBackupAction.mockResolvedValue(undefined);
+  });
+
+  it("con destino local guardado muestra el aviso permanente una sola vez", () => {
+    renderizar({ ...lista, tipoDestino: "local" });
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Las copias están en la misma VPS: si se pierde la VPS o su disco, se pierden también.",
+    );
+  });
+
+  it("con S3 no hay aviso de destino local", () => {
+    renderizar();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("muestra la última copia y la próxima", () => {
@@ -154,6 +171,25 @@ describe("ConfiguracionBackups", () => {
     ).toBeDisabled();
   });
 
+  it("«Cancelar» solo aparece con una operación en curso y pide confirmación", async () => {
+    a.cancelarBackupAction.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const { unmount } = renderizar();
+    expect(
+      screen.queryByRole("button", { name: /^Cancelar/ }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    renderizar({ ...lista, enCurso: true });
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(a.cancelarBackupAction).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "¿Cancelar la operación?" }),
+    );
+    expect(a.cancelarBackupAction).toHaveBeenCalled();
+    expect(await screen.findByText("Operación cancelada")).toBeInTheDocument();
+  });
+
   it("con la clave sin confirmar abre el kit de recuperación", async () => {
     const user = userEvent.setup();
     renderizar({ ...lista, claveConfirmada: false, habilitado: false });
@@ -202,6 +238,41 @@ describe("ConfiguracionBackups", () => {
     await user.click(interruptor);
     expect(await screen.findByText("Configura el destino")).toBeInTheDocument();
     expect(interruptor).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("el interruptor y la hora siguen a los datos del servidor al refrescar", () => {
+    const { rerender } = renderizar({ ...lista, habilitado: true, hora: 3 });
+    rerender(
+      <ToastProvider>
+        <ConfiguracionBackups
+          config={{ ...lista, habilitado: false, hora: 7 }}
+          credenciales={[]}
+          historial={[ejecucion({})]}
+          copias={[]}
+        />
+      </ToastProvider>,
+    );
+    expect(
+      screen.getByRole("switch", { name: "Copia diaria" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByRole("button", { name: /hora de la copia/i }),
+    ).toHaveTextContent("07:00");
+  });
+
+  it("el selector de hora se deshabilita mientras guarda", async () => {
+    const user = userEvent.setup();
+    let terminar: (v: undefined) => void = () => {};
+    a.guardarProgramacionBackupAction.mockReturnValue(
+      new Promise((r) => (terminar = r)),
+    );
+    renderizar();
+    await user.click(screen.getByRole("switch", { name: "Copia diaria" }));
+    expect(
+      screen.getByRole("button", { name: /hora de la copia/i }),
+    ).toBeDisabled();
+    terminar(undefined);
+    await screen.findByText("Programación guardada");
   });
 
   it("mientras hay una operación en curso se refresca sola hasta que acaba", () => {

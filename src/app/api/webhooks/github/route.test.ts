@@ -10,7 +10,16 @@ vi.mock("@/server/routers/proyectos", () => ({
   lanzarDeploy: vi.fn(),
 }));
 
+vi.mock("@/lib/backups/restaurando", () => ({
+  estaRestaurando: vi.fn().mockReturnValue(false),
+}));
+const avisos = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/logger", () => ({
+  logger: { child: () => ({ warn: avisos }) },
+}));
+
 import { prisma } from "@/lib/prisma";
+import { estaRestaurando } from "@/lib/backups/restaurando";
 import { lanzarDeploy } from "@/server/routers/proyectos";
 import { POST } from "./route";
 
@@ -57,6 +66,7 @@ function peticion(
 describe("POST /api/webhooks/github", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(estaRestaurando).mockReturnValue(false);
     vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
       proyectoCrm,
     ] as never);
@@ -139,5 +149,32 @@ describe("POST /api/webhooks/github", () => {
 
     expect(res.status).toBe(200);
     expect(lanzarDeploy).not.toHaveBeenCalled();
+  });
+
+  it("responde 409 y registra un aviso si todos los candidatos se están restaurando", async () => {
+    vi.mocked(estaRestaurando).mockReturnValue(true);
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ ok: false, reason: "restaurando" });
+    expect(lanzarDeploy).not.toHaveBeenCalled();
+    expect(avisos).toHaveBeenCalledTimes(1);
+  });
+
+  it("despliega solo los Proyectos que no se están restaurando", async () => {
+    const otro = { ...proyectoCrm, id: "p2" };
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      proyectoCrm,
+      otro,
+    ] as never);
+    vi.mocked(estaRestaurando).mockImplementation((id) => id === "p1");
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
+    expect(lanzarDeploy).toHaveBeenCalledTimes(1);
+    expect(lanzarDeploy).toHaveBeenCalledWith(otro, expect.anything());
   });
 });

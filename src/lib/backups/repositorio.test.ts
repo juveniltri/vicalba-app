@@ -36,7 +36,16 @@ const sftp: ConfigResuelta = {
   },
 };
 
+const local: ConfigResuelta = {
+  clave: "clave-restic",
+  destino: { tipo: "local", ruta: "/var/vicalba/backups" },
+};
+
 describe("urlRepositorio", () => {
+  it("local: restic dentro de la carpeta fija", () => {
+    expect(urlRepositorio(local.destino)).toBe("/var/vicalba/backups/restic");
+  });
+
   it("S3: endpoint, bucket y prefijo", () => {
     expect(urlRepositorio(s3.destino)).toBe(
       "s3:https://s3.eu-central-003.backblazeb2.com/mi-bucket/vicalba",
@@ -61,6 +70,16 @@ describe("urlRepositorio", () => {
 });
 
 describe("entornoRestic", () => {
+  it("local: sin credenciales ni argumentos extra", () => {
+    const { env, args } = entornoRestic(local, rutas);
+    expect(env).toEqual({
+      RESTIC_REPOSITORY: "/var/vicalba/backups/restic",
+      RESTIC_PASSWORD: "clave-restic",
+      RESTIC_CACHE_DIR: rutas.cacheDir,
+    });
+    expect(args).toEqual([]);
+  });
+
   it("S3: clave y credenciales solo en variables de entorno", () => {
     const { env, args } = entornoRestic(s3, rutas);
     expect(env).toEqual({

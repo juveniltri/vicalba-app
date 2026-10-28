@@ -39,6 +39,8 @@ const serverSchema = z.object({
   ),
   // Deploy — directorio local donde se clonan los repos de los proyectos
   REPOS_DIR: z.string().default("/var/vicalba/repos"),
+  // Backups — carpeta del destino local; misma ruta en la VPS y en el contenedor
+  BACKUPS_LOCAL_DIR: z.string().default("/var/vicalba/backups"),
   TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
   // Ruta dentro del contenedor Traefik (coincide con `storage` en traefik.yml) —
   // se lee vía `docker exec` en ese contenedor, no como fichero local del panel.
@@ -78,6 +80,7 @@ const buildTimeDummy = {
   TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
   TRAEFIK_STATIC_DIR: "/etc/traefik/static",
   REPOS_DIR: "/var/vicalba/repos",
+  BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
   TRAEFIK_CONTAINER_NAME: "traefik",
   ACME_JSON_PATH: "/letsencrypt/acme.json",
   LOG_LEVEL: "info" as const,

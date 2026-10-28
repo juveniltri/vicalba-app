@@ -10,6 +10,10 @@ vi.mock("@/lib/proxy/operacion", () => ({
   OperacionProxyEnCurso: EnCurso,
 }));
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
+const { mockContarSoloCf } = vi.hoisted(() => ({ mockContarSoloCf: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: { rutaProyecto: { count: mockContarSoloCf } },
+}));
 const { mockLog, mockRangos } = vi.hoisted(() => ({
   mockLog: vi.fn(),
   mockRangos: vi.fn(),
@@ -31,6 +35,7 @@ const caller = async () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockContarSoloCf.mockResolvedValue(0);
   vi.mocked(auth).mockResolvedValue({
     user: { id: "u1", email: "admin@vicalba.local" },
     expires: "2099-01-01",
@@ -66,6 +71,30 @@ describe("proxy", () => {
     });
     expect(mockLanzar).toHaveBeenCalledWith(nueva, undefined);
     terminar();
+  });
+
+  it("aplicar no deja los rangos vacíos mientras haya rutas «Solo desde Cloudflare»", async () => {
+    mockLanzar.mockResolvedValue({ terminado: Promise.resolve() });
+    const vacia = {
+      ...CONFIG_PROXY_POR_DEFECTO,
+      cloudflare: { delante: true, rangos: [] },
+    };
+    const api = await caller();
+
+    mockContarSoloCf.mockResolvedValue(1);
+    await expect(api.aplicar(vacia)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message:
+        "Hay rutas con «Solo desde Cloudflare»: los rangos no pueden quedar vacíos",
+    });
+    expect(mockContarSoloCf).toHaveBeenCalledWith({
+      where: { soloCloudflare: true },
+    });
+    expect(mockLanzar).not.toHaveBeenCalled();
+
+    mockContarSoloCf.mockResolvedValue(0);
+    await api.aplicar(vacia);
+    expect(mockLanzar).toHaveBeenCalledWith(vacia, undefined);
   });
 
   it("aplicar pasa el token de Cloudflare (null lo borra) y valida su forma", async () => {

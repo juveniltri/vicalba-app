@@ -76,6 +76,8 @@ model Proyecto {
   buildCommand         String?
   startCommand         String?
   composeContent       String?           @db.Text
+  backupsHabilitados   Boolean           @default(true)
+  elementosBackup      ElementoBackup[]
   variables            VariableEntorno[]
   deploys              Deploy[]
   volumenes            Volumen[]
@@ -104,6 +106,8 @@ model RutaProyecto {
   redireccionWww RedireccionWww @default(ninguna)
   // Proxied by Cloudflare: its cert resolver and real-IP strategy
   cloudflare     Boolean        @default(false)
+  // Only Cloudflare's edges may connect (ipAllowList on RemoteAddr)
+  soloCloudflare Boolean        @default(false)
   // Validated with middlewaresSchema (src/lib/schemas/middlewares.ts)
   middlewares    Json           @default("{}")
   creadoEn       DateTime       @default(now())
@@ -204,6 +208,7 @@ model ConfiguracionNotificacion {
 enum DestinoBackup {
   s3
   sftp
+  local
 }
 
 enum OperacionBackup {
@@ -254,17 +259,49 @@ model ConfiguracionBackup {
 }
 
 model Backup {
+  id             String          @id @default(cuid())
+  operacion      OperacionBackup @default(copia)
+  origen         OrigenBackup
+  resultado      ResultadoBackup @default(en_curso)
+  iniciadoEn     DateTime        @default(now())
+  finalizadoEn   DateTime?
+  snapshotId     String?
+  bytesAnadidos  BigInt?
+  error          String?         @db.Text
+  // null = the Panel's own copy. No relation: history outlives a deleted Proyecto
+  proyectoId     String?
+  // "<cliente>/<proyecto>" at the time of the copy
+  proyectoNombre String?
+  elementos      ElementoCopia[]
+
+  @@index([iniciadoEn])
+  @@index([proyectoId, iniciadoEn])
+}
+
+// Only written when the user toggles a checkbox: a detected item without a row is included
+model ElementoBackup {
+  id         String   @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  // bd:<db>, datos:./data/media, volumen:<x>
+  clave      String
+  incluido   Boolean  @default(true)
+  creadoEn   DateTime @default(now())
+
+  @@unique([proyectoId, clave])
+}
+
+model ElementoCopia {
   id            String          @id @default(cuid())
-  operacion     OperacionBackup @default(copia)
-  origen        OrigenBackup
+  backupId      String
+  backup        Backup          @relation(fields: [backupId], references: [id], onDelete: Cascade)
+  clave         String
   resultado     ResultadoBackup @default(en_curso)
-  iniciadoEn    DateTime        @default(now())
-  finalizadoEn  DateTime?
-  snapshotId    String?
+  snapshotIds   String[]
   bytesAnadidos BigInt?
   error         String?         @db.Text
 
-  @@index([iniciadoEn])
+  @@index([backupId])
 }
 
 enum EstadoProxy {
@@ -277,15 +314,15 @@ enum EstadoProxy {
 // Configuración → Proxy. "aplicada" is what Traefik is running; "pendiente" the
 // last request, kept when it was reverted or failed so the UI can show it.
 model ConfiguracionProxy {
-  id            String      @id @default("default")
-  aplicada      Json
-  pendiente     Json?
-  estado        EstadoProxy @default(aplicada)
-  mensaje       String?
-  log           String?     @db.Text
+  id             String      @id @default("default")
+  aplicada       Json
+  pendiente      Json?
+  estado         EstadoProxy @default(aplicada)
+  mensaje        String?
+  log            String?     @db.Text
   // Cloudflare API token (DNS-01), AES-256-GCM like the other secrets
   cfTokenCifrado String?
   cfTokenIv      String?
   cfTokenAuthTag String?
-  actualizadoEn DateTime    @updatedAt
+  actualizadoEn  DateTime    @updatedAt
 }

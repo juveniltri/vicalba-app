@@ -76,4 +76,13 @@ describe("Listbox", () => {
     );
     expect(screen.getByRole("button")).toHaveAttribute("id", "tipo");
   });
+
+  it("deshabilitado no abre la lista", async () => {
+    const user = userEvent.setup();
+    render(<Listbox value="a" options={options} onChange={vi.fn()} disabled />);
+    const boton = screen.getByRole("button");
+    expect(boton).toBeDisabled();
+    await user.click(boton);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
 });

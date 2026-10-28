@@ -46,8 +46,8 @@ En el firewall del proveedor (Hetzner Cloud Firewall u otro), reglas **Inbound**
 ### A4. Directorios persistentes
 
 ```bash
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
-# El Panel corre como uid 1001 y escribe en las tres
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos /var/vicalba/backups
+# El Panel corre como uid 1001 y escribe en todas
 chown -R 1001:1001 /var/vicalba
 ```
 
@@ -187,8 +187,14 @@ Configuración → Webhook de GitHub del Panel muestra estos datos para copiarlo
 
 En **Configuración → Backups**:
 
-1. Destino: S3 compatible (Backblaze B2, Cloudflare R2, Hetzner…) o SFTP con una credencial SSH
-   del Panel. Pulsa **Probar y guardar**.
+1. Destino: S3 compatible (Backblaze B2, Cloudflare R2, Hetzner…), SFTP con una credencial SSH
+   del Panel, o **Local (en la VPS)** si aún no tienes un destino externo. Pulsa **Probar y
+   guardar**.
+
+   El destino local guarda el repositorio en `/var/vicalba/backups/restic` (carpeta fija, la crea
+   y da permisos el § A4; el `docker-compose.yml` la monta en el Panel). Si la VPS o su disco se
+   pierden, las copias se pierden con ella: monta ahí un volumen o disco aparte del proveedor
+   (`/var/vicalba/backups` como punto de montaje) y pasa a S3/SFTP en cuanto puedas.
 2. Guarda el **kit de recuperación** que aparece **y** la `ENCRYPTION_KEY` fuera de la VPS.
    Confirma en el Panel que los has guardado.
 3. Activa la copia diaria y elige la hora (Europe/Madrid). Al día siguiente, comprueba en el
@@ -249,6 +255,41 @@ docker compose up -d --build
 
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
+
+### B2b. A la 2.4.0 (backups de Proyectos y «Solo desde Cloudflare»)
+
+(Su número es B2b para no renumerar los apartados que citan otras notas y versiones.) Si la VPS
+está en la **2.1.x** o anterior, haz también § B3 y § B4 (en ese orden); si está en la **2.2.x**,
+solo § B3.
+
+**Actualizar:** § B1. Las migraciones se aplican solas al arrancar el Panel; no hay variables
+nuevas en el `.env`. Para el destino **Local (en la VPS)** (opcional) crea antes la carpeta
+(`mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups`) y levanta el stack
+completo con `docker compose up -d` para que el Panel tenga el montaje nuevo (§ B1 ya lo hace).
+
+**Qué esperar:**
+
+- La **primera copia diaria** copia **todos** los Proyectos con contenedores (cada «Copia ahora»
+  copia solo su Proyecto): dump de sus BDs Postgres y MySQL/MariaDB y `tar` de sus volúmenes y carpetas de
+  datos. Puede tardar horas con medias grandes y ocupa tanto como esos datos, comprimidos y
+  deduplicados, en el destino: comprueba antes que hay espacio. Las siguientes solo suben lo que
+  cambia. Entre tanto, el Panel sigue funcionando; una operación a la vez (cancelable desde
+  Configuración → Backups o desde el Proyecto).
+- Se descarga la imagen `busybox:1.37.0` la primera vez que se copia una carpeta de datos.
+- Cada Proyecto empieza con la copia diaria activada; desmárcala en su pestaña **Backups** donde
+  no la quieras, y desmarca los elementos que se regeneran.
+
+**Comprobaciones:**
+
+1. Al día siguiente, Configuración → Backups → Historial: la copia del Panel y las de cada
+   Proyecto en «Correcta».
+2. En cada Proyecto, pestaña **Backups**: revisa qué lista como «No se copia» y por qué.
+3. Recomendado: restaurar un Proyecto de pruebas desde su pestaña, y un simulacro de
+   `docs/recuperacion.md` («Datos de un Proyecto») en una VPS de usar y tirar.
+
+**«Solo desde Cloudflare»:** las rutas que ya estén detrás de Cloudflare quedan **sin** la opción
+(la migración la deja desactivada, así que nada cambia solo). Para activarla en una ruta hacen
+falta los rangos de Cloudflare aplicados (§ C2); los pasos y la comprobación están en § C3 y § C6.
 
 ### B3. A la 2.3.0 (Proxy y servicios)
 
@@ -382,6 +423,12 @@ proxy de Cloudflare** → **Guardar**. En la tabla aparece «☁ Detrás de Clou
 
 Haz esto **antes** de poner la nube naranja: así el certificado se pide ya por DNS.
 
+Al marcarla aparece **Solo desde Cloudflare** (activada por defecto): la ruta responde **403** a
+toda petición que no llegue desde los servidores de Cloudflare, así nadie puede saltarse la nube
+naranja yendo directo a la IP de la VPS. Necesita que los rangos de Cloudflare estén aplicados
+(C2); si no, el Panel no deja guardarla. Desmárcala si algún día necesitas entrar sin pasar por
+Cloudflare. La tabla muestra «Solo Cloudflare» en esa ruta.
+
 ### C4. Configurar Cloudflare para ese dominio
 
 1. **DNS**: registro `A` del subdominio → IP de la VPS, con la **nube naranja** (Proxied).
@@ -401,6 +448,10 @@ validación no llega. Cuando la pestaña Dominios muestre «SSL activo», cambia
    Si sigue «SSL pendiente»: Configuración → Proxy → **Ver las últimas líneas del log de
    Traefik** y busca errores de `acme`/`cloudflare` (token sin permisos, zona no incluida…).
 2. El dominio abre por HTTPS con el candado.
+   Con **Solo desde Cloudflare**, comprueba también que ir directo a la IP es rechazado:
+   `curl -sk -o /dev/null -w '%{http_code}' --resolve <dominio>:443:<IP de la VPS> https://<dominio>/`
+   → **403**. Para que sea efectivo, el origen no debe tener registro `AAAA` (solo `A`): una IPv6
+   publicada en el DNS permitiría llegar al origen por otra vía.
 3. La IP real: si la aplicación muestra o registra la IP del visitante (`X-Forwarded-For` /
    `X-Real-Ip`), debe ser la tuya, no una de Cloudflare.
 4. Protección por IP: en **Protección y cabeceras** de la ruta, pon en **IPs o rangos

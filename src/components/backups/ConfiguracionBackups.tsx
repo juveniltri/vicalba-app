@@ -16,8 +16,9 @@ import type {
   CopiaBackup,
   EjecucionBackup,
 } from "@/lib/schemas/dashboard";
+import { BotonCancelarBackup } from "./BackupsProyecto";
 import { CopiasBackup } from "./CopiasBackup";
-import { DestinoBackupForm } from "./DestinoBackupForm";
+import { AvisoDestinoLocal, DestinoBackupForm } from "./DestinoBackupForm";
 import { HistorialBackups, formatearFecha } from "./HistorialBackups";
 import { KitRecuperacionModal } from "./KitRecuperacionModal";
 
@@ -50,6 +51,17 @@ export function ConfiguracionBackups({
   const [isPending, startTransition] = useTransition();
   const [habilitado, setHabilitado] = useState(config.habilitado);
   const [hora, setHora] = useState(config.hora);
+  // Follow the server after a refresh (another tab, a restore): resync during
+  // render, the documented alternative to an effect that sets state.
+  const [vistos, setVistos] = useState({
+    habilitado: config.habilitado,
+    hora: config.hora,
+  });
+  if (vistos.habilitado !== config.habilitado || vistos.hora !== config.hora) {
+    setVistos({ habilitado: config.habilitado, hora: config.hora });
+    setHabilitado(config.habilitado);
+    setHora(config.hora);
+  }
   const [kit, setKit] = useState<string | null>(null);
   const [errorKit, setErrorKit] = useState<string | null>(null);
 
@@ -95,6 +107,7 @@ export function ConfiguracionBackups({
     <div className="flex flex-col gap-4">
       {/* Copies and restores run in the background: follow them until done. */}
       <DeployPoller isDeploying={config.enCurso} />
+      {config.tipoDestino === "local" && <AvisoDestinoLocal />}
       <Tarjeta titulo="Estado">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Dato etiqueta="Última copia" valor={textoUltimaCopia(historial)} />
@@ -107,14 +120,17 @@ export function ConfiguracionBackups({
             }
           />
         </div>
-        <button
-          type="button"
-          onClick={hacerCopia}
-          disabled={config.enCurso || isPending}
-          className="self-start inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-        >
-          Hacer copia ahora
-        </button>
+        <div className="flex items-center gap-2 self-start">
+          <button
+            type="button"
+            onClick={hacerCopia}
+            disabled={config.enCurso || isPending}
+            className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] font-body text-[12.5px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          >
+            Hacer copia ahora
+          </button>
+          {config.enCurso && <BotonCancelarBackup />}
+        </div>
         {errorKit && (
           <p className="font-body text-xs text-state-error">{errorKit}</p>
         )}
@@ -154,6 +170,7 @@ export function ConfiguracionBackups({
               ariaLabel="Hora de la copia"
               value={String(hora)}
               options={HORAS}
+              disabled={isPending}
               onChange={(h) => guardarProgramacion(habilitado, Number(h))}
             />
           </div>

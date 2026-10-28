@@ -17,6 +17,12 @@ export function CopiasBackup({
   const [elegida, setElegida] = useState<CopiaBackup | null>(null);
 
   if ("error" in copias) {
+    // Not a failure: the destination has simply not been set up yet.
+    if (copias.error.startsWith("Backups sin configurar")) {
+      return (
+        <p className="font-body text-xs text-text-muted">{copias.error}</p>
+      );
+    }
     return (
       <p role="alert" className="font-body text-xs text-state-error">
         {copias.error}

@@ -216,6 +216,10 @@ de Traefik fuera de la VPS.
      carpeta, el access key ID y la secret key.
    - **SFTP**: un servidor tuyo. Rellena host, puerto, usuario, ruta absoluta y la credencial
      SSH (créala antes en Credenciales SSH y añade su clave pública al servidor).
+   - **Local (en la VPS)**: sin campos; guarda las copias en la carpeta fija
+     `/var/vicalba/backups` de la propia VPS (el administrador la crea al instalar). Es un
+     sustituto mientras no haya un destino externo: si se pierde la VPS o su disco, se pierden
+     también las copias. El Panel lo recuerda con un aviso ámbar y muestra el espacio libre.
 2. Pulsa **Probar y guardar**. El Panel comprueba que llega al destino, genera la clave de
    cifrado y prepara el repositorio de copias.
 3. Aparece el **kit de recuperación**: el repositorio y la clave. **Cópialo y guárdalo fuera de
@@ -271,6 +275,80 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
 - **Has perdido la VPS entera**: esto se hace sin el Panel; ver «Recuperar el Panel en otra
   VPS», en los anexos.
 
+## 10. Copias y restauración de un Proyecto
+
+Objetivo: que las bases de datos y las carpetas de datos de un Proyecto (la media subida por los
+usuarios, los ficheros de una BD…) también se copien, y poder devolverlas a una fecha anterior.
+Necesita el destino de la tarea 8.
+
+1. Abre el Proyecto y entra en la pestaña **Backups**. Si todavía no hay destino, la pestaña lo
+   dice y enlaza a Configuración → Backups.
+2. Se necesita que el Proyecto tenga contenedores (aunque estén parados): despliégalo antes si
+   nunca lo has hecho. El Panel los inspecciona y lista lo que encuentra como **Base de datos**
+   (Postgres, PostGIS, Timescale, MySQL y MariaDB) o **Datos** (volúmenes con nombre del Proyecto y
+   carpetas de su repositorio o de `.panel/` con escritura).
+3. Desmarca lo que no quieras copiar (por ejemplo, ficheros que se regeneran). El interruptor
+   **Incluir en la copia diaria** activa o desactiva el Proyecto entero.
+4. La copia diaria del Proyecto se hace después de la del Panel, a la misma hora. Para probarlo,
+   pulsa **Copia ahora**: mientras dura, el botón se sustituye por **Cancelar** (pide confirmar).
+   La primera copia de una carpeta grande puede tardar horas; las siguientes solo suben lo que
+   cambió. Hay un límite de 60 minutos por BD y de 12 horas por carpeta.
+5. Se conservan 7 copias diarias y 4 semanales por elemento; las manuales y las previas a
+   restaurar, 30 días.
+
+### Lo que nunca se copia
+
+Aparece en la pestaña como **No se copia**, con el motivo. Es una decisión de seguridad: no se
+copia nada que restaurar pudiera estropear.
+
+- Carpetas fuera del repositorio del Proyecto y de `.panel/` (también las de otro Proyecto, o el
+  propio repo entero).
+- Carpetas con un enlace simbólico en la ruta, que no existen o que están dentro de `.git`.
+- Volúmenes externos o de otro Proyecto, y volúmenes enlazados a una carpeta del servidor.
+- Una carpeta que contiene los datos de una BD (los ficheros de Postgres o MySQL se copian con
+  su dump, no a mano). Monta una subcarpeta si quieres copiarla.
+- Si una carpeta de datos contiene a otra, solo se copia la exterior.
+
+Las carpetas montadas en solo lectura, los ficheros sueltos y los volúmenes anónimos de una
+imagen ni aparecen. Los datos de `.panel/` se copian, pero se restauran a mano (ver
+`docs/recuperacion.md`), porque los comparten otros Proyectos del Cliente.
+
+### Restaurar
+
+1. En **Backups**, la lista de copias muestra fecha, origen (programada, manual o antes de
+   restaurar) y tamaño. Pulsa **Restaurar** en la que quieras.
+2. Marca qué elementos devolver (por defecto, todos los que se pueden). Un elemento que ya no se
+   monta en el Proyecto, o que se copió a medias en esa copia, se rechaza.
+3. Lee el aviso, escribe el nombre del Proyecto y confirma con **Restaurar**.
+4. El Panel hace antes una copia «Antes de restaurar» de lo que va a sustituir; si falla, no
+   toca nada. Después **para los Servicios** del Proyecto (salvo las BDs), sustituye los datos y
+   las bases, y arranca de nuevo lo que estaba en marcha. El Proyecto aparece como
+   «restaurando» y mientras tanto rechaza deploys (incluido el webhook de GitHub, que
+   responde 409), Iniciar, Detener, Reiniciar y Eliminar.
+5. Se puede **Cancelar** una restauración en curso, pero deja los Servicios parados, igual que
+   un fallo.
+
+### Si algo falla
+
+- **Una restauración falla o se cancela**: los Servicios del Proyecto se quedan parados (los datos
+  pueden estar a medias) y se avisa por los canales. Restaura otra vez, o la copia «Antes de
+  restaurar», o termínala a mano con `docs/recuperacion.md` y pulsa **Iniciar**.
+- **«El contenedor … está parado»**: una BD se copia con el contenedor en marcha; arráncalo.
+- **No hay nada que copiar**: el Proyecto no tiene contenedores, o has desmarcado todo.
+- **Ya hay una copia o restauración en curso**: solo corre una a la vez; espera o cancela.
+
+### Eliminar un Proyecto y sus copias
+
+Al eliminar un Proyecto, la casilla **Borrar también sus copias ahora** (desmarcada por defecto)
+las olvida de inmediato. Si la dejas desmarcada, las copias se borran solas pasados 30 días. Si
+hay una copia o restauración en curso, la eliminación se rechaza hasta que termine. **Lo que se
+olvida no se puede recuperar**. Las copias de un Proyecto eliminado caducan siempre a los 30
+días.
+
+En un Proyecto que sigue existiendo, las de una carpeta que dejó de montarse también caducan a
+los 30 días, salvo que el Proyecto tenga algo en «No se copia»: entonces no se caduca ninguna
+copia suya, por si la causa es un fallo de detección.
+
 # Parte II — Referencia por pantallas
 
 ## Dashboard
@@ -317,6 +395,10 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
   Las rutas que pasan por Cloudflare llevan marcada **Detrás de Cloudflare**: piden el
   certificado por DNS (o HTTP sin token) y la protección por IP y el límite de peticiones usan
   la IP real del visitante, no la de Cloudflare.
+  Con **Solo desde Cloudflare** (activada por defecto en esas rutas) el dominio rechaza con 403
+  lo que no llegue por los servidores de Cloudflare, p. ej. quien vaya directo a la IP de la VPS;
+  la tabla lo indica con «Solo Cloudflare». Pide tener aplicados los rangos de Cloudflare en
+  Configuración → Proxy.
   Muestra el estado del certificado, avisa si el Servicio no tiene contenedor y enseña el YAML
   que recibe Traefik. Los cambios se aplican al guardar; una ruta a un Servicio que no tenía
   ninguna funciona tras el siguiente deploy.
@@ -328,6 +410,8 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
   cambiar una, escribe la nueva; si la dejas vacía, se mantiene.
 - **Variables**: variables de entorno (tarea 5).
 - **Volúmenes**: carpetas persistentes y su explorador.
+- **Backups**: qué se copia del Proyecto (BDs y carpetas de datos), **Copia ahora**/**Cancelar**,
+  las copias disponibles y **Restaurar** (tarea 10).
 - **Compose**: el `docker-compose.yml` del Proyecto (solo en Proyectos Docker Compose).
 - **Ajustes**: editar el Proyecto (rama, puerto, credencial SSH…) y la **Zona
   peligrosa**: **Eliminar proyecto** borra el Proyecto, sus contenedores y sus datos; pide
@@ -429,9 +513,9 @@ Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no 
 
 - **Estado**: última copia (hace cuánto y si fue correcta, o el motivo del fallo), próxima copia
   y **Hacer copia ahora**.
-- **Destino**: S3 o SFTP y sus datos; **Probar y guardar** (tarea 8).
+- **Destino**: S3, SFTP o local (en la VPS) y sus datos; **Probar y guardar** (tarea 8).
 - **Programación**: copia diaria y hora.
-- **Historial**: cada copia y restauración con su fecha, origen (programada, manual o antes de
+- **Historial**: cada copia y restauración (también las de Proyectos) con su fecha, origen (programada, manual o antes de
   restaurar), resultado y tamaño.
 - **Copias disponibles**: las copias que hay en el destino y **Restaurar** (tarea 9).
 
@@ -490,10 +574,10 @@ Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no 
 - **Proxy**: Traefik, que recibe las visitas y las envía al Proyecto de cada dominio.
 - **Dominio**: el nombre con el que se visita un Proyecto.
 - **Certificado**: el certificado SSL de un dominio, que Let's Encrypt emite y renueva solo.
-- **Backup**: una copia de seguridad del Panel.
+- **Backup**: una copia de seguridad del Panel o de los datos de un Proyecto.
 - **Kit de recuperación**: el repositorio y la clave de las copias; con él y la
   `ENCRYPTION_KEY` se recupera el Panel en otra VPS.
-- **Restauración**: devolver el Panel al estado de una copia.
+- **Restauración**: devolver el Panel, o las BDs y datos de un Proyecto, al estado de una copia.
 
 ## Estados y colores
 
@@ -519,4 +603,4 @@ Panel antiguo. Hace falta:
 
 El procedimiento paso a paso está en `docs/recuperacion.md` del repositorio: preparar la VPS,
 descargar la última copia con restic, restaurar la base de datos y la configuración de Traefik,
-arrancar el Panel y redesplegar cada Proyecto.
+arrancar el Panel, redesplegar cada Proyecto y recuperar sus BDs y datos.

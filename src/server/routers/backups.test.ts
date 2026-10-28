@@ -3,11 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/env", () => ({
   env: {
     REPOS_DIR: "/var/vicalba/repos",
+    BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
     ENCRYPTION_KEY: "0".repeat(64),
   },
+}));
+
+const fsm = vi.hoisted(() => ({
+  access: vi.fn(),
+  stat: vi.fn(),
+  statfs: vi.fn(),
+}));
+vi.mock("node:fs/promises", async (o) => ({
+  ...(await o<typeof import("node:fs/promises")>()),
+  ...fsm,
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
@@ -54,6 +65,16 @@ const m = vi.hoisted(() => ({
   iniciarRestauracion: vi.fn(),
   hay: vi.fn(),
   cargar: vi.fn(),
+  proyectoFind: vi.fn(),
+  proyectoUpdate: vi.fn(),
+  elementoFindMany: vi.fn(),
+  elementoUpsert: vi.fn(),
+  detectar: vi.fn(),
+  copiarProyecto: vi.fn(),
+  listarProyectos: vi.fn(),
+  restaurarProyecto: vi.fn(),
+  cancelarOp: vi.fn(),
+  restaurando: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -64,6 +85,8 @@ vi.mock("@/lib/prisma", () => ({
     },
     credencial: { findUnique: m.credFind },
     backup: { findMany: m.backupFindMany, findFirst: m.backupFindFirst },
+    proyecto: { findUnique: m.proyectoFind, update: m.proyectoUpdate },
+    elementoBackup: { findMany: m.elementoFindMany, upsert: m.elementoUpsert },
   },
 }));
 vi.mock("@/lib/crypto", () => ({
@@ -82,6 +105,16 @@ vi.mock("@/lib/backups/restic", async (o) => ({
   ...(await o<typeof import("@/lib/backups/restic")>()),
   abrirOInicializar: m.abrir,
   listarSnapshots: m.listar,
+  listarSnapshotsProyectos: m.listarProyectos,
+}));
+vi.mock("@/lib/backups/deteccion", () => ({ detectarProyecto: m.detectar }));
+vi.mock("@/lib/backups/restaurando", async (o) => ({
+  ...(await o<typeof import("@/lib/backups/restaurando")>()),
+  estaRestaurando: m.restaurando,
+}));
+vi.mock("@/lib/backups/restaurarProyecto", async (o) => ({
+  ...(await o<typeof import("@/lib/backups/restaurarProyecto")>()),
+  iniciarRestauracionProyecto: m.restaurarProyecto,
 }));
 vi.mock("@/lib/backups/configuracion", async (o) => ({
   ...(await o<typeof import("@/lib/backups/configuracion")>()),
@@ -90,17 +123,28 @@ vi.mock("@/lib/backups/configuracion", async (o) => ({
     fn({ env: {}, args: [], signal }),
 }));
 vi.mock("@/lib/backups/copia", () => ({ iniciarCopia: m.iniciarCopia }));
+vi.mock("@/lib/backups/ciclo", async (o) => ({
+  ...(await o<typeof import("@/lib/backups/ciclo")>()),
+  iniciarCopiaProyecto: m.copiarProyecto,
+}));
 vi.mock("@/lib/backups/restaurar", () => ({
   iniciarRestauracion: m.iniciarRestauracion,
 }));
 vi.mock("@/lib/backups/operacion", async (o) => ({
   ...(await o<typeof import("@/lib/backups/operacion")>()),
   hayOperacionEnCurso: m.hay,
+  cancelarOperacion: m.cancelarOp,
 }));
 
 import { auth } from "@/lib/auth";
 import { BackupsNoConfigurados } from "@/lib/backups/configuracion";
+import { NadaQueCopiar } from "@/lib/backups/ciclo";
 import { OperacionEnCurso } from "@/lib/backups/operacion";
+import { ProyectoRestaurando } from "@/lib/backups/restaurando";
+import {
+  DeployEnCurso,
+  RestauracionRechazada,
+} from "@/lib/backups/restaurarProyecto";
 import { appRouter } from "@/server/routers/_app";
 import { createCallerFactory, createContext } from "@/server/trpc";
 
@@ -117,6 +161,9 @@ beforeEach(async () => {
   ctx = await createContext();
   m.hay.mockReturnValue(false);
   m.backupFindFirst.mockResolvedValue(null);
+  fsm.stat.mockResolvedValue({ isDirectory: () => true });
+  fsm.access.mockResolvedValue(undefined);
+  fsm.statfs.mockResolvedValue({ bavail: 1000, bsize: 4096 });
 });
 
 const s3Input = {
@@ -226,6 +273,28 @@ describe("backups.guardarDestino", () => {
         host: "h",
         puerto: 70000,
         usuario: "u",
+        ruta: "/r",
+        credencialId: "c1",
+      },
+    ],
+    [
+      "host SFTP que empieza por -",
+      {
+        tipo: "sftp",
+        host: "-oProxyCommand",
+        puerto: 22,
+        usuario: "u",
+        ruta: "/r",
+        credencialId: "c1",
+      },
+    ],
+    [
+      "usuario SFTP que empieza por -",
+      {
+        tipo: "sftp",
+        host: "h",
+        puerto: 22,
+        usuario: "-oProxyCommand",
         ruta: "/r",
         credencialId: "c1",
       },
@@ -371,12 +440,30 @@ describe("backups.obtenerConfiguracion", () => {
         ruta: null,
         credencialId: null,
       },
+      local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
       tieneClave: false,
       claveConfirmada: false,
       repositorioInicializado: false,
       proximaCopia: null,
       enCurso: false,
     });
+  });
+
+  it("destino local: espacio libre de la carpeta (bavail * bsize)", async () => {
+    m.configFind.mockResolvedValue({ tipoDestino: "local" });
+    const c = await caller().backups.obtenerConfiguracion();
+    expect(fsm.statfs).toHaveBeenCalledWith("/var/vicalba/backups");
+    expect(c.local).toEqual({
+      ruta: "/var/vicalba/backups",
+      espacioLibreBytes: 1000 * 4096,
+    });
+  });
+
+  it("destino local: espacio libre null si statfs falla", async () => {
+    m.configFind.mockResolvedValue({ tipoDestino: "local" });
+    fsm.statfs.mockRejectedValue(new Error("ENOENT"));
+    const c = await caller().backups.obtenerConfiguracion();
+    expect(c.local.espacioLibreBytes).toBeNull();
   });
 
   it("habilitado: secretos solo como indicador y próxima copia calculada", async () => {
@@ -421,6 +508,83 @@ describe("backups.obtenerConfiguracion", () => {
     m.configFind.mockResolvedValue({ habilitado: true, hora: 3 });
     const c = await caller().backups.obtenerConfiguracion();
     expect(c.proximaCopia).toBeInstanceOf(Date);
+  });
+});
+
+describe("backups.guardarDestino — local", () => {
+  const aviso =
+    "La carpeta /var/vicalba/backups no existe o el Panel no puede escribir en ella. En la VPS: mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups";
+
+  it("carpeta escribible: inicializa y guarda sin campos de S3/SFTP", async () => {
+    m.configFind.mockResolvedValue(null);
+    m.abrir.mockResolvedValue("inicializado");
+    const res = await caller().backups.guardarDestino({ tipo: "local" });
+    expect(res).toEqual({ repositorio: "inicializado" });
+    expect(fsm.access).toHaveBeenCalledWith(
+      "/var/vicalba/backups",
+      expect.any(Number),
+    );
+    expect(m.configUpsert.mock.calls[0]![0].create).toMatchObject({
+      tipoDestino: "local",
+      s3Endpoint: null,
+      s3SecretKeyCifrada: null,
+      sftpHost: null,
+      claveCifrada: "cif(CLAVE-NUEVA)",
+    });
+  });
+
+  it("sin permisos de escritura: BAD_REQUEST con la orden para la VPS", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.access.mockRejectedValue(new Error("EACCES"));
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+    expect(m.abrir).not.toHaveBeenCalled();
+  });
+
+  it("carpeta inexistente: mismo error", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.stat.mockRejectedValue(new Error("ENOENT"));
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+  });
+
+  it("no es una carpeta: mismo error", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.stat.mockResolvedValue({ isDirectory: () => false });
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+  });
+
+  it("con local guardado, repositorioGuardado coincide: conserva la confirmación del kit", async () => {
+    const confirmada = new Date();
+    m.configFind.mockResolvedValue({
+      tipoDestino: "local",
+      claveCifrada: "cif(K)",
+      claveIv: "iv",
+      claveTag: "tag",
+      claveConfirmadaEn: confirmada,
+      sftpPuerto: 22,
+    });
+    m.abrir.mockResolvedValue("existente");
+    await caller().backups.guardarDestino({ tipo: "local" });
+    expect(m.configUpsert.mock.calls[0]![0].update.claveConfirmadaEn).toBe(
+      confirmada,
+    );
+  });
+
+  it("el kit de local lleva la ruta del repositorio", async () => {
+    m.configFind.mockResolvedValue({
+      tipoDestino: "local",
+      claveCifrada: "cif(K)",
+      claveIv: "iv",
+      claveTag: "tag",
+      claveConfirmadaEn: null,
+    });
+    const { kit } = await caller().backups.obtenerKit();
+    expect(kit).toContain("Repositorio:  /var/vicalba/backups/restic");
   });
 });
 
@@ -695,12 +859,370 @@ describe("backups — resto de procedures", () => {
     });
   });
 
+  it("resumen ignora las copias de Proyectos", async () => {
+    m.configFind.mockResolvedValue({ habilitado: true });
+    m.backupFindFirst.mockResolvedValue(null);
+    await caller().backups.resumen();
+    expect(m.backupFindFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { operacion: "copia", resultado: "exito", proyectoId: null },
+      }),
+    );
+    expect(m.backupFindFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { operacion: "copia", proyectoId: null },
+      }),
+    );
+  });
+
+  it("historial devuelve proyectoNombre", async () => {
+    m.backupFindMany.mockResolvedValue([
+      { id: "b1", bytesAnadidos: null, proyectoNombre: "acme/web" },
+    ]);
+    expect((await caller().backups.historial())[0]!.proyectoNombre).toBe(
+      "acme/web",
+    );
+  });
+
   it("resumen sin configuración ni copias", async () => {
     m.configFind.mockResolvedValue(null);
     expect(await caller().backups.resumen()).toEqual({
       habilitado: false,
       ultimaCorrecta: null,
       ultimoResultado: null,
+    });
+  });
+});
+
+describe("backups por Proyecto", () => {
+  const COPIA = "c".repeat(25);
+  const bd = {
+    tipo: "bd",
+    clave: "bd:app",
+    servicio: "db",
+    motor: "postgres",
+    contenedorId: "x",
+    enMarcha: true,
+  };
+  const datos = {
+    tipo: "datos",
+    clave: "datos:./data",
+    origen: "/o",
+    montaje: "bind",
+    restaurable: true,
+  };
+
+  beforeEach(() => {
+    m.proyectoFind.mockResolvedValue({
+      id: "p1",
+      nombre: "web",
+      backupsHabilitados: true,
+      cliente: { slug: "acme" },
+    });
+    m.restaurando.mockReturnValue(false);
+  });
+
+  describe("elementosProyecto", () => {
+    it("marca incluidos salvo los desmarcados y devuelve la última copia", async () => {
+      m.detectar.mockResolvedValue({
+        valida: true,
+        elementos: [bd, datos],
+        noCopiados: [{ origen: "/x", motivo: "Fuera del Proyecto" }],
+      });
+      m.elementoFindMany.mockResolvedValue([
+        { clave: "datos:./data", incluido: false },
+      ]);
+      const iniciadoEn = new Date("2026-10-01");
+      m.backupFindFirst.mockResolvedValue({ iniciadoEn, resultado: "exito" });
+      m.hay.mockReturnValue(true);
+      m.restaurando.mockReturnValue(true);
+      const res = await caller().backups.elementosProyecto({
+        proyectoId: "p1",
+      });
+      expect(m.detectar).toHaveBeenCalledWith("acme", "web");
+      expect(res).toEqual({
+        habilitado: true,
+        valida: true,
+        elementos: [
+          { ...bd, incluido: true },
+          { ...datos, incluido: false },
+        ],
+        noCopiados: [{ origen: "/x", motivo: "Fuera del Proyecto" }],
+        ultima: { iniciadoEn, resultado: "exito" },
+        restaurando: true,
+        enCurso: true,
+      });
+    });
+
+    it("sin copias previas devuelve ultima null", async () => {
+      m.detectar.mockResolvedValue({
+        valida: false,
+        elementos: [],
+        noCopiados: [],
+      });
+      m.elementoFindMany.mockResolvedValue([]);
+      const res = await caller().backups.elementosProyecto({
+        proyectoId: "p1",
+      });
+      expect(res.ultima).toBeNull();
+    });
+
+    it("Proyecto inexistente: NOT_FOUND", async () => {
+      m.proyectoFind.mockResolvedValue(null);
+      await expect(
+        caller().backups.elementosProyecto({ proyectoId: "nada" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+  });
+
+  describe("marcarElemento", () => {
+    it("hace upsert del elemento", async () => {
+      await caller().backups.marcarElemento({
+        proyectoId: "p1",
+        clave: "bd:app",
+        incluido: false,
+      });
+      expect(m.elementoUpsert).toHaveBeenCalledWith({
+        where: { proyectoId_clave: { proyectoId: "p1", clave: "bd:app" } },
+        create: { proyectoId: "p1", clave: "bd:app", incluido: false },
+        update: { incluido: false },
+      });
+    });
+
+    it("Proyecto inexistente: NOT_FOUND", async () => {
+      m.proyectoFind.mockResolvedValue(null);
+      await expect(
+        caller().backups.marcarElemento({
+          proyectoId: "x",
+          clave: "bd:app",
+          incluido: true,
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect(m.elementoUpsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("habilitarProyecto", () => {
+    it("actualiza backupsHabilitados", async () => {
+      await caller().backups.habilitarProyecto({
+        proyectoId: "p1",
+        habilitado: false,
+      });
+      expect(m.proyectoUpdate).toHaveBeenCalledWith({
+        where: { id: "p1" },
+        data: { backupsHabilitados: false },
+      });
+    });
+
+    it("Proyecto inexistente: NOT_FOUND", async () => {
+      m.proyectoFind.mockResolvedValue(null);
+      await expect(
+        caller().backups.habilitarProyecto({
+          proyectoId: "x",
+          habilitado: true,
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+  });
+
+  describe("copiarProyecto", () => {
+    it("lanza la copia", async () => {
+      m.copiarProyecto.mockResolvedValue({ id: "b1" });
+      expect(
+        await caller().backups.copiarProyecto({ proyectoId: "p1" }),
+      ).toEqual({ id: "b1" });
+      expect(m.copiarProyecto).toHaveBeenCalledWith("p1");
+    });
+
+    it("NadaQueCopiar: BAD_REQUEST", async () => {
+      m.copiarProyecto.mockRejectedValue(new NadaQueCopiar("Nada"));
+      await expect(
+        caller().backups.copiarProyecto({ proyectoId: "p1" }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "Nada" });
+    });
+
+    it("OperacionEnCurso: CONFLICT", async () => {
+      m.copiarProyecto.mockRejectedValue(new OperacionEnCurso());
+      await expect(
+        caller().backups.copiarProyecto({ proyectoId: "p1" }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    });
+  });
+
+  describe("copiasProyecto", () => {
+    const snap = (
+      id: string,
+      backupId: string,
+      ruta: string,
+      fecha: string,
+      bytes: number | null,
+      origen = "manual",
+    ) => ({
+      id,
+      backupId,
+      ruta,
+      fecha: new Date(fecha),
+      bytes,
+      origen,
+      proyectoId: "p1",
+      hashElemento: "h",
+    });
+
+    it("agrupa por copia, suma bytes y ordena por fecha desc", async () => {
+      m.cargar.mockResolvedValue({});
+      m.listarProyectos.mockResolvedValue([
+        snap("s1", "vieja", "/bd/app/app.sql", "2026-10-01T10:00:00Z", 10),
+        snap("s2", "nueva", "/bd/app/app.sql", "2026-10-02T10:00:00Z", 100),
+        snap(
+          "s3",
+          "nueva",
+          "/datos/datos%3A.%2Fdata.tar",
+          "2026-10-02T10:05:00Z",
+          50,
+        ),
+        snap(
+          "s4",
+          "nueva",
+          "/datos/datos%3A.panel%2Fx.tar",
+          "2026-10-02T10:01:00Z",
+          null,
+        ),
+        snap("s5", "vieja", "/bd/app/app.sql", "2026-10-01T10:01:00Z", null),
+        snap("s6", "sinbytes", "/bd/app/app.sql", "2026-09-01T10:00:00Z", null),
+      ]);
+      const res = await caller().backups.copiasProyecto({ proyectoId: "p1" });
+      expect(m.listarProyectos).toHaveBeenCalledWith(expect.anything(), "p1");
+      expect(res.map((c) => c.id)).toEqual(["nueva", "vieja", "sinbytes"]);
+      expect(res[0]).toEqual({
+        id: "nueva",
+        fecha: new Date("2026-10-02T10:05:00Z"),
+        origen: "manual",
+        bytes: 150,
+        elementos: [
+          { clave: "bd:app", restaurable: true },
+          { clave: "datos:./data", restaurable: true },
+          { clave: "datos:.panel/x", restaurable: false },
+        ],
+      });
+      expect(res[1].bytes).toBe(10);
+      expect(res[1].elementos).toHaveLength(1);
+      expect(res[2].bytes).toBeNull();
+    });
+
+    it("destino sin respuesta: TIMEOUT", async () => {
+      m.cargar.mockResolvedValue({});
+      const err = new Error("x");
+      err.name = "AbortError";
+      m.listarProyectos.mockRejectedValue(err);
+      await expect(
+        caller().backups.copiasProyecto({ proyectoId: "p1" }),
+      ).rejects.toMatchObject({ code: "TIMEOUT" });
+    });
+  });
+
+  describe("restaurarProyecto", () => {
+    const entrada = {
+      proyectoId: "p1",
+      copiaId: COPIA,
+      claves: ["bd:app"],
+      confirmacion: "web",
+    };
+
+    it("lanza la restauración", async () => {
+      m.restaurarProyecto.mockResolvedValue({ id: "r1" });
+      expect(await caller().backups.restaurarProyecto(entrada)).toEqual({
+        id: "r1",
+      });
+      expect(m.restaurarProyecto).toHaveBeenCalledWith({
+        proyectoId: "p1",
+        copiaId: COPIA,
+        claves: ["bd:app"],
+      });
+    });
+
+    it("confirmación distinta del nombre: BAD_REQUEST", async () => {
+      await expect(
+        caller().backups.restaurarProyecto({
+          ...entrada,
+          confirmacion: "otro",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(m.restaurarProyecto).not.toHaveBeenCalled();
+    });
+
+    it("Proyecto inexistente: NOT_FOUND", async () => {
+      m.proyectoFind.mockResolvedValue(null);
+      await expect(
+        caller().backups.restaurarProyecto(entrada),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("copiaId con formato inválido lo rechaza Zod", async () => {
+      await expect(
+        caller().backups.restaurarProyecto({ ...entrada, copiaId: "../x" }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("sin claves lo rechaza Zod", async () => {
+      await expect(
+        caller().backups.restaurarProyecto({ ...entrada, claves: [] }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it.each([
+      ["RestauracionRechazada", new RestauracionRechazada("No"), "BAD_REQUEST"],
+      ["DeployEnCurso", new DeployEnCurso(), "CONFLICT"],
+      ["ProyectoRestaurando", new ProyectoRestaurando(), "CONFLICT"],
+      ["OperacionEnCurso", new OperacionEnCurso(), "CONFLICT"],
+    ])("%s se traduce a %s", async (_n, err, code) => {
+      m.restaurarProyecto.mockRejectedValue(err);
+      await expect(
+        caller().backups.restaurarProyecto(entrada),
+      ).rejects.toMatchObject({ code });
+    });
+  });
+
+  describe("cancelar y enCurso", () => {
+    it("cancela con el nombre del usuario", async () => {
+      m.cancelarOp.mockReturnValue(true);
+      await caller().backups.cancelar();
+      expect(m.cancelarOp).toHaveBeenCalledWith("Cancelado por Admin");
+    });
+
+    it("usa el email si el usuario no tiene nombre", async () => {
+      vi.mocked(auth).mockResolvedValue({
+        user: { id: "u1", email: "a@b.c" },
+        expires: "2099-01-01",
+      } as never);
+      ctx = await createContext();
+      m.cancelarOp.mockReturnValue(true);
+      await caller().backups.cancelar();
+      expect(m.cancelarOp).toHaveBeenCalledWith("Cancelado por a@b.c");
+    });
+
+    it("sin nombre ni email usa un texto genérico", async () => {
+      vi.mocked(auth).mockResolvedValue({
+        user: { id: "u1" },
+        expires: "2099-01-01",
+      } as never);
+      ctx = await createContext();
+      m.cancelarOp.mockReturnValue(true);
+      await caller().backups.cancelar();
+      expect(m.cancelarOp).toHaveBeenCalledWith("Cancelado por un usuario");
+    });
+
+    it("sin operación en curso: NOT_FOUND", async () => {
+      m.cancelarOp.mockReturnValue(false);
+      await expect(caller().backups.cancelar()).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("enCurso refleja el candado", async () => {
+      m.hay.mockReturnValue(true);
+      expect(await caller().backups.enCurso()).toBe(true);
     });
   });
 });

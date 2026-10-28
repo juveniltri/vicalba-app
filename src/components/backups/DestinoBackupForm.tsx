@@ -6,8 +6,27 @@ import { guardarDestinoBackupAction } from "@/app/(panel)/actions";
 import { Listbox } from "@/components/ui/Listbox";
 import { useToast } from "@/components/ui/Toast";
 import type { ConfiguracionBackupVista } from "@/lib/schemas/dashboard";
+import { formatearBytes } from "./HistorialBackups";
 
-type Tipo = "s3" | "sftp";
+type Tipo = "s3" | "sftp" | "local";
+
+const ETIQUETA: Record<Tipo, string> = {
+  s3: "S3",
+  sftp: "SFTP",
+  local: "Local (en la VPS)",
+};
+
+export function AvisoDestinoLocal() {
+  return (
+    <p
+      role="note"
+      className="p-[12px_14px] rounded-[var(--radius-md)] border border-[color-mix(in_oklab,var(--color-state-deploying)_38%,transparent)] bg-[color-mix(in_oklab,var(--color-state-deploying)_13%,transparent)] font-body text-xs text-state-deploying"
+    >
+      Las copias están en la misma VPS: si se pierde la VPS o su disco, se
+      pierden también. Usa un disco aparte o pasa a S3/SFTP en cuanto puedas.
+    </p>
+  );
+}
 
 const INPUT =
   "min-h-10 px-3 font-body text-[13px] text-text-primary bg-background border border-border-strong rounded-[var(--radius-md)]";
@@ -46,14 +65,16 @@ export function DestinoBackupForm({
       setError(null);
       const comun = clave ? { clave } : {};
       const result = await guardarDestinoBackupAction(
-        tipo === "s3"
-          ? { tipo, ...s3, ...comun }
-          : {
-              tipo,
-              ...sftp,
-              puerto: Number(sftp.puerto),
-              ...comun,
-            },
+        tipo === "local"
+          ? { tipo, ...comun }
+          : tipo === "s3"
+            ? { tipo, ...s3, ...comun }
+            : {
+                tipo,
+                ...sftp,
+                puerto: Number(sftp.puerto),
+                ...comun,
+              },
       );
       if ("error" in result) {
         setError(result.error);
@@ -104,7 +125,7 @@ export function DestinoBackupForm({
         aria-label="Tipo de destino"
         className="inline-flex self-start rounded-[var(--radius-md)] border border-border-strong p-0.5"
       >
-        {(["s3", "sftp"] as const).map((t) => (
+        {(["s3", "sftp", "local"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -116,12 +137,30 @@ export function DestinoBackupForm({
                 : "text-text-secondary hover:text-text-primary"
             }`}
           >
-            {t.toUpperCase()}
+            {ETIQUETA[t]}
           </button>
         ))}
       </div>
 
-      {tipo === "s3" ? (
+      {tipo === "local" ? (
+        <div className="flex flex-col gap-3">
+          <Campo id="local-ruta" etiqueta="Carpeta">
+            <input
+              id="local-ruta"
+              readOnly
+              value={config.local.ruta}
+              className={INPUT}
+            />
+          </Campo>
+          {config.tipoDestino === "local" &&
+            config.local.espacioLibreBytes !== null && (
+              <p className="font-body text-xs text-text-muted">
+                Espacio libre: {formatearBytes(config.local.espacioLibreBytes)}
+              </p>
+            )}
+          {config.tipoDestino !== "local" && <AvisoDestinoLocal />}
+        </div>
+      ) : tipo === "s3" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {campoS3("endpoint", "Endpoint", {
             placeholder: "https://s3.eu-central-003.backblazeb2.com",

@@ -11,13 +11,20 @@ import {
   abrirOInicializar,
   aplicarRetencion,
   crearSnapshot,
+  crearSnapshotStdin,
   listarSnapshots,
+  listarSnapshotsProyectos,
+  olvidar,
+  parsearSnapshotsProyectos,
+  podar,
+  volcarSnapshot,
   parsearResumenBackup,
   parsearSnapshots,
   comprobarDestino,
   mensajeSinRespuesta,
   resumirErrorRestic,
   restaurarSnapshot,
+  INACTIVIDAD_MS,
   type Restic,
 } from "./restic";
 
@@ -143,7 +150,12 @@ describe("comandos", () => {
         "vicalba-panel",
         ".",
       ],
-      { env: r.env, cwd: "/tmp/copia", signal: undefined },
+      {
+        env: r.env,
+        cwd: "/tmp/copia",
+        signal: undefined,
+        inactividadMs: INACTIVIDAD_MS,
+      },
     );
   });
 
@@ -163,7 +175,6 @@ describe("comandos", () => {
       "7",
       "--keep-weekly",
       "4",
-      "--prune",
     ]);
   });
 
@@ -189,9 +200,13 @@ describe("comandos", () => {
       "sftp.command=ssh",
       "restore",
       "bbb222",
+      "--json",
       "--target",
       "/tmp/restaurar",
     ]);
+    expect(mockEjecutar.mock.calls[0]![2]).toMatchObject({
+      inactividadMs: INACTIVIDAD_MS,
+    });
   });
 });
 
@@ -266,5 +281,143 @@ describe("mensajeSinRespuesta", () => {
   it("solo traduce las cancelaciones", () => {
     expect(mensajeSinRespuesta(new Error("otra cosa"))).toBeNull();
     expect(mensajeSinRespuesta("texto")).toBeNull();
+  });
+});
+
+const base = ["-o", "sftp.command=ssh"];
+
+describe("snapshots de Proyectos", () => {
+  it("crearSnapshotStdin: backup desde comando con etiquetas y nombre", async () => {
+    mockEjecutar.mockResolvedValueOnce(SALIDA_BACKUP);
+    const res = await crearSnapshotStdin(r, {
+      proceso: { comando: "docker", args: ["exec", "c", "sh"] },
+      nombre: "bd-x.dump",
+      etiquetas: ["proyecto", "p:1"],
+    });
+    expect(res.bytesAnadidos).toBe(123456);
+    expect(mockEjecutar.mock.calls[0]![1]).toEqual([
+      ...base,
+      "backup",
+      "--json",
+      "--quiet",
+      "--host",
+      "vicalba-panel",
+      "--tag",
+      "proyecto",
+      "--tag",
+      "p:1",
+      "--stdin-filename",
+      "bd-x.dump",
+      "--stdin-from-command",
+      "--",
+      "docker",
+      "exec",
+      "c",
+      "sh",
+    ]);
+  });
+
+  it("parsearSnapshotsProyectos: lee etiquetas y ruta, descarta incompletos", () => {
+    const t = "2026-10-14T01:00:00+00:00";
+    const salida = JSON.stringify([
+      {
+        id: "a",
+        time: "2026-10-12T01:00:00+00:00",
+        paths: ["/bd-x.dump"],
+        tags: ["proyecto", "p:1", "e:h1", "c:b1", "o:manual"],
+        summary: { total_bytes_processed: 10 },
+      },
+      {
+        id: "b",
+        time: "2026-10-13T01:00:00+00:00",
+        paths: ["/d"],
+        tags: ["proyecto", "p:1", "e:h2", "c:b1", "o:programado"],
+      },
+      { id: "c", time: t, paths: ["/d"], tags: ["panel"] },
+      {
+        id: "d",
+        time: t,
+        paths: ["/d"],
+        tags: ["p:1", "e:h", "c:b", "o:raro"],
+      },
+      { id: "e", time: t, paths: [], tags: ["p:1", "e:h", "c:b", "o:manual"] },
+      { id: "f", time: t },
+    ]);
+    const res = parsearSnapshotsProyectos(salida);
+    expect(res.map((s) => s.id)).toEqual(["b", "a"]);
+    expect(res[1]).toEqual({
+      id: "a",
+      fecha: new Date("2026-10-12T01:00:00+00:00"),
+      bytes: 10,
+      ruta: "/bd-x.dump",
+      proyectoId: "1",
+      hashElemento: "h1",
+      backupId: "b1",
+      origen: "manual",
+    });
+    expect(res[0]!.bytes).toBeNull();
+  });
+
+  it("listarSnapshotsProyectos: filtra por proyecto o todos", async () => {
+    mockEjecutar.mockResolvedValue("[]");
+    await listarSnapshotsProyectos(r, "7");
+    await listarSnapshotsProyectos(r);
+    expect(mockEjecutar.mock.calls[0]![1]).toEqual([
+      ...base,
+      "snapshots",
+      "--json",
+      "--no-lock",
+      "--tag",
+      "proyecto,p:7",
+    ]);
+    expect(mockEjecutar.mock.calls[1]![1].at(-1)).toBe("proyecto");
+  });
+
+  it("olvidar: 7+4, 30d y todo (solo por ids)", async () => {
+    mockEjecutar.mockResolvedValue("[]");
+    await olvidar(r, { etiquetas: ["proyecto", "p:1"], politica: "7+4" });
+    await olvidar(r, { etiquetas: ["proyecto"], politica: "30d" });
+    await olvidar(r, {
+      etiquetas: ["proyecto"],
+      politica: "todo",
+      ids: ["a", "b"],
+    });
+    await olvidar(r, { etiquetas: ["proyecto"], politica: "todo" });
+    expect(mockEjecutar.mock.calls[0]![1]).toEqual([
+      ...base,
+      "forget",
+      "--json",
+      "--tag",
+      "proyecto,p:1",
+      "--group-by",
+      "host,paths",
+      "--keep-daily",
+      "7",
+      "--keep-weekly",
+      "4",
+    ]);
+    expect(mockEjecutar.mock.calls[1]![1].slice(-2)).toEqual([
+      "--keep-within",
+      "30d",
+    ]);
+    expect(mockEjecutar.mock.calls[2]![1]).toEqual([
+      ...base,
+      "forget",
+      "--json",
+      "a",
+      "b",
+    ]);
+    expect(mockEjecutar).toHaveBeenCalledTimes(3);
+  });
+
+  it("podar y volcarSnapshot", async () => {
+    mockEjecutar.mockResolvedValueOnce("");
+    await podar(r);
+    expect(mockEjecutar.mock.calls[0]![1]).toEqual([...base, "prune"]);
+    expect(volcarSnapshot(r, "abc", "/x.dump")).toEqual({
+      comando: "restic",
+      args: [...base, "dump", "abc", "/x.dump"],
+      env: r.env,
+    });
   });
 });

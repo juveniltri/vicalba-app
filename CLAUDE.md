@@ -312,7 +312,8 @@ imágenes; el texto se actualiza a mano.
 
 ### Nota — backups
 
-Configuración → Backups: destino S3 compatible o SFTP (credencial SSH del Panel), copia diaria a la
+Configuración → Backups: destino S3 compatible, SFTP (credencial SSH del Panel) o local (`BACKUPS_LOCAL_DIR`, por defecto
+`/var/vicalba/backups`, repositorio `<dir>/restic`, aviso ámbar permanente: está en la misma VPS), copia diaria a la
 hora elegida (Europe/Madrid), 7 diarias + 4 semanales. Cada copia es un snapshot de restic con
 `panel-db.dump` (`pg_dump -Fc`) y `traefik/` (dinámica + `acme.json`). La caché de restic y el
 `known_hosts` del destino SFTP viven en `<REPOS_DIR>/.backups/`. El kit de recuperación (repositorio
@@ -320,6 +321,27 @@ y clave) se muestra una sola vez; sin él y sin la `ENCRYPTION_KEY` del `.env` n
 Cambiar a otro repositorio (otro bucket, prefijo o servidor) conserva la clave pero vuelve a mostrar
 el kit, y las copias programadas esperan a que se confirme. Recuperar en una VPS nueva:
 `docs/recuperacion.md`.
+
+**Backups de Proyectos** (`src/lib/backups/`, 2.4.0): `deteccion.ts` inspecciona los contenedores
+`com.docker.compose.project=<cliente>-<proyecto>` y saca elementos: `bd:<servicio>` (Postgres/PostGIS/Timescale,
+MySQL/MariaDB) y datos (`datos:./ruta`, `datos:.panel/ruta`, `volumen:<nombre>`). Solo entran volúmenes
+del propio Proyecto (driver `local`, sin `device`/bind) y binds con escritura dentro de su repo o de `.panel/`, sin enlaces
+simbólicos (`lstat` bajo `/hostroot`); el resto, las carpetas que contienen los datos de una BD y las anidadas
+en otra salen como «No se copia» (solo la exterior es elemento). Cada parte es un snapshot de restic por stdin
+(`--stdin-from-command`; nada pasa por disco) con `--stdin-filename` `/bd/<servicio>/<base>.sql`, `_roles.sql`,
+`todo.sql` o `/datos/<clave>.tar` (`nombreStdin`, `encodeURIComponent`) y etiquetas `proyecto`, `p:<id>`, `e:<hash12 de
+la clave>`, `c:<backupId>`, `o:<programado|manual|antes_de_restaurar>` (`etiquetasCopia`). Los datos se leen con un
+contenedor `vicalba-backup-*` (`busybox:1.37.0`, `tar --numeric-owner`); límites 60 min por BD y 12 h por carpeta.
+La copia diaria encadena Panel y luego cada Proyecto con `backupsHabilitados` bajo un único bloqueo (cancelable);
+sin contenedores se salta. Retención por par `(p, e)`: programadas 7 diarias + 4 semanales, manuales y previas 30 días
+(`--group-by host,paths`), un solo `prune` al final. Se purgan los de un Proyecto eliminado o un elemento
+desaparecido a los 30 días, salvo si el Proyecto tiene algún «No se copia», no hay detección válida o la BD no tiene
+Proyectos; «Borrar también sus copias ahora» al eliminar las olvida al momento. Restaurar (`restaurarProyecto.ts`):
+copia previa de lo que se sustituye, se paran los Servicios (salvo las BDs), se vacía y extrae cada carpeta y se
+aplican roles (sin las sentencias del `POSTGRES_USER`, `filtrarRolesSql`) y bases con `psql`/`mariadb`; el Proyecto queda
+«restaurando» en `globalThis` (`restaurando.ts`) y rechaza deploys (el webhook responde `409`), Iniciar/Detener/Reiniciar
+y eliminar. Un fallo o cancelación deja los Servicios parados y avisa; un elemento copiado a medias o que ya no se monta
+se rechaza, y `.panel/` solo se restaura a mano (`docs/recuperacion.md`).
 
 ---
 
@@ -415,10 +437,11 @@ Ver `CONTEXT.md` para el glosario completo.
     - CI también en ramas `feature/**`, `hotfix/**` y `release/**` (854 → 867 tests, todos en verde también en Windows)
   - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
   - Versión 2.2.0 (`release/2.2.0`, PR #56 + #57): backups fase A (restic a S3/SFTP, copia diaria, restauración desde el Panel con copia previa, kit de recuperación, `docs/recuperacion.md`); guía de usuario (`docs/guia-usuario.md`, página `/guia`, PDF y capturas con `npm run guia`); arreglos de los filtros por nivel de los logs y del estado de certificados en instalaciones nuevas; `develop` y `master` protegidas (PR + 7 checks) con auto-merge (1105 tests)
-- **En construcción:** 2.3.0 — Proxy y servicios (`feature/2.3.0`, diseño `docs/diseno-proxy.md`): acciones por Servicio;
-  rutas múltiples por Proyecto (pestaña Dominios, alias por Servicio, ficheros `<cliente>_<proyecto>.yml`); middlewares
-  por ruta; Configuración → Proxy con vuelta atrás y acceso de emergencia; modo Cloudflare; arreglos de Proyectos
-  `image` sin red y de puertos publicados en el host (1258 tests). Falta la verificación de certificados
-  reales con Cloudflare en la VPS de desarrollo y la release.
+  - Versión 2.3.0 (publicada el 16/10/2026): Proxy y servicios (acciones por Servicio, rutas múltiples, middlewares, Configuración → Proxy con vuelta atrás, modo Cloudflare). Pendiente en la VPS de desarrollo: verificar certificados reales con Cloudflare (DNS-01 con token y HTTP-01 tras el proxy naranja).
+- **En construcción:** 2.4.0 (`feature/2.4.0`, spec `docs/superpowers/specs/2026-10-28-2.4.0-backups-proyectos-cloudflare-design.md`):
+  backups de Proyectos (BDs Postgres/MySQL y carpetas/volúmenes de datos, pestaña Backups, restauración con copia previa,
+  cancelar, borrar copias al eliminar) y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos. Hecho el
+  código y la documentación (`docs/recuperacion.md` «Datos de un Proyecto», guía, `production.md` § B2b); falta la
+  verificación real en la VPS de desarrollo, el CHANGELOG y la release.
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** release 2.3.0; después 2.4.0 — backups fases B (volúmenes) y C (BDs de Clientes), E2E, CSP estricta (ver `docs/roadmap.md`)
+- **Próximo hito:** release 2.4.0; después E2E, alerta de disco, CSP estricta, cobertura y fuentes locales (ver `docs/roadmap.md`)

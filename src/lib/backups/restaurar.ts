@@ -45,9 +45,27 @@ export async function reemplazarConfigTraefik(
   origen: string,
   destino: string,
 ): Promise<void> {
-  for (const f of await readdir(destino))
-    await rm(path.join(destino, f), { recursive: true, force: true });
-  await cp(origen, destino, { recursive: true });
+  // Stage in the temp dir, not next to destino: its parent is root-owned in
+  // production. A missing or unreadable source fails before the live config is
+  // emptied. destino is a mount point, so it is refilled, not renamed.
+  const nuevo = await mkdtemp(path.join(tmpdir(), "traefik-nuevo-"));
+  await cp(origen, nuevo, { recursive: true }).catch(async (err: unknown) => {
+    await rm(nuevo, { recursive: true, force: true });
+    throw err;
+  });
+  try {
+    for (const f of await readdir(destino))
+      await rm(path.join(destino, f), { recursive: true, force: true });
+    await cp(nuevo, destino, { recursive: true });
+  } catch (err) {
+    // destino may be half-written: the staged copy is the only good one.
+    log.error({ err, copia: nuevo }, "Config de Traefik a medio restaurar");
+    throw new Error(
+      `No se pudo restaurar la config de Traefik; la copia buena está en ${nuevo}`,
+      { cause: err },
+    );
+  }
+  await rm(nuevo, { recursive: true, force: true });
 }
 
 async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
@@ -62,6 +80,8 @@ async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
       })
     : null;
   const historial = await prisma.backup.findMany();
+  // Deleting the Backups cascades to their per-element detail
+  const detalle = await prisma.elementoCopia.findMany();
 
   await pgRestore(env.DATABASE_URL, dump, signal);
   // Bring an older copy up to the current schema before writing back rows
@@ -95,6 +115,7 @@ async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
   ops.push(
     prisma.backup.deleteMany(),
     prisma.backup.createMany({ data: historial }),
+    prisma.elementoCopia.createMany({ data: detalle }),
   );
   await prisma.$transaction(ops);
 }

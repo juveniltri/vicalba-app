@@ -10,6 +10,7 @@ export function Listbox<T extends string>({
   options,
   onChange,
   ariaLabel,
+  disabled = false,
   placeholder = "Selecciona…",
 }: {
   id?: string;
@@ -17,6 +18,7 @@ export function Listbox<T extends string>({
   options: ListboxOption<T>[];
   onChange: (value: T) => void;
   ariaLabel?: string;
+  disabled?: boolean;
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -87,13 +89,14 @@ export function Listbox<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
+        disabled={disabled}
         onClick={() =>
           open
             ? setOpen(false)
             : openAt(options.findIndex((o) => o.value === value))
         }
         onKeyDown={handleButtonKeyDown}
-        className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary text-left focus:outline-none focus:border-primary-300 flex items-center justify-between gap-2"
+        className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary text-left focus:outline-none focus:border-primary-300 flex items-center justify-between gap-2 disabled:opacity-40"
       >
         <span>{selected ? selected.label : placeholder}</span>
         <span aria-hidden className="text-text-muted text-[10px]">

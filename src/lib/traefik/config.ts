@@ -28,6 +28,8 @@ export type RutaTraefik = {
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
   // Proxied by Cloudflare (orange cloud)
   cloudflare: boolean;
+  // Only Cloudflare's edges may connect (needs `cloudflare`)
+  soloCloudflare: boolean;
   middlewares: Middlewares;
 };
 
@@ -102,6 +104,27 @@ function cadenaMiddlewares(
       },
     ]);
   if (m.compresion) cadena.push(["compresion", { compress: {} }]);
+  if (ruta.cloudflare && ruta.soloCloudflare) {
+    // No ipStrategy: the check runs on the TCP peer (RemoteAddr), which a
+    // client can't forge through X-Forwarded-For. Empty ranges must block
+    // everyone, never let everyone in.
+    if (cloudflare.rangos.length === 0)
+      log.warn(
+        { ruta: ruta.id },
+        "Solo desde Cloudflare sin rangos aplicados: la ruta rechaza todo el tráfico",
+      );
+    cadena.unshift([
+      "cloudflare",
+      {
+        ipAllowList: {
+          sourceRange:
+            cloudflare.rangos.length > 0
+              ? cloudflare.rangos
+              : ["255.255.255.255/32"],
+        },
+      },
+    ]);
+  }
   return cadena;
 }
 

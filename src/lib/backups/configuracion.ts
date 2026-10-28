@@ -74,6 +74,8 @@ export async function cargarConfigResuelta(): Promise<ConfigResuelta> {
       ruta: c.sftpRuta,
       clavePrivada: descifrar(cred.clavePrivadaCifrada, cred.iv, cred.authTag),
     };
+  } else if (c.tipoDestino === "local") {
+    destino = { tipo: "local", ruta: env.BACKUPS_LOCAL_DIR };
   } else {
     throw new BackupsNoConfigurados("no hay destino");
   }

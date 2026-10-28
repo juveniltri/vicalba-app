@@ -63,5 +63,15 @@ export async function register() {
   } catch (err) {
     log.error({ err }, "No se pudieron cerrar las copias interrumpidas");
   }
+  // Killing the docker CLI leaves the helper container (and its tar) running.
+  const { limpiarAuxiliaresHuerfanos } = await import("@/lib/backups/auxiliar");
+  try {
+    const auxiliares = await limpiarAuxiliaresHuerfanos();
+    if (auxiliares > 0) {
+      log.warn({ auxiliares }, "Contenedores auxiliares de backups eliminados");
+    }
+  } catch (err) {
+    log.error({ err }, "No se pudieron eliminar los contenedores auxiliares");
+  }
   iniciarProgramador();
 }

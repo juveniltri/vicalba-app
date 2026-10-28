@@ -52,6 +52,7 @@ export function HistorialBackups({
         <thead>
           <tr className="text-left text-xs text-text-muted">
             <th className="py-1.5 pr-3 font-normal">Fecha</th>
+            <th className="py-1.5 pr-3 font-normal">Proyecto</th>
             <th className="py-1.5 pr-3 font-normal">Operación</th>
             <th className="py-1.5 pr-3 font-normal">Origen</th>
             <th className="py-1.5 pr-3 font-normal">Resultado</th>
@@ -65,6 +66,9 @@ export function HistorialBackups({
               <tr key={e.id} className="border-t border-border align-top">
                 <td className="py-2 pr-3 whitespace-nowrap">
                   {formatearFecha(e.iniciadoEn)}
+                </td>
+                <td className="py-2 pr-3 text-text-secondary">
+                  {e.proyectoNombre ?? "Panel"}
                 </td>
                 <td className="py-2 pr-3">{OPERACION[e.operacion]}</td>
                 <td className="py-2 pr-3 text-text-secondary">

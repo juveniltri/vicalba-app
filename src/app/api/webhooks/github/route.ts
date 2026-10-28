@@ -3,6 +3,8 @@ import { z } from "zod";
 import { mismoRepositorio, verificarFirmaGitHub } from "@/lib/github/webhook";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
+import { estaRestaurando } from "@/lib/backups/restaurando";
+import { logger } from "@/lib/logger";
 import { lanzarDeploy } from "@/server/routers/proyectos";
 
 const pushPayloadSchema = z.object({
@@ -71,13 +73,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const proyectos = candidatos.filter((p) =>
     urlsRecibidas.some((u) => mismoRepositorio(p.repositorioUrl!, u)),
   );
-  const desplegables = proyectos.filter((p) => p.estado !== "deploying");
+  const libres = proyectos.filter((p) => !estaRestaurando(p.id));
+  if (proyectos.length > 0 && libres.length === 0) {
+    logger
+      .child({ module: "webhook" })
+      .warn(
+        { proyectos: proyectos.map((p) => p.id) },
+        "Push ignorado: los Proyectos se están restaurando",
+      );
+    return NextResponse.json(
+      { ok: false, reason: "restaurando" },
+      { status: 409 },
+    );
+  }
+  const desplegables = libres.filter((p) => p.estado !== "deploying");
 
   if (desplegables.length === 0) {
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: proyectos.length ? "deploy_en_curso" : "sin_proyecto",
+      reason: libres.length ? "deploy_en_curso" : "sin_proyecto",
     });
   }
 

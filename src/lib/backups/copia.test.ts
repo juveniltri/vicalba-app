@@ -48,7 +48,12 @@ vi.mock("./restic", () => ({
 }));
 vi.mock("./postgres", () => ({ pgDump: m.pgDump }));
 
-import { hacerCopia, iniciarCopia } from "./copia";
+import {
+  copiarPanel,
+  hacerCopia,
+  iniciarCopia,
+  registrarFalloSinIniciar,
+} from "./copia";
 import {
   OperacionEnCurso,
   hayOperacionEnCurso,
@@ -129,7 +134,7 @@ describe("iniciarCopia", () => {
 
   it("sin acme.json legible la copia sigue (los certificados se regeneran)", async () => {
     m.leerTraefik.mockRejectedValue(new Error("no such container"));
-    await iniciarCopia("programado");
+    await iniciarCopia("manual");
     await esperar();
     expect(m.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,7 +148,7 @@ describe("iniciarCopia", () => {
       if (origen === "/etc/traefik/static")
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     });
-    await iniciarCopia("programado");
+    await iniciarCopia("manual");
     await esperar();
     expect(m.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,7 +161,7 @@ describe("iniciarCopia", () => {
     m.pgDump.mockRejectedValue(
       new Error("pg_dump terminó con código 1:\nconnection refused"),
     );
-    await iniciarCopia("programado");
+    await iniciarCopia("manual");
     await esperar();
     expect(m.update).toHaveBeenCalledWith({
       where: { id: "b1" },
@@ -168,7 +173,7 @@ describe("iniciarCopia", () => {
     });
     expect(m.notificar).toHaveBeenCalledWith({
       operacion: "copia",
-      origen: "programado",
+      origen: "manual",
       error: expect.stringContaining("connection refused"),
     });
     expect(m.fs.rm).toHaveBeenCalled();
@@ -201,38 +206,6 @@ describe("iniciarCopia", () => {
     expect(m.create).toHaveBeenCalledTimes(1);
   });
 
-  it("programada sin configuración válida: deja la fila en error y avisa", async () => {
-    m.cargar.mockRejectedValue(
-      new Error("Backups sin configurar: destino SFTP incompleto"),
-    );
-    await expect(iniciarCopia("programado")).rejects.toThrow(
-      "destino SFTP incompleto",
-    );
-    expect(m.create).toHaveBeenCalledWith({
-      data: {
-        operacion: "copia",
-        origen: "programado",
-        resultado: "error",
-        error: "Backups sin configurar: destino SFTP incompleto",
-        finalizadoEn: expect.any(Date),
-      },
-    });
-    expect(m.notificar).toHaveBeenCalledWith({
-      operacion: "copia",
-      origen: "programado",
-      error: "Backups sin configurar: destino SFTP incompleto",
-    });
-    expect(hayOperacionEnCurso()).toBe(false);
-  });
-
-  it("programada con un fallo que no es Error también lo registra", async () => {
-    m.cargar.mockRejectedValue("clave ilegible");
-    await expect(iniciarCopia("programado")).rejects.toBe("clave ilegible");
-    expect(m.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ error: "clave ilegible" }),
-    });
-  });
-
   it("sin configuración no toma la operación ni crea fila", async () => {
     m.cargar.mockRejectedValue(
       new Error("Backups sin configurar: no hay destino"),
@@ -251,7 +224,7 @@ describe("iniciarCopia", () => {
   it("si no se puede registrar el fallo, no lanza y suelta la operación", async () => {
     m.pgDump.mockRejectedValue("fallo sin Error");
     m.update.mockRejectedValue(new Error("BD caída"));
-    await iniciarCopia("programado");
+    await iniciarCopia("manual");
     await esperar();
     expect(m.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -306,5 +279,120 @@ describe("hacerCopia", () => {
     );
     expect(m.crearSnapshot).toHaveBeenCalled();
     expect(m.retencion).not.toHaveBeenCalled();
+  });
+});
+
+describe("copiarPanel (dentro del ciclo diario)", () => {
+  const config = { clave: "c", destino: { tipo: "s3" } } as never;
+  const abortable = (r: { signal: AbortSignal }) =>
+    new Promise((_, rej) =>
+      r.signal.addEventListener("abort", () =>
+        rej(new DOMException("This operation was aborted", "AbortError")),
+      ),
+    );
+
+  it("sin comprobar el destino ni retención: copia y marca éxito", async () => {
+    const ciclo = new AbortController();
+    expect(
+      await copiarPanel("b1", config, ciclo.signal, {
+        origen: "programado",
+        comprobar: false,
+        retencion: false,
+      }),
+    ).toBe(true);
+    expect(m.comprobar).not.toHaveBeenCalled();
+    expect(m.retencion).not.toHaveBeenCalled();
+    expect(m.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ resultado: "exito" }),
+      }),
+    );
+  });
+
+  it("si falla: fila en error, aviso y false", async () => {
+    m.pgDump.mockRejectedValue(new Error("connection refused"));
+    expect(
+      await copiarPanel("b1", config, new AbortController().signal, {
+        origen: "programado",
+      }),
+    ).toBe(false);
+    expect(m.update).toHaveBeenCalledWith({
+      where: { id: "b1" },
+      data: {
+        resultado: "error",
+        error: "connection refused",
+        finalizadoEn: expect.any(Date),
+      },
+    });
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "copia",
+      origen: "programado",
+      error: "connection refused",
+    });
+  });
+
+  it("su límite de 60 minutos corta la copia del Panel, no el ciclo", async () => {
+    vi.useFakeTimers();
+    m.crearSnapshot.mockImplementation(abortable);
+    const ciclo = new AbortController();
+    const hecho = copiarPanel("b1", config, ciclo.signal, {
+      origen: "programado",
+    });
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    vi.useRealTimers();
+    expect(await hecho).toBe(false);
+    expect(ciclo.signal.aborted).toBe(false);
+    expect(m.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          error: "Cancelado: superó 60 minutos",
+        }),
+      }),
+    );
+  });
+
+  it("cancelar el ciclo la corta con el motivo de la cancelación", async () => {
+    m.crearSnapshot.mockImplementation(abortable);
+    const ciclo = new AbortController();
+    const hecho = copiarPanel("b1", config, ciclo.signal, {
+      origen: "programado",
+    });
+    await vi.waitFor(() => expect(m.crearSnapshot).toHaveBeenCalled());
+    ciclo.abort("Cancelado por ana");
+    expect(await hecho).toBe(false);
+    expect(m.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ error: "Cancelado por ana" }),
+      }),
+    );
+  });
+});
+
+describe("registrarFalloSinIniciar", () => {
+  it("deja una fila programada en error y avisa", async () => {
+    await registrarFalloSinIniciar(
+      new Error("Backups sin configurar: destino SFTP incompleto"),
+    );
+    expect(m.create).toHaveBeenCalledWith({
+      data: {
+        operacion: "copia",
+        origen: "programado",
+        resultado: "error",
+        error: "Backups sin configurar: destino SFTP incompleto",
+        finalizadoEn: expect.any(Date),
+      },
+    });
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "copia",
+      origen: "programado",
+      error: "Backups sin configurar: destino SFTP incompleto",
+    });
+  });
+
+  it("también registra un fallo que no es Error", async () => {
+    await registrarFalloSinIniciar("clave ilegible");
+    expect(m.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ error: "clave ilegible" }),
+    });
   });
 });

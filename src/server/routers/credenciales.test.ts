@@ -19,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       delete: vi.fn(),
     },
+    configuracionBackup: { findFirst: vi.fn() },
   },
 }));
 
@@ -119,6 +120,7 @@ describe("credenciales.crear", () => {
 
 describe("credenciales.eliminar", () => {
   it("elimina la credencial existente", async () => {
+    vi.mocked(prisma.configuracionBackup.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.credencial.findUnique).mockResolvedValue(
       credencialBase as never,
     );
@@ -131,6 +133,25 @@ describe("credenciales.eliminar", () => {
     expect(prisma.credencial.delete).toHaveBeenCalledWith({
       where: { id: "cred1" },
     });
+  });
+
+  it("rechaza con CONFLICT la credencial que usan los backups", async () => {
+    vi.mocked(prisma.credencial.findUnique).mockResolvedValue(
+      credencialBase as never,
+    );
+    vi.mocked(prisma.configuracionBackup.findFirst).mockResolvedValue({
+      id: "default",
+    } as never);
+
+    await expect(caller.eliminar({ id: "cred1" })).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "La usan los backups",
+    });
+    expect(prisma.configuracionBackup.findFirst).toHaveBeenCalledWith({
+      where: { sftpCredencialId: "cred1" },
+      select: { id: true },
+    });
+    expect(prisma.credencial.delete).not.toHaveBeenCalled();
   });
 
   it("lanza NOT_FOUND si no existe", async () => {

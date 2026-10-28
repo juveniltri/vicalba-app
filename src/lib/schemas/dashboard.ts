@@ -14,3 +14,5 @@ export type ConfiguracionBackupVista =
   RouterOutput["backups"]["obtenerConfiguracion"];
 export type EjecucionBackup = RouterOutput["backups"]["historial"][number];
 export type CopiaBackup = RouterOutput["backups"]["copias"][number];
+export type BackupsProyectoVista = RouterOutput["backups"]["elementosProyecto"];
+export type CopiaProyecto = RouterOutput["backups"]["copiasProyecto"][number];

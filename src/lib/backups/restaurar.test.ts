@@ -1,4 +1,5 @@
 import {
+  cp,
   mkdtemp,
   mkdir,
   readFile,
@@ -21,6 +22,8 @@ const m = vi.hoisted(() => ({
   backupFindMany: vi.fn(),
   backupDeleteMany: vi.fn(),
   backupCreateMany: vi.fn(),
+  elementoFindMany: vi.fn(),
+  elementoCreateMany: vi.fn(),
   configFind: vi.fn(),
   configUpsert: vi.fn(),
   credFind: vi.fn(),
@@ -51,6 +54,10 @@ vi.mock("@/lib/prisma", () => ({
       deleteMany: m.backupDeleteMany,
       createMany: m.backupCreateMany,
     },
+    elementoCopia: {
+      findMany: m.elementoFindMany,
+      createMany: m.elementoCreateMany,
+    },
     configuracionBackup: { findUnique: m.configFind, upsert: m.configUpsert },
     credencial: { findUnique: m.credFind, upsert: m.credUpsert },
     $transaction: m.transaction,
@@ -72,7 +79,7 @@ vi.mock("./postgres", () => ({ pgRestore: m.pgRestore }));
 vi.mock("./procesos", () => ({ ejecutar: m.ejecutar }));
 vi.mock("node:fs/promises", async (original) => {
   const real = await original<typeof import("node:fs/promises")>();
-  return { ...real, mkdtemp: vi.fn(real.mkdtemp) };
+  return { ...real, mkdtemp: vi.fn(real.mkdtemp), cp: vi.fn(real.cp) };
 });
 
 import {
@@ -127,6 +134,7 @@ describe("iniciarRestauracion", () => {
     });
     m.credFind.mockResolvedValue({ id: "cred1", nombre: "backups" });
     m.backupFindMany.mockResolvedValue([{ id: "previa" }]);
+    m.elementoFindMany.mockResolvedValue([{ id: "el1", backupId: "previa" }]);
     m.transaction.mockImplementation((ops: unknown[]) => Promise.all(ops));
     m.leerProxy.mockResolvedValue({ aplicada: { logNivel: "INFO" } });
     m.lanzarProxy.mockResolvedValue({ terminado: Promise.resolve() });
@@ -182,6 +190,12 @@ describe("iniciarRestauracion", () => {
     expect(m.backupCreateMany).toHaveBeenCalledWith({
       data: [{ id: "previa" }],
     });
+    expect(m.elementoCreateMany).toHaveBeenCalledWith({
+      data: [{ id: "el1", backupId: "previa" }],
+    });
+    expect(m.backupCreateMany.mock.invocationCallOrder[0]!).toBeLessThan(
+      m.elementoCreateMany.mock.invocationCallOrder[0]!,
+    );
     expect(m.ejecutar).toHaveBeenCalledWith(
       "npx",
       ["prisma", "migrate", "deploy"],
@@ -349,6 +363,90 @@ describe("reemplazarConfigTraefik", () => {
       expect(await readFile(path.join(destino, "proyecto.yml"), "utf8")).toBe(
         "nuevo",
       );
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+  it("si falta el origen no toca el destino", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    try {
+      const destino = path.join(raiz, "destino");
+      await mkdir(destino);
+      await writeFile(path.join(destino, "proyecto.yml"), "antiguo");
+
+      await expect(
+        reemplazarConfigTraefik(path.join(raiz, "no-existe"), destino),
+      ).rejects.toThrow();
+
+      expect(await readdir(destino)).toEqual(["proyecto.yml"]);
+      expect(await readdir(raiz)).toEqual(["destino"]);
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("prepara la copia fuera del directorio padre del destino", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    try {
+      const origen = path.join(raiz, "origen");
+      const destino = path.join(raiz, "destino");
+      await mkdir(origen);
+      await mkdir(destino);
+      await writeFile(path.join(origen, "a.yml"), "a");
+      vi.mocked(cp).mockClear();
+
+      await reemplazarConfigTraefik(origen, destino);
+
+      const preparacion = String(vi.mocked(cp).mock.calls[0]![1]);
+      expect(preparacion.startsWith(path.dirname(destino))).toBe(false);
+      expect(path.dirname(preparacion)).toBe(tmpdir());
+      await expect(readdir(preparacion)).rejects.toThrow();
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("si falla al rellenar el destino conserva la copia buena y dice dónde está", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    let preparada = "";
+    try {
+      const origen = path.join(raiz, "origen");
+      const destino = path.join(raiz, "destino");
+      await mkdir(origen);
+      await mkdir(destino);
+      await writeFile(path.join(origen, "a.yml"), "bueno");
+      const real = vi.mocked(cp).getMockImplementation()!;
+      vi.mocked(cp)
+        .mockImplementationOnce(real)
+        .mockRejectedValueOnce(new Error("ENOSPC"));
+
+      const err = await reemplazarConfigTraefik(origen, destino).catch(
+        (e: unknown) => e as Error,
+      );
+
+      expect(err).toBeInstanceOf(Error);
+      preparada = (err as Error).message.split("está en ")[1]!;
+      expect(await readFile(path.join(preparada, "a.yml"), "utf8")).toBe(
+        "bueno",
+      );
+    } finally {
+      if (preparada) await rm(preparada, { recursive: true, force: true });
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("no deja la copia intermedia .nuevo al terminar", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    try {
+      const origen = path.join(raiz, "origen");
+      const destino = path.join(raiz, "destino");
+      await mkdir(origen);
+      await mkdir(destino);
+      await writeFile(path.join(origen, "a.yml"), "a");
+
+      await reemplazarConfigTraefik(origen, destino);
+
+      expect((await readdir(raiz)).sort()).toEqual(["destino", "origen"]);
     } finally {
       await rm(raiz, { recursive: true, force: true });
     }

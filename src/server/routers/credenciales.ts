@@ -75,6 +75,15 @@ export const credencialesRouter = router({
 
   eliminar: protectedProcedure.input(idInput).mutation(async ({ input }) => {
     await findCredencialOrThrow(input.id);
+    const enBackups = await prisma.configuracionBackup.findFirst({
+      where: { sftpCredencialId: input.id },
+      select: { id: true },
+    });
+    if (enBackups)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "La usan los backups",
+      });
     await prisma.credencial.delete({ where: { id: input.id } });
   }),
 

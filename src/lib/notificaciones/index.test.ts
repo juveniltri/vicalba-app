@@ -419,6 +419,25 @@ describe("notificarFalloBackup", () => {
     );
   });
 
+  it("con Proyecto, lo nombra como cliente y proyecto", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "copia",
+      origen: "manual",
+      error: "bd:db: El contenedor db está parado",
+      proyecto: "acme/web",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      expect.objectContaining({
+        proyectoNombre: "web",
+        clienteSlug: "acme",
+        rama: "copia manual",
+        output: "bd:db: El contenedor db está parado",
+      }),
+    );
+  });
+
   it("describe la restauración sin origen", async () => {
     mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
     await notificarFalloBackup({

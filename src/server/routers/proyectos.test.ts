@@ -105,11 +105,35 @@ vi.mock("@/lib/ssl/acme", () => ({
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
+    warn: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/backups/operacion", () => ({
+  hayOperacionEnCurso: vi.fn().mockReturnValue(false),
+  OperacionEnCurso: class OperacionEnCurso extends Error {},
+}));
+
+vi.mock("@/lib/backups/retencionProyectos", () => ({
+  iniciarPurgaProyecto: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/backups/restaurando", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backups/restaurando")>()),
+  estaRestaurando: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock("@/lib/notificaciones", () => ({
   enviarNotificacion: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { prisma } from "@/lib/prisma";
+import { estaRestaurando } from "@/lib/backups/restaurando";
 import { auth } from "@/lib/auth";
 import {
   iniciarProyecto,
@@ -131,6 +155,8 @@ import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
+import { hayOperacionEnCurso, OperacionEnCurso } from "@/lib/backups/operacion";
+import { iniciarPurgaProyecto } from "@/lib/backups/retencionProyectos";
 import { captureException } from "@sentry/nextjs";
 import {
   clearDeployEmitter,
@@ -981,6 +1007,66 @@ describe("proyectos.eliminar", () => {
     await createCaller(ctx).proyectos.eliminar({ id: "p1" });
 
     expect(eliminarRedCliente).not.toHaveBeenCalled();
+  });
+
+  describe("borrarCopias", () => {
+    beforeEach(() => {
+      vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+        mockProyecto as never,
+      );
+      vi.mocked(hayOperacionEnCurso).mockReturnValue(false);
+    });
+
+    it("no purga las copias sin la casilla", async () => {
+      const ctx = await createContext();
+      await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+      expect(iniciarPurgaProyecto).not.toHaveBeenCalled();
+    });
+
+    it("rechaza con CONFLICT y no borra si hay una operación en curso", async () => {
+      vi.mocked(hayOperacionEnCurso).mockReturnValue(true);
+      const ctx = await createContext();
+      await expect(
+        createCaller(ctx).proyectos.eliminar({ id: "p1", borrarCopias: true }),
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        message:
+          "Hay una copia o restauración en curso: inténtalo cuando termine",
+      });
+      expect(prisma.proyecto.delete).not.toHaveBeenCalled();
+      expect(iniciarPurgaProyecto).not.toHaveBeenCalled();
+    });
+
+    it("borra y lanza la purga cuando está libre", async () => {
+      const ctx = await createContext();
+      await createCaller(ctx).proyectos.eliminar({
+        id: "p1",
+        borrarCopias: true,
+      });
+      expect(prisma.proyecto.delete).toHaveBeenCalled();
+      expect(iniciarPurgaProyecto).toHaveBeenCalledWith("p1");
+    });
+
+    it("sigue adelante si otra operación gana la carrera", async () => {
+      vi.mocked(iniciarPurgaProyecto).mockRejectedValueOnce(
+        new OperacionEnCurso(),
+      );
+      const ctx = await createContext();
+      await expect(
+        createCaller(ctx).proyectos.eliminar({ id: "p1", borrarCopias: true }),
+      ).resolves.toBeUndefined();
+      expect(prisma.proyecto.delete).toHaveBeenCalled();
+    });
+
+    it("propaga cualquier otro error al iniciar la purga, tras la limpieza", async () => {
+      vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+      vi.mocked(iniciarPurgaProyecto).mockRejectedValueOnce(new Error("boom"));
+      const ctx = await createContext();
+      await expect(
+        createCaller(ctx).proyectos.eliminar({ id: "p1", borrarCopias: true }),
+      ).rejects.toThrow("boom");
+      expect(eliminarRedCliente).toHaveBeenCalledWith("cliente-uno");
+    });
   });
 });
 
@@ -2984,5 +3070,98 @@ describe("proyectos.cancelarDeploy", () => {
       "p1",
       "Cancelado por un usuario",
     );
+  });
+});
+
+describe("proyectos — Proyecto restaurando", () => {
+  const MENSAJE = "El Proyecto se está restaurando: espera a que termine";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      estado: "stopped",
+    } as never);
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
+      id: "d1",
+      proyectoId: "p1",
+      rama: "main",
+      sha: "abc123",
+      resultado: "exito",
+    } as never);
+    vi.mocked(estaRestaurando).mockReturnValue(true);
+  });
+
+  const casos: [string, () => Promise<unknown>][] = [
+    [
+      "deploy",
+      async () =>
+        createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ],
+    [
+      "rollback",
+      async () =>
+        createCaller(await createContext()).proyectos.rollback({
+          deployId: "d1",
+        }),
+    ],
+    [
+      "iniciar",
+      async () =>
+        createCaller(await createContext()).proyectos.iniciar({ id: "p1" }),
+    ],
+    [
+      "detener",
+      async () =>
+        createCaller(await createContext()).proyectos.detener({ id: "p1" }),
+    ],
+    [
+      "restart",
+      async () =>
+        createCaller(await createContext()).proyectos.restart({ id: "p1" }),
+    ],
+    [
+      "eliminar",
+      async () =>
+        createCaller(await createContext()).proyectos.eliminar({
+          id: "p1",
+          borrarCopias: true,
+        }),
+    ],
+  ];
+
+  it.each(casos)(
+    "%s rechaza con CONFLICT sin tocar nada",
+    async (_n, llamar) => {
+      await expect(llamar()).rejects.toMatchObject({
+        code: "CONFLICT",
+        message: MENSAJE,
+      });
+      expect(estaRestaurando).toHaveBeenCalledWith("p1");
+      expect(iniciarProyecto).not.toHaveBeenCalled();
+      expect(detenerProyecto).not.toHaveBeenCalled();
+      expect(restartProyecto).not.toHaveBeenCalled();
+      expect(prisma.proyecto.delete).not.toHaveBeenCalled();
+      expect(ejecutarDeploy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("deploy: si la restauración se marca mientras se prepara, vuelve al estado previo y rechaza", async () => {
+    vi.mocked(estaRestaurando)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    await expect(
+      createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: MENSAJE });
+    expect(prisma.proyecto.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "p1" },
+      data: { estado: "deploying" },
+    });
+    expect(prisma.proyecto.update).toHaveBeenNthCalledWith(2, {
+      where: { id: "p1" },
+      data: { estado: "stopped" },
+    });
+    expect(ejecutarDeploy).not.toHaveBeenCalled();
   });
 });
