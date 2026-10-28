@@ -388,6 +388,19 @@ describe("copiarProyecto", () => {
     ]);
   });
 
+  it("no recorta los nombres de base: solo quita el retorno de carro final y las líneas vacías", async () => {
+    m.ejecutar.mockResolvedValue(" Mi Base \r\n\r\n\ncrm\n");
+    await copiarProyecto(params({ restic: restic, deteccion: deteccion(DB) }));
+    const nombres = m.snapshot.mock.calls.map(
+      ([, p]) => (p as { nombre: string }).nombre,
+    );
+    expect(nombres).toEqual([
+      "/bd/db/%20Mi%20Base%20.sql",
+      "/bd/db/crm.sql",
+      "/bd/db/_roles.sql",
+    ]);
+  });
+
   it("pasa la señal del elemento al listado de bases", async () => {
     await copiarProyecto(params({ restic: restic, deteccion: deteccion(DB) }));
 

@@ -39,7 +39,7 @@ describe("Postgres", () => {
 
   it("vuelca una base con --create", () => {
     expect(script(procesoDumpPg("c", "crm"))).toContain(
-      `pg_dump -U "\${POSTGRES_USER:-postgres}" -d 'crm' --clean --if-exists --create`,
+      `pg_dump -U "\${POSTGRES_USER:-postgres}" -d ${citarSh("dbname='crm'")} --clean --if-exists --create`,
     );
   });
 
@@ -47,11 +47,27 @@ describe("Postgres", () => {
     expect(script(procesoDumpPg("c", "postgres"))).not.toContain("--create");
   });
 
-  it("cita nombres con espacios y comillas", () => {
-    expect(script(procesoDumpPg("c", "Mi Base"))).toContain("-d 'Mi Base' ");
-    expect(script(procesoDumpPg("c", "o'neil"))).toContain(`-d 'o'\\''neil' `);
+  it("pasa la base como conninfo: un nombre con = o URI no cambia de base", () => {
+    expect(script(procesoDumpPg("c", "dbname=otra"))).toContain(
+      `-d ${citarSh("dbname='dbname=otra'")} `,
+    );
+    expect(script(procesoDumpPg("c", "postgres://h/x"))).toContain(
+      `-d ${citarSh("dbname='postgres://h/x'")} `,
+    );
+  });
+
+  it("escapa barra invertida y comilla en el conninfo y cita el argumento para sh", () => {
+    expect(script(procesoDumpPg("c", "o'neil"))).toContain(
+      `-d ${citarSh("dbname='o\\'neil'")} `,
+    );
+    expect(script(procesoDumpPg("c", "a\\b"))).toContain(
+      `-d ${citarSh("dbname='a\\\\b'")} `,
+    );
+    expect(script(procesoDumpPg("c", "Mi Base"))).toContain(
+      `-d ${citarSh("dbname='Mi Base'")} `,
+    );
     expect(script(procesoDumpPg("c", "x; rm -rf /"))).toContain(
-      "-d 'x; rm -rf /' ",
+      `-d ${citarSh("dbname='x; rm -rf /'")} `,
     );
   });
 
@@ -100,6 +116,29 @@ describe("MySQL/MariaDB", () => {
       "No se encuentra la contraseña de root en el entorno del contenedor",
     );
     expect(p.env).toBeUndefined();
+  });
+
+  it("la contraseña de root errónea no se confunde con «sin bases»", () => {
+    const s = script(procesoDumpMysql("c"));
+    expect(s).toContain(
+      'TODAS=$("$CLI" -uroot -N -e "show databases") || exit $?',
+    );
+    expect(s.indexOf("TODAS=")).toBeLessThan(s.indexOf("grep -vx"));
+    expect(s).not.toMatch(/"\$CLI" -uroot -N -e "show databases" \|/);
+  });
+
+  it("sin bases de usuario: no es un fallo, deja un comentario y sale con 0", () => {
+    const s = script(procesoDumpMysql("c"));
+    expect(s).toContain("-- sin bases de datos de usuario");
+    expect(s).toMatch(/echo "-- sin bases de datos de usuario"; exit 0/);
+    expect(s).not.toContain("exit 65");
+  });
+
+  it("rechaza nombres que empiezan por - antes de volcar", () => {
+    const s = script(procesoDumpMysql("c"));
+    expect(s).toContain("exit 66");
+    expect(s).toContain("empieza por -");
+    expect(s.indexOf("exit 66")).toBeLessThan(s.indexOf('exec "$DUMP"'));
   });
 
   it("restaura leyendo stdin", () => {

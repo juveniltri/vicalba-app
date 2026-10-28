@@ -475,6 +475,16 @@ async function fallar(
   } else {
     for (const s of estado.arrancadas) await pararSinPerder(s);
   }
+  if (estado.tocado) {
+    await prisma.proyecto
+      .update({ where: { id: proyecto.id }, data: { estado: "stopped" } })
+      .catch((e: unknown) =>
+        log.warn(
+          { err: e, proyectoId: proyecto.id },
+          "No se pudo marcar el Proyecto como parado tras la restauración fallida",
+        ),
+      );
+  }
   try {
     if (!estado.previaCerrada) await cerrarPrevia(filas.previa, motivo);
     await prisma.backup.update({

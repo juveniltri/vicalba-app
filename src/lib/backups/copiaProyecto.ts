@@ -45,8 +45,8 @@ async function partesBd(e: ElementoBd, signal: AbortSignal): Promise<Parte[]> {
   });
   const bases = salida
     .split("\n")
-    .map((b) => b.trim())
-    .filter(Boolean);
+    .map((b) => b.replace(/\r$/, ""))
+    .filter((b) => b !== "");
   return [
     ...bases.map((base) => ({
       proceso: procesoDumpPg(e.contenedorId, base),

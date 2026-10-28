@@ -261,8 +261,8 @@ nuevas en el `.env`.
 
 **Qué esperar:**
 
-- La **primera copia diaria** (y cada «Copia ahora») copia **todos** los Proyectos con
-  contenedores: dump de sus BDs Postgres y MySQL/MariaDB y `tar` de sus volúmenes y carpetas de
+- La **primera copia diaria** copia **todos** los Proyectos con contenedores (cada «Copia ahora»
+  copia solo su Proyecto): dump de sus BDs Postgres y MySQL/MariaDB y `tar` de sus volúmenes y carpetas de
   datos. Puede tardar horas con medias grandes y ocupa tanto como esos datos, comprimidos y
   deduplicados, en el destino: comprueba antes que hay espacio. Las siguientes solo suben lo que
   cambia. Entre tanto, el Panel sigue funcionando; una operación a la vez (cancelable desde

@@ -88,9 +88,11 @@ export function procesoListarBasesPg(contenedorId: string): Proceso {
 export function procesoDumpPg(contenedorId: string, base: string): Proceso {
   // The connected database cannot be recreated, so "postgres" skips --create.
   const crear = base === "postgres" ? "" : " --create";
+  // A bare name after -d is parsed as a conninfo when it has "=" or is a URI.
+  const conninfo = `dbname='${base.replace(/[\\']/g, "\\$&")}'`;
   return exec(
     contenedorId,
-    `pg_dump -U ${USUARIO_PG} -d ${citarSh(base)} --clean --if-exists${crear}`,
+    `pg_dump -U ${USUARIO_PG} -d ${citarSh(conninfo)} --clean --if-exists${crear}`,
   );
 }
 
@@ -137,8 +139,11 @@ export function procesoDumpMysql(contenedorId: string): Proceso {
       ["DUMP", "mariadb-dump", "mysqldump"],
       ["CLI", "mariadb", "mysql"],
     ]),
-    'LISTA=$("$CLI" -uroot -N -e "show databases" | grep -vx -e mysql -e sys -e performance_schema -e information_schema)',
-    'if [ -z "$LISTA" ]; then echo "No hay bases de datos que copiar" >&2; exit 65; fi',
+    'TODAS=$("$CLI" -uroot -N -e "show databases") || exit $?',
+    'LISTA=$(printf "%s\\n" "$TODAS" | grep -vx -e mysql -e sys -e performance_schema -e information_schema)',
+    'if [ -z "$LISTA" ]; then echo "-- sin bases de datos de usuario"; exit 0; fi',
+    // Names starting with "-" would be parsed as mysqldump options.
+    `if printf "%s\\n" "$LISTA" | grep -q '^-'; then echo "Hay una base de datos cuyo nombre empieza por -: no se puede copiar" >&2; exit 66; fi`,
     // Names may contain spaces: split on newlines only, without globbing.
     "NL='\n'",
     'IFS="$NL"; set -f; set -- $LISTA; unset IFS',

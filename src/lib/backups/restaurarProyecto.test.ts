@@ -6,6 +6,7 @@ import type { SnapshotProyecto } from "./restic";
 
 const m = vi.hoisted(() => ({
   proyecto: vi.fn(),
+  proyectoUpdate: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   elementosUpdateMany: vi.fn(),
@@ -27,7 +28,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    proyecto: { findUnique: m.proyecto },
+    proyecto: { findUnique: m.proyecto, update: m.proyectoUpdate },
     backup: { create: m.create, update: m.update },
     elementoCopia: {
       updateMany: m.elementosUpdateMany,
@@ -221,6 +222,7 @@ beforeEach(() => {
   desmarcarRestaurando("p1");
   llamadas = [];
   m.proyecto.mockResolvedValue(PROYECTO);
+  m.proyectoUpdate.mockResolvedValue({});
   m.cargar.mockResolvedValue({ clave: "k", destino: { tipo: "s3" } });
   m.snapshots.mockResolvedValue(SNAPSHOTS);
   m.detectar.mockResolvedValue(deteccion(bd, datos, mysql, panel, volumen));
@@ -604,6 +606,33 @@ describe("iniciarRestauracionProyecto — fallos", () => {
     expect(m.notificar).toHaveBeenCalled();
     expect(m.error).toHaveBeenCalled();
     expect(estaRestaurando("p1")).toBe(false);
+  });
+
+  it("falla tras tocar datos → el Proyecto pasa a stopped en la BD; si eso falla, solo se registra", async () => {
+    m.encadenar.mockImplementation(async (origen: Proceso) => {
+      if (origen.args[3] === "s-app")
+        throw new Error("psql terminó con código 3");
+    });
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(m.proyectoUpdate).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { estado: "stopped" },
+    });
+
+    m.proyectoUpdate.mockRejectedValue(new Error("BD caída"));
+    m.warn.mockClear();
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(m.warn).toHaveBeenCalled();
+    expect(m.notificar).toHaveBeenCalledTimes(2);
+  });
+
+  it("falla sin tocar datos → no se cambia el estado del Proyecto", async () => {
+    m.copiarProyecto.mockRejectedValue(new Error("destino caído"));
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(m.proyectoUpdate).not.toHaveBeenCalled();
   });
 
   it("cancelada → Servicios parados y el motivo en el aviso", async () => {
