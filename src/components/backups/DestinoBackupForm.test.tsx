@@ -33,6 +33,7 @@ const vacia: ConfiguracionBackupVista = {
     ruta: null,
     credencialId: null,
   },
+  local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
   tieneClave: false,
   claveConfirmada: false,
   repositorioInicializado: false,
@@ -163,6 +164,40 @@ describe("DestinoBackupForm", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "S3" }));
     expect(screen.getByLabelText("Bucket")).toBeInTheDocument();
+  });
+
+  it("Local: sin campos, con la ruta fija, el aviso ámbar y guarda solo el tipo", async () => {
+    const user = userEvent.setup();
+    renderizar();
+    await user.click(screen.getByRole("button", { name: "Local (en la VPS)" }));
+    expect(screen.queryByLabelText("Bucket")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
+    const ruta = screen.getByLabelText("Carpeta");
+    expect(ruta).toHaveValue("/var/vicalba/backups");
+    expect(ruta).toHaveAttribute("readonly");
+    const aviso = screen.getByRole("note");
+    expect(aviso).toHaveTextContent(
+      "Las copias están en la misma VPS: si se pierde la VPS o su disco, se pierden también. Usa un disco aparte o pasa a S3/SFTP en cuanto puedas.",
+    );
+    expect(aviso.className).toContain("state-deploying");
+    await user.click(screen.getByRole("button", { name: "Probar y guardar" }));
+    expect(guardarDestinoBackupAction).toHaveBeenCalledWith({ tipo: "local" });
+  });
+
+  it("Local ya guardado: muestra el espacio libre y no repite el aviso", () => {
+    renderizar({
+      ...vacia,
+      tipoDestino: "local",
+      local: { ruta: "/var/vicalba/backups", espacioLibreBytes: 5 * 1024 ** 3 },
+      tieneClave: true,
+    });
+    expect(screen.getByText(/Espacio libre: 5 GB/)).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("Local con el espacio libre desconocido no lo muestra", () => {
+    renderizar({ ...vacia, tipoDestino: "local", tieneClave: true });
+    expect(screen.queryByText(/Espacio libre/)).not.toBeInTheDocument();
   });
 
   it("muestra el error del servidor", async () => {

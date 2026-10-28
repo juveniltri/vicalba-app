@@ -86,6 +86,8 @@ services:
       TRAEFIK_STATIC_DIR: /etc/traefik/static
       ACME_EMAIL: ${ACME_EMAIL:-}
       REPOS_DIR: /var/vicalba/repos
+      # Destino local de los backups (Configuración → Backups); misma ruta que en el host
+      BACKUPS_LOCAL_DIR: /var/vicalba/backups
       # Ruta del fichero de certificados DENTRO del contenedor traefik (debe
       # coincidir con el `storage` que genera el panel) — el panel lo lee vía `docker
       # exec` sobre ese contenedor (leerFicheroTraefik), no como fichero propio:
@@ -104,6 +106,8 @@ services:
       - /var/vicalba/traefik/static:/etc/traefik/static
       # Repositorios clonados para los deploys
       - /var/vicalba/repos:/var/vicalba/repos
+      # Destino local de los backups (opcional; monta aquí un disco aparte si puedes)
+      - /var/vicalba/backups:/var/vicalba/backups
       # Métricas del host — solo lectura
       - /proc:/host/proc:ro
       - /:/hostroot:ro,rslave

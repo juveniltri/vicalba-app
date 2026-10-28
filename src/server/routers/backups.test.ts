@@ -3,11 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/env", () => ({
   env: {
     REPOS_DIR: "/var/vicalba/repos",
+    BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
     ENCRYPTION_KEY: "0".repeat(64),
   },
+}));
+
+const fsm = vi.hoisted(() => ({
+  access: vi.fn(),
+  stat: vi.fn(),
+  statfs: vi.fn(),
+}));
+vi.mock("node:fs/promises", async (o) => ({
+  ...(await o<typeof import("node:fs/promises")>()),
+  ...fsm,
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
@@ -150,6 +161,9 @@ beforeEach(async () => {
   ctx = await createContext();
   m.hay.mockReturnValue(false);
   m.backupFindFirst.mockResolvedValue(null);
+  fsm.stat.mockResolvedValue({ isDirectory: () => true });
+  fsm.access.mockResolvedValue(undefined);
+  fsm.statfs.mockResolvedValue({ bavail: 1000, bsize: 4096 });
 });
 
 const s3Input = {
@@ -426,12 +440,30 @@ describe("backups.obtenerConfiguracion", () => {
         ruta: null,
         credencialId: null,
       },
+      local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
       tieneClave: false,
       claveConfirmada: false,
       repositorioInicializado: false,
       proximaCopia: null,
       enCurso: false,
     });
+  });
+
+  it("destino local: espacio libre de la carpeta (bavail * bsize)", async () => {
+    m.configFind.mockResolvedValue({ tipoDestino: "local" });
+    const c = await caller().backups.obtenerConfiguracion();
+    expect(fsm.statfs).toHaveBeenCalledWith("/var/vicalba/backups");
+    expect(c.local).toEqual({
+      ruta: "/var/vicalba/backups",
+      espacioLibreBytes: 1000 * 4096,
+    });
+  });
+
+  it("destino local: espacio libre null si statfs falla", async () => {
+    m.configFind.mockResolvedValue({ tipoDestino: "local" });
+    fsm.statfs.mockRejectedValue(new Error("ENOENT"));
+    const c = await caller().backups.obtenerConfiguracion();
+    expect(c.local.espacioLibreBytes).toBeNull();
   });
 
   it("habilitado: secretos solo como indicador y próxima copia calculada", async () => {
@@ -476,6 +508,83 @@ describe("backups.obtenerConfiguracion", () => {
     m.configFind.mockResolvedValue({ habilitado: true, hora: 3 });
     const c = await caller().backups.obtenerConfiguracion();
     expect(c.proximaCopia).toBeInstanceOf(Date);
+  });
+});
+
+describe("backups.guardarDestino — local", () => {
+  const aviso =
+    "La carpeta /var/vicalba/backups no existe o el Panel no puede escribir en ella. En la VPS: mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups";
+
+  it("carpeta escribible: inicializa y guarda sin campos de S3/SFTP", async () => {
+    m.configFind.mockResolvedValue(null);
+    m.abrir.mockResolvedValue("inicializado");
+    const res = await caller().backups.guardarDestino({ tipo: "local" });
+    expect(res).toEqual({ repositorio: "inicializado" });
+    expect(fsm.access).toHaveBeenCalledWith(
+      "/var/vicalba/backups",
+      expect.any(Number),
+    );
+    expect(m.configUpsert.mock.calls[0]![0].create).toMatchObject({
+      tipoDestino: "local",
+      s3Endpoint: null,
+      s3SecretKeyCifrada: null,
+      sftpHost: null,
+      claveCifrada: "cif(CLAVE-NUEVA)",
+    });
+  });
+
+  it("sin permisos de escritura: BAD_REQUEST con la orden para la VPS", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.access.mockRejectedValue(new Error("EACCES"));
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+    expect(m.abrir).not.toHaveBeenCalled();
+  });
+
+  it("carpeta inexistente: mismo error", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.stat.mockRejectedValue(new Error("ENOENT"));
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+  });
+
+  it("no es una carpeta: mismo error", async () => {
+    m.configFind.mockResolvedValue(null);
+    fsm.stat.mockResolvedValue({ isDirectory: () => false });
+    await expect(
+      caller().backups.guardarDestino({ tipo: "local" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: aviso });
+  });
+
+  it("con local guardado, repositorioGuardado coincide: conserva la confirmación del kit", async () => {
+    const confirmada = new Date();
+    m.configFind.mockResolvedValue({
+      tipoDestino: "local",
+      claveCifrada: "cif(K)",
+      claveIv: "iv",
+      claveTag: "tag",
+      claveConfirmadaEn: confirmada,
+      sftpPuerto: 22,
+    });
+    m.abrir.mockResolvedValue("existente");
+    await caller().backups.guardarDestino({ tipo: "local" });
+    expect(m.configUpsert.mock.calls[0]![0].update.claveConfirmadaEn).toBe(
+      confirmada,
+    );
+  });
+
+  it("el kit de local lleva la ruta del repositorio", async () => {
+    m.configFind.mockResolvedValue({
+      tipoDestino: "local",
+      claveCifrada: "cif(K)",
+      claveIv: "iv",
+      claveTag: "tag",
+      claveConfirmadaEn: null,
+    });
+    const { kit } = await caller().backups.obtenerKit();
+    expect(kit).toContain("Repositorio:  /var/vicalba/backups/restic");
   });
 });
 

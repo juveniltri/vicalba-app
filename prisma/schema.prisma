@@ -208,6 +208,7 @@ model ConfiguracionNotificacion {
 enum DestinoBackup {
   s3
   sftp
+  local
 }
 
 enum OperacionBackup {

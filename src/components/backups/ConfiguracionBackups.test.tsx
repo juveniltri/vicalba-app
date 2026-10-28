@@ -44,6 +44,7 @@ const lista: ConfiguracionBackupVista = {
     ruta: null,
     credencialId: null,
   },
+  local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
   tieneClave: true,
   claveConfirmada: true,
   repositorioInicializado: true,
@@ -89,6 +90,19 @@ describe("ConfiguracionBackups", () => {
     a.guardarProgramacionBackupAction.mockResolvedValue(undefined);
     a.obtenerKitBackupAction.mockResolvedValue({ kit: "Clave:        K" });
     a.confirmarClaveBackupAction.mockResolvedValue(undefined);
+  });
+
+  it("con destino local guardado muestra el aviso permanente una sola vez", () => {
+    renderizar({ ...lista, tipoDestino: "local" });
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Las copias están en la misma VPS: si se pierde la VPS o su disco, se pierden también.",
+    );
+  });
+
+  it("con S3 no hay aviso de destino local", () => {
+    renderizar();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("muestra la última copia y la próxima", () => {

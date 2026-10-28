@@ -23,4 +23,11 @@ describe("kitRecuperacion", () => {
     expect(kit).toContain("ENCRYPTION_KEY");
     expect(kit).toContain("docs/recuperacion.md");
   });
+
+  it("local: el repositorio es la ruta y no hay credenciales de destino", () => {
+    const kit = kitRecuperacion("/var/vicalba/backups/restic", "CLAVE");
+    expect(kit).toContain("Repositorio:  /var/vicalba/backups/restic");
+    expect(kit).toContain("Credenciales: ninguna");
+    expect(kit).not.toContain("S3 / usuario SFTP");
+  });
 });

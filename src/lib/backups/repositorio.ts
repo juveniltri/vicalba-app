@@ -15,7 +15,8 @@ export type DestinoResuelto =
       usuario: string;
       ruta: string;
       clavePrivada: string;
-    };
+    }
+  | { tipo: "local"; ruta: string };
 
 export type ConfigResuelta = { destino: DestinoResuelto; clave: string };
 
@@ -25,6 +26,7 @@ export function urlRepositorio(destino: DestinoResuelto): string {
     if (destino.prefijo) partes.push(destino.prefijo);
     return `s3:${partes.join("/")}`;
   }
+  if (destino.tipo === "local") return `${destino.ruta}/restic`;
   return `sftp:${destino.usuario}@${destino.host}:${destino.ruta}`;
 }
 
@@ -46,6 +48,7 @@ export function entornoRestic(
     if (destino.region) env.AWS_DEFAULT_REGION = destino.region;
     return { env, args: [] };
   }
+  if (destino.tipo === "local") return { env, args: [] };
   // accept-new trusts the server key on first use and enforces it afterwards.
   const ssh = [
     `ssh -i ${rutas.ficheroClaveSsh}`,

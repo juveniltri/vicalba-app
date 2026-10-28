@@ -18,7 +18,7 @@ import type {
 } from "@/lib/schemas/dashboard";
 import { BotonCancelarBackup } from "./BackupsProyecto";
 import { CopiasBackup } from "./CopiasBackup";
-import { DestinoBackupForm } from "./DestinoBackupForm";
+import { AvisoDestinoLocal, DestinoBackupForm } from "./DestinoBackupForm";
 import { HistorialBackups, formatearFecha } from "./HistorialBackups";
 import { KitRecuperacionModal } from "./KitRecuperacionModal";
 
@@ -107,6 +107,7 @@ export function ConfiguracionBackups({
     <div className="flex flex-col gap-4">
       {/* Copies and restores run in the background: follow them until done. */}
       <DeployPoller isDeploying={config.enCurso} />
+      {config.tipoDestino === "local" && <AvisoDestinoLocal />}
       <Tarjeta titulo="Estado">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Dato etiqueta="Última copia" valor={textoUltimaCopia(historial)} />

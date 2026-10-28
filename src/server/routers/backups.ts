@@ -1,3 +1,4 @@
+import { access, constants, stat, statfs } from "node:fs/promises";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -38,6 +39,7 @@ import {
   RestauracionRechazada,
 } from "@/lib/backups/restaurarProyecto";
 import { cifrar, descifrar } from "@/lib/crypto";
+import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
 import { protectedProcedure, router } from "@/server/trpc";
 
@@ -65,6 +67,7 @@ const destinoInput = z.discriminatedUnion("tipo", [
     credencialId: z.string().min(1),
     clave: claveInput,
   }),
+  z.object({ tipo: z.literal("local"), clave: claveInput }),
 ]);
 
 export type DestinoInput = z.infer<typeof destinoInput>;
@@ -77,7 +80,31 @@ async function leerConfig() {
 
 type ConfigGuardada = NonNullable<Awaited<ReturnType<typeof leerConfig>>>;
 
+async function comprobarCarpetaLocal(): Promise<void> {
+  const ruta = env.BACKUPS_LOCAL_DIR;
+  try {
+    if (!(await stat(ruta)).isDirectory()) throw new Error("no es carpeta");
+    await access(ruta, constants.W_OK);
+  } catch {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `La carpeta ${ruta} no existe o el Panel no puede escribir en ella. En la VPS: mkdir -p ${ruta} && chown 1001:1001 ${ruta}`,
+    });
+  }
+}
+
+async function espacioLibreLocal(): Promise<number | null> {
+  try {
+    const s = await statfs(env.BACKUPS_LOCAL_DIR);
+    return Number(s.bavail) * Number(s.bsize);
+  } catch {
+    return null;
+  }
+}
+
 function repositorioGuardado(c: ConfigGuardada): string {
+  if (c.tipoDestino === "local")
+    return urlRepositorio({ tipo: "local", ruta: env.BACKUPS_LOCAL_DIR });
   return c.tipoDestino === "s3"
     ? urlRepositorio({
         tipo: "s3",
@@ -162,6 +189,11 @@ export const backupsRouter = router({
         ruta: c?.sftpRuta ?? null,
         credencialId: c?.sftpCredencialId ?? null,
       },
+      local: {
+        ruta: env.BACKUPS_LOCAL_DIR,
+        espacioLibreBytes:
+          c?.tipoDestino === "local" ? await espacioLibreLocal() : null,
+      },
       tieneClave: Boolean(c?.claveCifrada),
       claveConfirmada: Boolean(c?.claveConfirmadaEn),
       repositorioInicializado: Boolean(c?.repositorioInicializadoEn),
@@ -215,6 +247,9 @@ export const backupsRouter = router({
           accessKeyId: input.accessKeyId,
           secretKey,
         };
+      } else if (input.tipo === "local") {
+        await comprobarCarpetaLocal();
+        destino = { tipo: "local", ruta: env.BACKUPS_LOCAL_DIR };
       } else {
         const cred = await prisma.credencial.findUnique({
           where: { id: input.credencialId },

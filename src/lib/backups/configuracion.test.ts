@@ -10,7 +10,11 @@ const { mockFindUnique, mockEjecutarFs } = vi.hoisted(() => ({
   },
 }));
 vi.mock("@/env", () => ({
-  env: { REPOS_DIR: "/var/vicalba/repos", ENCRYPTION_KEY: "0".repeat(64) },
+  env: {
+    REPOS_DIR: "/var/vicalba/repos",
+    BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
+    ENCRYPTION_KEY: "0".repeat(64),
+  },
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { configuracionBackup: { findUnique: mockFindUnique } },
@@ -41,6 +45,14 @@ beforeEach(() => {
 });
 
 describe("cargarConfigResuelta", () => {
+  it("local: la ruta fija del entorno, sin credenciales", async () => {
+    mockFindUnique.mockResolvedValue({ ...base, tipoDestino: "local" });
+    expect(await cargarConfigResuelta()).toEqual({
+      clave: "claro(k)",
+      destino: { tipo: "local", ruta: "/var/vicalba/backups" },
+    });
+  });
+
   it("S3: descifra la secret key y la clave", async () => {
     mockFindUnique.mockResolvedValue({
       ...base,
