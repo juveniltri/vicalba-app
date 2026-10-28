@@ -38,6 +38,8 @@ export function ejecutar(
     cwd?: string;
     signal?: AbortSignal;
     entrada?: string;
+    // Abort when neither stdout nor stderr produce output for this long.
+    inactividadMs?: number;
   },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,8 +53,25 @@ export function ejecutar(
     proc.stdin.end(opciones.entrada);
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
-    proc.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+    let inactivo = false;
+    let vigilante: NodeJS.Timeout | undefined;
+    const vigilar = () => {
+      if (!opciones.inactividadMs) return;
+      clearTimeout(vigilante);
+      vigilante = setTimeout(() => {
+        inactivo = true;
+        proc.kill();
+      }, opciones.inactividadMs);
+    };
+    vigilar();
+    proc.stdout.on("data", (c: Buffer) => {
+      stdout += c.toString();
+      vigilar();
+    });
+    proc.stderr.on("data", (c: Buffer) => {
+      stderr += c.toString();
+      vigilar();
+    });
     let cancelado = false;
     proc.on("error", (err) => {
       // Aborted: wait for "close" so the error keeps what the process said.
@@ -60,6 +79,11 @@ export function ejecutar(
       else reject(err);
     });
     proc.on("close", (codigo) => {
+      clearTimeout(vigilante);
+      if (inactivo)
+        return reject(
+          new ErrorProceso("El destino dejó de responder", codigo, stdout),
+        );
       if (codigo === 0 && !cancelado) return resolve(stdout);
       const ultimas = stderr.trim().split("\n").slice(-LINEAS_ERROR).join("\n");
       const motivo = cancelado ? "cancelado" : `terminó con código ${codigo}`;

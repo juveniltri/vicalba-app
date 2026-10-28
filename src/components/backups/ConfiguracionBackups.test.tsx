@@ -226,6 +226,41 @@ describe("ConfiguracionBackups", () => {
     expect(interruptor).toHaveAttribute("aria-checked", "false");
   });
 
+  it("el interruptor y la hora siguen a los datos del servidor al refrescar", () => {
+    const { rerender } = renderizar({ ...lista, habilitado: true, hora: 3 });
+    rerender(
+      <ToastProvider>
+        <ConfiguracionBackups
+          config={{ ...lista, habilitado: false, hora: 7 }}
+          credenciales={[]}
+          historial={[ejecucion({})]}
+          copias={[]}
+        />
+      </ToastProvider>,
+    );
+    expect(
+      screen.getByRole("switch", { name: "Copia diaria" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByRole("button", { name: /hora de la copia/i }),
+    ).toHaveTextContent("07:00");
+  });
+
+  it("el selector de hora se deshabilita mientras guarda", async () => {
+    const user = userEvent.setup();
+    let terminar: (v: undefined) => void = () => {};
+    a.guardarProgramacionBackupAction.mockReturnValue(
+      new Promise((r) => (terminar = r)),
+    );
+    renderizar();
+    await user.click(screen.getByRole("switch", { name: "Copia diaria" }));
+    expect(
+      screen.getByRole("button", { name: /hora de la copia/i }),
+    ).toBeDisabled();
+    terminar(undefined);
+    await screen.findByText("Programación guardada");
+  });
+
   it("mientras hay una operación en curso se refresca sola hasta que acaba", () => {
     vi.useFakeTimers();
     try {

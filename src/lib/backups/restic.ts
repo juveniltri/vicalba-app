@@ -14,11 +14,21 @@ const HOST = "vicalba-panel";
 const SIN_REPOSITORIO = 10;
 const CLAVE_INCORRECTA = 12;
 
-function restic(r: Restic, args: string[], cwd?: string): Promise<string> {
+// restic --json prints a status line about every second while it works, so five
+// silent minutes mean the destination went away mid-transfer.
+export const INACTIVIDAD_MS = 5 * 60 * 1000;
+
+function restic(
+  r: Restic,
+  args: string[],
+  cwd?: string,
+  inactividadMs?: number,
+): Promise<string> {
   return ejecutar("restic", [...r.args, ...args], {
     env: r.env,
     signal: r.signal,
     ...(cwd ? { cwd } : {}),
+    ...(inactividadMs ? { inactividadMs } : {}),
   });
 }
 
@@ -89,6 +99,7 @@ export async function crearSnapshot(
     r,
     ["backup", "--json", "--tag", ETIQUETA, "--host", HOST, "."],
     carpeta,
+    INACTIVIDAD_MS,
   );
   return parsearResumenBackup(salida);
 }
@@ -251,7 +262,12 @@ export async function restaurarSnapshot(
   snapshotId: string,
   destino: string,
 ): Promise<void> {
-  await restic(r, ["restore", snapshotId, "--target", destino]);
+  await restic(
+    r,
+    ["restore", snapshotId, "--json", "--target", destino],
+    undefined,
+    INACTIVIDAD_MS,
+  );
 }
 
 // restic keeps retrying an unreachable or misconfigured backend for ~15 min and

@@ -24,6 +24,7 @@ import {
   mensajeSinRespuesta,
   resumirErrorRestic,
   restaurarSnapshot,
+  INACTIVIDAD_MS,
   type Restic,
 } from "./restic";
 
@@ -149,7 +150,12 @@ describe("comandos", () => {
         "vicalba-panel",
         ".",
       ],
-      { env: r.env, cwd: "/tmp/copia", signal: undefined },
+      {
+        env: r.env,
+        cwd: "/tmp/copia",
+        signal: undefined,
+        inactividadMs: INACTIVIDAD_MS,
+      },
     );
   });
 
@@ -194,9 +200,13 @@ describe("comandos", () => {
       "sftp.command=ssh",
       "restore",
       "bbb222",
+      "--json",
       "--target",
       "/tmp/restaurar",
     ]);
+    expect(mockEjecutar.mock.calls[0]![2]).toMatchObject({
+      inactividadMs: INACTIVIDAD_MS,
+    });
   });
 });
 

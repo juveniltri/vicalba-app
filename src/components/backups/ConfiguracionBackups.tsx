@@ -51,6 +51,17 @@ export function ConfiguracionBackups({
   const [isPending, startTransition] = useTransition();
   const [habilitado, setHabilitado] = useState(config.habilitado);
   const [hora, setHora] = useState(config.hora);
+  // Follow the server after a refresh (another tab, a restore): resync during
+  // render, the documented alternative to an effect that sets state.
+  const [vistos, setVistos] = useState({
+    habilitado: config.habilitado,
+    hora: config.hora,
+  });
+  if (vistos.habilitado !== config.habilitado || vistos.hora !== config.hora) {
+    setVistos({ habilitado: config.habilitado, hora: config.hora });
+    setHabilitado(config.habilitado);
+    setHora(config.hora);
+  }
   const [kit, setKit] = useState<string | null>(null);
   const [errorKit, setErrorKit] = useState<string | null>(null);
 
@@ -158,6 +169,7 @@ export function ConfiguracionBackups({
               ariaLabel="Hora de la copia"
               value={String(hora)}
               options={HORAS}
+              disabled={isPending}
               onChange={(h) => guardarProgramacion(habilitado, Number(h))}
             />
           </div>

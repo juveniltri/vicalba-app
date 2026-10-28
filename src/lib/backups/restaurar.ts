@@ -45,9 +45,18 @@ export async function reemplazarConfigTraefik(
   origen: string,
   destino: string,
 ): Promise<void> {
-  for (const f of await readdir(destino))
-    await rm(path.join(destino, f), { recursive: true, force: true });
-  await cp(origen, destino, { recursive: true });
+  // Copy aside first: a missing or unreadable source must fail before the live
+  // config is emptied. destino is a mount point, so it is refilled, not renamed.
+  const nuevo = `${destino}.nuevo`;
+  await rm(nuevo, { recursive: true, force: true });
+  try {
+    await cp(origen, nuevo, { recursive: true });
+    for (const f of await readdir(destino))
+      await rm(path.join(destino, f), { recursive: true, force: true });
+    await cp(nuevo, destino, { recursive: true });
+  } finally {
+    await rm(nuevo, { recursive: true, force: true });
+  }
 }
 
 async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {

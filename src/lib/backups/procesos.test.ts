@@ -26,6 +26,28 @@ describe("ejecutar", () => {
     expect((err as ErrorProceso).message).toContain("fatal: algo falló");
   });
 
+  it("aborta si no llega salida en inactividadMs", async () => {
+    const err = await ejecutar(
+      node,
+      ["-e", "console.log('empiezo'); setTimeout(() => {}, 10000)"],
+      { inactividadMs: 300 },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ErrorProceso);
+    expect((err as ErrorProceso).message).toBe("El destino dejó de responder");
+  });
+
+  it("la salida de progreso mantiene vivo el proceso", async () => {
+    const salida = await ejecutar(
+      node,
+      [
+        "-e",
+        "let n = 0; const t = setInterval(() => { process.stdout.write('.'); if (++n === 6) { clearInterval(t); } }, 100)",
+      ],
+      { inactividadMs: 400 },
+    );
+    expect(salida).toBe("......");
+  });
+
   it("se cancela con la señal", async () => {
     const controller = new AbortController();
     const promesa = ejecutar(node, ["-e", "setTimeout(() => {}, 10000)"], {

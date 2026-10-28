@@ -82,16 +82,18 @@ describe("comprobarProgramacion", () => {
 });
 
 describe("iniciarProgramador", () => {
-  it("comprueba cada minuto y no se arranca dos veces", () => {
+  it("comprueba al arrancar y después cada minuto, sin arrancarse dos veces", () => {
     vi.useFakeTimers();
     const espia = vi.spyOn(globalThis, "setInterval");
     iniciarProgramador();
     iniciarProgramador();
+    // A restart late in the day must not wait a full minute to catch up.
+    expect(m.hay).toHaveBeenCalledTimes(1);
     expect(espia).toHaveBeenCalledTimes(1);
     expect(espia).toHaveBeenCalledWith(expect.any(Function), 60_000);
     m.hay.mockReturnValue(true);
     vi.advanceTimersByTime(60_000);
-    expect(m.hay).toHaveBeenCalledTimes(1);
+    expect(m.hay).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 });

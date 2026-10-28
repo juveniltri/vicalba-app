@@ -57,9 +57,10 @@ const destinoInput = z.discriminatedUnion("tipo", [
   }),
   z.object({
     tipo: z.literal("sftp"),
-    host: z.string().regex(/^[A-Za-z0-9.-]+$/),
+    // No leading "-": it would be read as an ssh option.
+    host: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]*$/),
     puerto: z.number().int().min(1).max(65535),
-    usuario: z.string().regex(/^[A-Za-z0-9._-]+$/),
+    usuario: z.string().regex(/^[A-Za-z0-9._][A-Za-z0-9._-]*$/),
     ruta: z.string().startsWith("/").refine(sinPuntos),
     credencialId: z.string().min(1),
     clave: claveInput,

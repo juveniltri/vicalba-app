@@ -263,6 +263,28 @@ describe("backups.guardarDestino", () => {
         credencialId: "c1",
       },
     ],
+    [
+      "host SFTP que empieza por -",
+      {
+        tipo: "sftp",
+        host: "-oProxyCommand",
+        puerto: 22,
+        usuario: "u",
+        ruta: "/r",
+        credencialId: "c1",
+      },
+    ],
+    [
+      "usuario SFTP que empieza por -",
+      {
+        tipo: "sftp",
+        host: "h",
+        puerto: 22,
+        usuario: "-oProxyCommand",
+        ruta: "/r",
+        credencialId: "c1",
+      },
+    ],
   ])("valida la entrada: %s", async (_, input) => {
     await expect(
       caller().backups.guardarDestino(input as never),

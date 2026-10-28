@@ -38,6 +38,16 @@ describe("CopiasBackup", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("403 Forbidden");
   });
 
+  it("sin destino configurado avisa en neutro, no como error", () => {
+    renderizar({
+      error: "Backups sin configurar: no hay un destino configurado",
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(/Backups sin configurar/).className).not.toMatch(
+      /error/,
+    );
+  });
+
   it("sin copias lo indica", () => {
     renderizar([]);
     expect(

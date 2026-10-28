@@ -40,6 +40,7 @@ export async function comprobarProgramacion(
 // The state lives in the database, so a restart neither skips nor repeats a day.
 export function iniciarProgramador(): void {
   if (global.programadorBackups) return;
+  void comprobarProgramacion();
   global.programadorBackups = setInterval(
     () => void comprobarProgramacion(),
     60_000,

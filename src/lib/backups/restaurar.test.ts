@@ -366,4 +366,38 @@ describe("reemplazarConfigTraefik", () => {
       await rm(raiz, { recursive: true, force: true });
     }
   });
+  it("si falta el origen no toca el destino", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    try {
+      const destino = path.join(raiz, "destino");
+      await mkdir(destino);
+      await writeFile(path.join(destino, "proyecto.yml"), "antiguo");
+
+      await expect(
+        reemplazarConfigTraefik(path.join(raiz, "no-existe"), destino),
+      ).rejects.toThrow();
+
+      expect(await readdir(destino)).toEqual(["proyecto.yml"]);
+      expect(await readdir(raiz)).toEqual(["destino"]);
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("no deja la copia intermedia .nuevo al terminar", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "traefik-"));
+    try {
+      const origen = path.join(raiz, "origen");
+      const destino = path.join(raiz, "destino");
+      await mkdir(origen);
+      await mkdir(destino);
+      await writeFile(path.join(origen, "a.yml"), "a");
+
+      await reemplazarConfigTraefik(origen, destino);
+
+      expect((await readdir(raiz)).sort()).toEqual(["destino", "origen"]);
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
 });
