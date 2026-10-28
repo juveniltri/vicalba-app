@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ErrorProceso, ejecutar } from "./procesos";
+import { ErrorProceso, ejecutar, type Proceso } from "./procesos";
 
 export type Restic = {
   env: Record<string, string>;
@@ -105,8 +105,138 @@ export async function aplicarRetencion(r: Restic): Promise<void> {
     "7",
     "--keep-weekly",
     "4",
-    "--prune",
   ]);
+}
+
+export async function crearSnapshotStdin(
+  r: Restic,
+  p: { proceso: Proceso; nombre: string; etiquetas: string[] },
+): Promise<{ snapshotId: string; bytesAnadidos: number }> {
+  const salida = await restic(r, [
+    "backup",
+    "--json",
+    "--quiet",
+    "--host",
+    HOST,
+    ...p.etiquetas.flatMap((e) => ["--tag", e]),
+    "--stdin-filename",
+    p.nombre,
+    "--stdin-from-command",
+    "--",
+    p.proceso.comando,
+    ...p.proceso.args,
+  ]);
+  return parsearResumenBackup(salida);
+}
+
+export type SnapshotProyecto = {
+  id: string;
+  fecha: Date;
+  bytes: number | null;
+  ruta: string;
+  proyectoId: string;
+  hashElemento: string;
+  backupId: string;
+  origen: "programado" | "manual" | "antes_de_restaurar";
+};
+
+const origenSchema = z.enum(["programado", "manual", "antes_de_restaurar"]);
+
+const snapshotsProyectoSchema = z.array(
+  z.object({
+    id: z.string(),
+    time: z.string(),
+    paths: z.array(z.string()).default([]),
+    tags: z.array(z.string()).default([]),
+    summary: z.object({ total_bytes_processed: z.number() }).optional(),
+  }),
+);
+
+function valorEtiqueta(tags: string[], prefijo: string): string | undefined {
+  return tags.find((t) => t.startsWith(prefijo))?.slice(prefijo.length);
+}
+
+export function parsearSnapshotsProyectos(salida: string): SnapshotProyecto[] {
+  const resultado: SnapshotProyecto[] = [];
+  for (const s of snapshotsProyectoSchema.parse(JSON.parse(salida))) {
+    const proyectoId = valorEtiqueta(s.tags, "p:");
+    const hashElemento = valorEtiqueta(s.tags, "e:");
+    const backupId = valorEtiqueta(s.tags, "c:");
+    const origen = origenSchema.safeParse(valorEtiqueta(s.tags, "o:"));
+    const ruta = s.paths[0];
+    if (!proyectoId || !hashElemento || !backupId || !origen.success || !ruta) {
+      continue;
+    }
+    resultado.push({
+      id: s.id,
+      fecha: new Date(s.time),
+      bytes: s.summary?.total_bytes_processed ?? null,
+      ruta,
+      proyectoId,
+      hashElemento,
+      backupId,
+      origen: origen.data,
+    });
+  }
+  return resultado.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+}
+
+export async function listarSnapshotsProyectos(
+  r: Restic,
+  proyectoId?: string,
+): Promise<SnapshotProyecto[]> {
+  return parsearSnapshotsProyectos(
+    await restic(r, [
+      "snapshots",
+      "--json",
+      "--no-lock",
+      "--tag",
+      proyectoId ? `proyecto,p:${proyectoId}` : "proyecto",
+    ]),
+  );
+}
+
+export async function olvidar(
+  r: Restic,
+  p: {
+    etiquetas: string[];
+    politica: "7+4" | "30d" | "todo";
+    ids?: string[];
+  },
+): Promise<void> {
+  if (p.politica === "todo") {
+    // Never by tag alone: the caller names exactly what goes.
+    if (!p.ids?.length) return;
+    await restic(r, ["forget", "--json", ...p.ids]);
+    return;
+  }
+  await restic(r, [
+    "forget",
+    "--json",
+    "--tag",
+    p.etiquetas.join(","),
+    "--group-by",
+    "host,paths",
+    ...(p.politica === "7+4"
+      ? ["--keep-daily", "7", "--keep-weekly", "4"]
+      : ["--keep-within", "30d"]),
+  ]);
+}
+
+export async function podar(r: Restic): Promise<void> {
+  await restic(r, ["prune"]);
+}
+
+export function volcarSnapshot(
+  r: Restic,
+  snapshotId: string,
+  ruta: string,
+): Proceso {
+  return {
+    comando: "restic",
+    args: [...r.args, "dump", snapshotId, ruta],
+    env: r.env,
+  };
 }
 
 export async function listarSnapshots(r: Restic): Promise<Snapshot[]> {
