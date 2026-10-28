@@ -204,7 +204,7 @@ parados** (los datos pueden estar a medias) y avisa. Tienes dos salidas:
   `docker start` de sus contenedores).
 
 Si el Panel se cae a mitad, al arrancar quita los contenedores auxiliares `vicalba-backup-*` que
-queden; a mano: `docker ps -a --filter name=vicalba-backup- -q | xargs -r docker rm -f`.
+queden; a mano: `docker ps -a --filter name=^vicalba-backup- -q | xargs -r docker rm -f`.
 
 ### Lo olvidado no vuelve
 

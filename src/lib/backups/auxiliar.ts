@@ -24,7 +24,8 @@ export async function eliminarAuxiliar(nombre: string): Promise<void> {
 export async function limpiarAuxiliaresHuerfanos(): Promise<number> {
   const salida = await ejecutar(
     "docker",
-    ["ps", "-a", "--filter", `name=${PREFIJO}`, "-q"],
+    // Docker's name filter is an unanchored regex.
+    ["ps", "-a", "--filter", `name=^${PREFIJO}`, "-q"],
     {},
   );
   const ids = salida.split(/\s+/).filter(Boolean);

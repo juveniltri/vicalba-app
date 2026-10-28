@@ -61,7 +61,9 @@ describe("auxiliar", () => {
     expect(mockEjecutar).toHaveBeenNthCalledWith(
       1,
       "docker",
-      ["ps", "-a", "--filter", "name=vicalba-backup-", "-q"],
+      // Real docker matches name filters as an unanchored regex: without "^"
+      // a Cliente container such as "acme-vicalba-backup-db-1" would match.
+      ["ps", "-a", "--filter", "name=^vicalba-backup-", "-q"],
       {},
     );
     expect(mockEjecutar).toHaveBeenNthCalledWith(
