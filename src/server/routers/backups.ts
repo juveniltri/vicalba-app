@@ -94,7 +94,7 @@ export const backupsRouter = router({
   obtenerConfiguracion: protectedProcedure.query(async () => {
     const c = await leerConfig();
     const ultimo = await prisma.backup.findFirst({
-      where: { operacion: "copia", origen: "programado" },
+      where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
       select: { iniciadoEn: true },
     });
@@ -350,12 +350,12 @@ export const backupsRouter = router({
     const c = await leerConfig();
     const [ultimaCorrecta, ultima] = await Promise.all([
       prisma.backup.findFirst({
-        where: { operacion: "copia", resultado: "exito" },
+        where: { operacion: "copia", resultado: "exito", proyectoId: null },
         orderBy: { iniciadoEn: "desc" },
         select: { iniciadoEn: true },
       }),
       prisma.backup.findFirst({
-        where: { operacion: "copia" },
+        where: { operacion: "copia", proyectoId: null },
         orderBy: { iniciadoEn: "desc" },
         select: { resultado: true },
       }),

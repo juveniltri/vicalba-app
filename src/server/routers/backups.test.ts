@@ -695,6 +695,33 @@ describe("backups — resto de procedures", () => {
     });
   });
 
+  it("resumen ignora las copias de Proyectos", async () => {
+    m.configFind.mockResolvedValue({ habilitado: true });
+    m.backupFindFirst.mockResolvedValue(null);
+    await caller().backups.resumen();
+    expect(m.backupFindFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { operacion: "copia", resultado: "exito", proyectoId: null },
+      }),
+    );
+    expect(m.backupFindFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { operacion: "copia", proyectoId: null },
+      }),
+    );
+  });
+
+  it("historial devuelve proyectoNombre", async () => {
+    m.backupFindMany.mockResolvedValue([
+      { id: "b1", bytesAnadidos: null, proyectoNombre: "acme/web" },
+    ]);
+    expect((await caller().backups.historial())[0]!.proyectoNombre).toBe(
+      "acme/web",
+    );
+  });
+
   it("resumen sin configuración ni copias", async () => {
     m.configFind.mockResolvedValue(null);
     expect(await caller().backups.resumen()).toEqual({

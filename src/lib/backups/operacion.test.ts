@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockUpdateMany } = vi.hoisted(() => ({ mockUpdateMany: vi.fn() }));
+const { mockUpdateMany, mockElementosUpdateMany } = vi.hoisted(() => ({
+  mockUpdateMany: vi.fn(),
+  mockElementosUpdateMany: vi.fn(),
+}));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { backup: { updateMany: mockUpdateMany } },
+  prisma: {
+    backup: { updateMany: mockUpdateMany },
+    elementoCopia: { updateMany: mockElementosUpdateMany },
+  },
 }));
 
 import {
@@ -43,6 +49,15 @@ describe("limpiarBackupsHuerfanos", () => {
         error: "Interrumpido por reinicio del panel",
         finalizadoEn: expect.any(Date),
       },
+    });
+  });
+
+  it("cierra también los elementos de copia en curso", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+    await limpiarBackupsHuerfanos("Interrumpido");
+    expect(mockElementosUpdateMany).toHaveBeenCalledWith({
+      where: { resultado: "en_curso" },
+      data: { resultado: "error", error: "Interrumpido" },
     });
   });
 });

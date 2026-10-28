@@ -47,5 +47,9 @@ export async function limpiarBackupsHuerfanos(motivo: string): Promise<number> {
     where: { resultado: "en_curso" },
     data: { resultado: "error", error: motivo, finalizadoEn: new Date() },
   });
+  await prisma.elementoCopia.updateMany({
+    where: { resultado: "en_curso" },
+    data: { resultado: "error", error: motivo },
+  });
   return count;
 }

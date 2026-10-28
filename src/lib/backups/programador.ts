@@ -23,7 +23,7 @@ export async function comprobarProgramacion(
       return false;
     }
     const ultimo = await prisma.backup.findFirst({
-      where: { operacion: "copia", origen: "programado" },
+      where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
       select: { iniciadoEn: true },
     });

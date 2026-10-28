@@ -40,7 +40,7 @@ describe("comprobarProgramacion", () => {
   it("lanza la copia programada cuando toca", async () => {
     expect(await comprobarProgramacion(ahora)).toBe(true);
     expect(m.findBackup).toHaveBeenCalledWith({
-      where: { operacion: "copia", origen: "programado" },
+      where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
       select: { iniciadoEn: true },
     });
