@@ -48,6 +48,7 @@ const rutaInput = z.object({
   puerto: z.number().int().min(1).max(65535).optional(),
   redireccionWww: z.enum(["ninguna", "a_raiz", "a_www"]).default("ninguna"),
   cloudflare: z.boolean().default(false),
+  soloCloudflare: z.boolean().default(false),
   middlewares: middlewaresEntradaSchema.optional(),
 });
 
@@ -149,6 +150,21 @@ export async function comprobarRutaDisponible(
     });
 }
 
+// The checkbox only means something behind Cloudflare, and with no ranges the
+// allowlist would block the whole route.
+async function soloCloudflareEfectivo(input: {
+  cloudflare: boolean;
+  soloCloudflare: boolean;
+}): Promise<boolean> {
+  if (!input.cloudflare || !input.soloCloudflare) return false;
+  if ((await contextoCloudflare()).rangos.length === 0)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "No hay rangos de Cloudflare aplicados en Configuración → Proxy",
+    });
+  return true;
+}
+
 async function findProyectoOrThrow(id: string) {
   const proyecto = await prisma.proyecto.findUnique({
     where: { id },
@@ -227,6 +243,7 @@ export const rutasRouter = router({
     .mutation(async ({ input }) => {
       const actual = await findRutaOrThrow(input.id);
       await comprobarRutaDisponible(input, actual.id);
+      const soloCloudflare = await soloCloudflareEfectivo(input);
       const middlewares = input.middlewares
         ? conHashes(
             input.middlewares,
@@ -245,6 +262,7 @@ export const rutasRouter = router({
           puerto: input.puerto ?? actual.puerto,
           redireccionWww: input.redireccionWww,
           cloudflare: input.cloudflare,
+          soloCloudflare,
           ...(middlewares && { middlewares }),
         },
       });
@@ -285,6 +303,7 @@ export const rutasRouter = router({
           message: `Un Proyecto admite como mucho ${MAX_RUTAS_POR_PROYECTO} rutas`,
         });
       await comprobarRutaDisponible(input);
+      const soloCloudflare = await soloCloudflareEfectivo(input);
       const middlewares = conHashes(input.middlewares ?? {}, {});
       const ruta = await prisma.rutaProyecto.create({
         data: {
@@ -296,6 +315,7 @@ export const rutasRouter = router({
           puerto: input.puerto ?? proyecto.puerto ?? 80,
           redireccionWww: input.redireccionWww,
           cloudflare: input.cloudflare,
+          soloCloudflare,
           middlewares,
         },
       });

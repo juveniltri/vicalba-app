@@ -7,6 +7,7 @@ import {
   OperacionProxyEnCurso,
 } from "@/lib/proxy/operacion";
 import { descargarRangosCloudflare } from "@/lib/proxy/cloudflare";
+import { prisma } from "@/lib/prisma";
 import { configuracionProxySchema } from "@/lib/schemas/proxy";
 import { protectedProcedure, router } from "@/server/trpc";
 
@@ -44,6 +45,17 @@ export const proxyRouter = router({
       }),
     )
     .mutation(async ({ input: { tokenCloudflare, ...config } }) => {
+      // Empty ranges would make every «Solo desde Cloudflare» route reject all traffic.
+      if (
+        config.cloudflare.rangos.length === 0 &&
+        (await prisma.rutaProyecto.count({ where: { soloCloudflare: true } })) >
+          0
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Hay rutas con «Solo desde Cloudflare»: los rangos no pueden quedar vacíos",
+        });
       try {
         // The result lands in the DB; the UI polls `obtener` until it's there.
         await lanzarAplicacionProxy(config, tokenCloudflare);

@@ -104,6 +104,8 @@ model RutaProyecto {
   redireccionWww RedireccionWww @default(ninguna)
   // Proxied by Cloudflare: its cert resolver and real-IP strategy
   cloudflare     Boolean        @default(false)
+  // Only Cloudflare's edges may connect (ipAllowList on RemoteAddr)
+  soloCloudflare Boolean        @default(false)
   // Validated with middlewaresSchema (src/lib/schemas/middlewares.ts)
   middlewares    Json           @default("{}")
   creadoEn       DateTime       @default(now())
