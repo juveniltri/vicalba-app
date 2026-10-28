@@ -382,6 +382,12 @@ proxy de Cloudflare** → **Guardar**. En la tabla aparece «☁ Detrás de Clou
 
 Haz esto **antes** de poner la nube naranja: así el certificado se pide ya por DNS.
 
+Al marcarla aparece **Solo desde Cloudflare** (activada por defecto): la ruta responde **403** a
+toda petición que no llegue desde los servidores de Cloudflare, así nadie puede saltarse la nube
+naranja yendo directo a la IP de la VPS. Necesita que los rangos de Cloudflare estén aplicados
+(C2); si no, el Panel no deja guardarla. Desmárcala si algún día necesitas entrar sin pasar por
+Cloudflare. La tabla muestra «Solo Cloudflare» en esa ruta.
+
 ### C4. Configurar Cloudflare para ese dominio
 
 1. **DNS**: registro `A` del subdominio → IP de la VPS, con la **nube naranja** (Proxied).
@@ -401,6 +407,10 @@ validación no llega. Cuando la pestaña Dominios muestre «SSL activo», cambia
    Si sigue «SSL pendiente»: Configuración → Proxy → **Ver las últimas líneas del log de
    Traefik** y busca errores de `acme`/`cloudflare` (token sin permisos, zona no incluida…).
 2. El dominio abre por HTTPS con el candado.
+   Con **Solo desde Cloudflare**, comprueba también que ir directo a la IP es rechazado:
+   `curl -sk -o /dev/null -w '%{http_code}' --resolve <dominio>:443:<IP de la VPS> https://<dominio>/`
+   → **403**. Para que sea efectivo, el origen no debe tener registro `AAAA` (solo `A`): una IPv6
+   publicada en el DNS permitiría llegar al origen por otra vía.
 3. La IP real: si la aplicación muestra o registra la IP del visitante (`X-Forwarded-For` /
    `X-Real-Ip`), debe ser la tuya, no una de Cloudflare.
 4. Protección por IP: en **Protección y cabeceras** de la ruta, pon en **IPs o rangos

@@ -553,6 +553,7 @@ export type DatosRuta = {
   puerto?: number;
   redireccionWww: "ninguna" | "a_raiz" | "a_www";
   cloudflare?: boolean;
+  soloCloudflare?: boolean;
   middlewares?: MiddlewaresEntrada;
 };
 

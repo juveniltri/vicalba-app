@@ -317,6 +317,10 @@ Objetivo: devolver el Panel al estado de una copia, por ejemplo tras borrar algo
   Las rutas que pasan por Cloudflare llevan marcada **Detrás de Cloudflare**: piden el
   certificado por DNS (o HTTP sin token) y la protección por IP y el límite de peticiones usan
   la IP real del visitante, no la de Cloudflare.
+  Con **Solo desde Cloudflare** (activada por defecto en esas rutas) el dominio rechaza con 403
+  lo que no llegue por los servidores de Cloudflare, p. ej. quien vaya directo a la IP de la VPS;
+  la tabla lo indica con «Solo Cloudflare». Pide tener aplicados los rangos de Cloudflare en
+  Configuración → Proxy.
   Muestra el estado del certificado, avisa si el Servicio no tiene contenedor y enseña el YAML
   que recibe Traefik. Los cambios se aplican al guardar; una ruta a un Servicio que no tenía
   ninguna funciona tras el siguiente deploy.

@@ -32,6 +32,7 @@ const ruta = (extra: Partial<RutaPanel> = {}): RutaPanel => ({
   puerto: 3000,
   redireccionWww: "ninguna",
   cloudflare: false,
+  soloCloudflare: false,
   middlewares: {},
   ssl: { activo: true, caducaEn: null },
   ...extra,
@@ -141,6 +142,7 @@ describe("DominiosPanel — alta y edición", () => {
         puerto: 8080,
         redireccionWww: "a_raiz",
         cloudflare: false,
+        soloCloudflare: false,
         middlewares: {},
       }),
     );
@@ -180,6 +182,7 @@ describe("DominiosPanel — alta y edición", () => {
         puerto: undefined,
         redireccionWww: "a_www",
         cloudflare: false,
+        soloCloudflare: false,
         middlewares: {},
       }),
     );
@@ -203,6 +206,7 @@ describe("DominiosPanel — alta y edición", () => {
         puerto: 3000,
         redireccionWww: "ninguna",
         cloudflare: false,
+        soloCloudflare: false,
         middlewares: {},
       }),
     );
@@ -290,6 +294,66 @@ describe("DominiosPanel — Cloudflare", () => {
     await waitFor(() =>
       expect(crearRutaAction.mock.calls[0][1].cloudflare).toBe(true),
     );
+  });
+});
+
+describe("DominiosPanel — Solo desde Cloudflare", () => {
+  const casilla = () => screen.queryByLabelText(/Solo desde Cloudflare/);
+
+  it("la casilla Solo desde Cloudflare solo aparece con Detrás de Cloudflare", () => {
+    renderPanel({ rutas: [] });
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
+    expect(casilla()).toBeNull();
+    fireEvent.click(screen.getByLabelText(/proxy de Cloudflare/));
+    expect(casilla()).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/proxy de Cloudflare/));
+    expect(casilla()).toBeNull();
+  });
+
+  it("en una ruta nueva viene marcada al marcar Detrás de Cloudflare", async () => {
+    renderPanel({ rutas: [] });
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo dominio" }));
+    rellenar(/^Dominio$/, "a.com");
+    fireEvent.click(screen.getByLabelText(/proxy de Cloudflare/));
+    expect(casilla()).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(crearRutaAction.mock.calls[0][1].soloCloudflare).toBe(true),
+    );
+  });
+
+  it("en una ruta existente conserva su valor", async () => {
+    renderPanel({
+      rutas: [ruta({ cloudflare: true, soloCloudflare: false })],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Editar app/ }));
+    expect(casilla()).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(editarRutaAction.mock.calls[0][1].soloCloudflare).toBe(false),
+    );
+  });
+
+  it("desmarcar Detrás de Cloudflare envía soloCloudflare false", async () => {
+    renderPanel({ rutas: [ruta({ cloudflare: true, soloCloudflare: true })] });
+    fireEvent.click(screen.getByRole("button", { name: /^Editar app/ }));
+    expect(casilla()).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/proxy de Cloudflare/));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(editarRutaAction.mock.calls[0][1]).toMatchObject({
+        cloudflare: false,
+        soloCloudflare: false,
+      }),
+    );
+  });
+
+  it("muestra la etiqueta Solo Cloudflare en la tabla", () => {
+    renderPanel({ rutas: [ruta({ cloudflare: true, soloCloudflare: true })] });
+    expect(screen.getByText(/Solo Cloudflare/)).toBeInTheDocument();
   });
 });
 

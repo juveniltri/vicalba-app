@@ -30,6 +30,7 @@ export type RutaPanel = {
   puerto: number;
   redireccionWww: Redireccion;
   cloudflare: boolean;
+  soloCloudflare: boolean;
   middlewares: MiddlewaresVista;
   ssl: { activo: boolean; caducaEn: string | null };
 };
@@ -41,6 +42,7 @@ type Formulario = {
   puerto: string;
   redireccionWww: Redireccion;
   cloudflare: boolean;
+  soloCloudflare: boolean;
   mw: FormMiddlewares;
 };
 
@@ -51,6 +53,7 @@ const VACIO: Formulario = {
   puerto: "",
   redireccionWww: "ninguna",
   cloudflare: false,
+  soloCloudflare: false,
   mw: FORM_MIDDLEWARES_VACIO,
 };
 
@@ -108,6 +111,7 @@ export function DominiosPanel({
             puerto: String(ruta.puerto),
             redireccionWww: ruta.redireccionWww,
             cloudflare: ruta.cloudflare,
+            soloCloudflare: ruta.soloCloudflare,
             mw: aFormulario(ruta.middlewares),
           }
         : VACIO,
@@ -126,6 +130,7 @@ export function DominiosPanel({
       puerto: form.puerto.trim() ? Number(form.puerto) : undefined,
       redireccionWww: form.redireccionWww,
       cloudflare: form.cloudflare,
+      soloCloudflare: form.cloudflare && form.soloCloudflare,
       middlewares: aEntrada(form.mw),
     };
     const resultado =
@@ -176,7 +181,7 @@ export function DominiosPanel({
     router.refresh();
   }
 
-  const campo = (clave: Exclude<keyof Formulario, "mw" | "cloudflare">) => ({
+  const campo = (clave: Exclude<keyof Formulario, "mw" | "cloudflare" | "soloCloudflare">) => ({
     value: form[clave],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm({ ...form, [clave]: e.target.value }),
@@ -245,6 +250,7 @@ export function DominiosPanel({
                       {r.cloudflare && (
                         <p className="font-body text-[11px] text-text-secondary">
                           ☁ Detrás de Cloudflare
+                          {r.soloCloudflare && " · Solo Cloudflare"}
                         </p>
                       )}
                       {resumenMiddlewares(r.middlewares).length > 0 && (
@@ -402,12 +408,29 @@ export function DominiosPanel({
               type="checkbox"
               checked={form.cloudflare}
               onChange={(e) =>
-                setForm({ ...form, cloudflare: e.target.checked })
+                setForm({
+                  ...form,
+                  cloudflare: e.target.checked,
+                  soloCloudflare: e.target.checked,
+                })
               }
             />
             Detrás del proxy de Cloudflare (nube naranja): certificado por
             DNS/HTTP y la IP real del visitante para la protección
           </label>
+          {form.cloudflare && (
+            <label className="inline-flex items-center gap-2 font-body text-xs text-text-secondary sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.soloCloudflare}
+                onChange={(e) =>
+                  setForm({ ...form, soloCloudflare: e.target.checked })
+                }
+              />
+              Solo desde Cloudflare: rechaza (403) lo que no llegue por sus
+              servidores
+            </label>
+          )}
           <MiddlewaresCampos
             valor={form.mw}
             onChange={(mw) => setForm({ ...form, mw })}
