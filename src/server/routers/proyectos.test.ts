@@ -123,11 +123,17 @@ vi.mock("@/lib/backups/retencionProyectos", () => ({
   iniciarPurgaProyecto: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/backups/restaurando", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backups/restaurando")>()),
+  estaRestaurando: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock("@/lib/notificaciones", () => ({
   enviarNotificacion: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { prisma } from "@/lib/prisma";
+import { estaRestaurando } from "@/lib/backups/restaurando";
 import { auth } from "@/lib/auth";
 import {
   iniciarProyecto,
@@ -3065,4 +3071,79 @@ describe("proyectos.cancelarDeploy", () => {
       "Cancelado por un usuario",
     );
   });
+});
+
+describe("proyectos — Proyecto restaurando", () => {
+  const MENSAJE = "El Proyecto se está restaurando: espera a que termine";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      estado: "stopped",
+    } as never);
+    vi.mocked(prisma.deploy.findUnique).mockResolvedValue({
+      id: "d1",
+      proyectoId: "p1",
+      rama: "main",
+      sha: "abc123",
+      resultado: "exito",
+    } as never);
+    vi.mocked(estaRestaurando).mockReturnValue(true);
+  });
+
+  const casos: [string, () => Promise<unknown>][] = [
+    [
+      "deploy",
+      async () =>
+        createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ],
+    [
+      "rollback",
+      async () =>
+        createCaller(await createContext()).proyectos.rollback({
+          deployId: "d1",
+        }),
+    ],
+    [
+      "iniciar",
+      async () =>
+        createCaller(await createContext()).proyectos.iniciar({ id: "p1" }),
+    ],
+    [
+      "detener",
+      async () =>
+        createCaller(await createContext()).proyectos.detener({ id: "p1" }),
+    ],
+    [
+      "restart",
+      async () =>
+        createCaller(await createContext()).proyectos.restart({ id: "p1" }),
+    ],
+    [
+      "eliminar",
+      async () =>
+        createCaller(await createContext()).proyectos.eliminar({
+          id: "p1",
+          borrarCopias: true,
+        }),
+    ],
+  ];
+
+  it.each(casos)(
+    "%s rechaza con CONFLICT sin tocar nada",
+    async (_n, llamar) => {
+      await expect(llamar()).rejects.toMatchObject({
+        code: "CONFLICT",
+        message: MENSAJE,
+      });
+      expect(estaRestaurando).toHaveBeenCalledWith("p1");
+      expect(iniciarProyecto).not.toHaveBeenCalled();
+      expect(detenerProyecto).not.toHaveBeenCalled();
+      expect(restartProyecto).not.toHaveBeenCalled();
+      expect(prisma.proyecto.delete).not.toHaveBeenCalled();
+      expect(ejecutarDeploy).not.toHaveBeenCalled();
+    },
+  );
 });

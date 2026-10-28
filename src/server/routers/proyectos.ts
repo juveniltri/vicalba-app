@@ -34,6 +34,10 @@ import { ultimasLineas } from "@/lib/deploy-stream";
 import { logger } from "@/lib/logger";
 import { hayOperacionEnCurso, OperacionEnCurso } from "@/lib/backups/operacion";
 import { iniciarPurgaProyecto } from "@/lib/backups/retencionProyectos";
+import {
+  estaRestaurando,
+  MENSAJE_RESTAURANDO,
+} from "@/lib/backups/restaurando";
 
 const proyectoInput = z.object({
   nombre: z
@@ -90,6 +94,11 @@ const dominioPrincipal = (p: { rutas?: { dominio: string }[] }) =>
 
 type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
 
+function rechazarSiRestaurando(proyectoId: string): void {
+  if (estaRestaurando(proyectoId))
+    throw new TRPCError({ code: "CONFLICT", message: MENSAJE_RESTAURANDO });
+}
+
 // Single entry point for every deploy trigger (button, rollback, GitHub webhook)
 // so all of them deploy with the same variables, volumes and compose content.
 export async function lanzarDeploy(
@@ -100,6 +109,7 @@ export async function lanzarDeploy(
     origen: "manual" | "webhook" | "rollback";
   },
 ) {
+  rechazarSiRestaurando(proyecto.id);
   const [variablesDB, volumenesDB, configDeploy] = await Promise.all([
     prisma.variableEntorno.findMany({ where: { proyectoId: proyecto.id } }),
     prisma.volumen.findMany({ where: { proyectoId: proyecto.id } }),
@@ -299,6 +309,7 @@ export const proyectosRouter = router({
 
   iniciar: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
+    rechazarSiRestaurando(proyecto.id);
     try {
       await iniciarProyecto(
         proyecto.cliente.slug,
@@ -321,6 +332,7 @@ export const proyectosRouter = router({
 
   detener: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
+    rechazarSiRestaurando(proyecto.id);
     try {
       await detenerProyecto(
         proyecto.cliente.slug,
@@ -347,6 +359,7 @@ export const proyectosRouter = router({
 
   restart: protectedProcedure.input(accionInput).mutation(async ({ input }) => {
     const proyecto = await findProyectoOrThrow(input.id);
+    rechazarSiRestaurando(proyecto.id);
     try {
       await restartProyecto(
         proyecto.cliente.slug,
@@ -467,6 +480,7 @@ export const proyectosRouter = router({
     .input(idInput.extend({ borrarCopias: z.boolean().optional() }))
     .mutation(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.id);
+      rechazarSiRestaurando(proyecto.id);
       if (proyecto.estado === "running" || proyecto.estado === "deploying")
         throw new TRPCError({
           code: "CONFLICT",
