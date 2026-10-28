@@ -62,6 +62,8 @@ async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
       })
     : null;
   const historial = await prisma.backup.findMany();
+  // Deleting the Backups cascades to their per-element detail
+  const detalle = await prisma.elementoCopia.findMany();
 
   await pgRestore(env.DATABASE_URL, dump, signal);
   // Bring an older copy up to the current schema before writing back rows
@@ -95,6 +97,7 @@ async function restaurarBd(dump: string, signal: AbortSignal): Promise<void> {
   ops.push(
     prisma.backup.deleteMany(),
     prisma.backup.createMany({ data: historial }),
+    prisma.elementoCopia.createMany({ data: detalle }),
   );
   await prisma.$transaction(ops);
 }

@@ -21,6 +21,8 @@ const m = vi.hoisted(() => ({
   backupFindMany: vi.fn(),
   backupDeleteMany: vi.fn(),
   backupCreateMany: vi.fn(),
+  elementoFindMany: vi.fn(),
+  elementoCreateMany: vi.fn(),
   configFind: vi.fn(),
   configUpsert: vi.fn(),
   credFind: vi.fn(),
@@ -50,6 +52,10 @@ vi.mock("@/lib/prisma", () => ({
       findMany: m.backupFindMany,
       deleteMany: m.backupDeleteMany,
       createMany: m.backupCreateMany,
+    },
+    elementoCopia: {
+      findMany: m.elementoFindMany,
+      createMany: m.elementoCreateMany,
     },
     configuracionBackup: { findUnique: m.configFind, upsert: m.configUpsert },
     credencial: { findUnique: m.credFind, upsert: m.credUpsert },
@@ -127,6 +133,7 @@ describe("iniciarRestauracion", () => {
     });
     m.credFind.mockResolvedValue({ id: "cred1", nombre: "backups" });
     m.backupFindMany.mockResolvedValue([{ id: "previa" }]);
+    m.elementoFindMany.mockResolvedValue([{ id: "el1", backupId: "previa" }]);
     m.transaction.mockImplementation((ops: unknown[]) => Promise.all(ops));
     m.leerProxy.mockResolvedValue({ aplicada: { logNivel: "INFO" } });
     m.lanzarProxy.mockResolvedValue({ terminado: Promise.resolve() });
@@ -182,6 +189,12 @@ describe("iniciarRestauracion", () => {
     expect(m.backupCreateMany).toHaveBeenCalledWith({
       data: [{ id: "previa" }],
     });
+    expect(m.elementoCreateMany).toHaveBeenCalledWith({
+      data: [{ id: "el1", backupId: "previa" }],
+    });
+    expect(m.backupCreateMany.mock.invocationCallOrder[0]!).toBeLessThan(
+      m.elementoCreateMany.mock.invocationCallOrder[0]!,
+    );
     expect(m.ejecutar).toHaveBeenCalledWith(
       "npx",
       ["prisma", "migrate", "deploy"],
